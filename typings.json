@@ -1,0 +1,7 @@
+{
+  "globalDependencies": {
+    "bluebird": "registry:dt/bluebird#2.0.0+20160319051630",
+    "cheerio": "registry:dt/cheerio#0.17.0+20160407085313",
+    "node": "registry:dt/node#6.0.0+20160621231320"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "gitwed",
+  "version": "0.0.0",
+  "description": "Git-based website editor",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git@gitlab.dwbn.org:mmoskal/gitwed.git"
+  },
+  "author": "Michal Moskal <michal@moskal.me>",
+  "license": "MIT",
+  "dependencies": {
+    "ContentTools": "^1.2.8",
+    "bluebird": "^3.4.1",
+    "cheerio": "^0.20.0"
+  },
+  "devDependencies": {
+    "typescript": "^1.8.10"
+  }
+}
