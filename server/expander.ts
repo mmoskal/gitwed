@@ -24,7 +24,7 @@ type SMap<T> = { [s: string]: T };
 let readAsync = Promise.promisify(fs.readFile)
 
 function getFileAsync(fn: string) {
-    return readAsync(fn).then(b => b.toString("utf8"))
+    return readAsync("html/" + fn).then(b => b.toString("utf8"))
 }
 
 function expandAsync(html: string) {
@@ -89,10 +89,7 @@ function expandAsync(html: string) {
 
 export function test() {
 
-    let frag = `
-        <div id="foobar">blah</div>
-        <div id="foo">eleleblah</div>
-`
+    let frag = `<include src="welcome.html">`
 
     expandAsync(frag)
     .then(s => {
