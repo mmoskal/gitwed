@@ -27,7 +27,12 @@ function getFileAsync(fn: string) {
     return readAsync("html/" + fn).then(b => b.toString("utf8"))
 }
 
-function expandAsync(html: string) {
+interface Ctx {
+    filename: string;
+    subst: SMap<Cheerio>;
+}
+
+function expandAsync(filename: string, html: string) {
     let h = cheerio.load(html, {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
@@ -35,66 +40,60 @@ function expandAsync(html: string) {
         normalizeWhitespace: false
     })
 
-    let currentSubst: SMap<Cheerio> = {}
-
-    function withSubstAsync(s: SMap<Cheerio>, f: () => Promise<void>) {
-        let prevSubst = currentSubst
-        currentSubst = s
-        return Promise.resolve()
-            .then(f)
-            .finally(() => {
-                currentSubst = prevSubst
-            })
-    }
-
-    function includeAsync(e: Cheerio, v: string) {
-        return getFileAsync(v)
-            .then(f => {
-                let subst: SMap<Cheerio> = {}
-                for (let ch of e.children().toArray()) {
-                    let ch2 = h(ch)
-                    let id = ch2.attr("id")
-                    if (id) subst[id] = ch2;
-                }
-                let n = h(f)
-                e.replaceWith(n)
-                return withSubstAsync(subst, () => recAsync(n))
-            })
-    }
-
-    function recAsync(e: Cheerio): Promise<void> {
-        let i = e.attr("id")
-        if (i && currentSubst.hasOwnProperty(i)) {
-            let n = currentSubst[i].clone()
-            e.replaceWith(n)
-            return withSubstAsync({}, () => recAsync(n))
-        }
-
-        if (e.is("include")) {
-            return includeAsync(e, e.attr("src"))
-        }
-        return Promise.each(e.children().toArray(), ee => recAsync(h(ee)))
-            .then(() => { })
-    }
-
-    return recAsync(h.root())
+    return recAsync({ filename, subst: {} }, h.root())
         .then(() => {
             h("group").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
             return h.html()
         })
+
+    function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
+        return getFileAsync(filename)
+            .then(f => {
+                let subst: SMap<Cheerio> = {}
+                for (let ch of e.children().toArray()) {
+                    let ch2 = h(ch)
+                    let id = ch2.attr("id")
+                    if (id) {
+                        subst[id] = ch2;
+                        (ch2 as any).gw_ctx = ctx; // save ctx for further expansion and filename tracking
+                    }
+                }
+                let n = h(f)
+                e.replaceWith(n)
+                let ctx2: Ctx = {
+                    subst, filename
+                }
+                return recAsync(ctx, n)
+            })
+    }
+
+    function recAsync(ctx: Ctx, e: Cheerio): Promise<void> {
+        let i = e.attr("id")
+        if (i && ctx.subst.hasOwnProperty(i)) {
+            let n = ctx.subst[i].clone()
+            e.replaceWith(n)
+            return recAsync((ctx.subst[i] as any).gw_ctx, n)
+        }
+
+        if (e.is("include")) {
+            return includeAsync(ctx, e, e.attr("src"))
+        }
+        return Promise.each(e.children().toArray(), ee => recAsync(ctx, h(ee)))
+            .then(() => { })
+    }
 }
 
+function expandFileAsync(n: string) {
+    return getFileAsync(n)
+        .then(s => expandAsync(n, s))
+
+}
 
 export function test() {
-
-    let frag = `<include src="welcome.html">`
-
-    expandAsync(frag)
-    .then(s => {
-        console.log(s)
-    })
-
-
+    return expandFileAsync("welcome.html")
+        .then(s => {
+            console.log(s)
+        })
 }
