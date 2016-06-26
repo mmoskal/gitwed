@@ -2,6 +2,10 @@
   "globalDependencies": {
     "bluebird": "registry:dt/bluebird#2.0.0+20160319051630",
     "cheerio": "registry:dt/cheerio#0.17.0+20160407085313",
-    "node": "registry:dt/node#6.0.0+20160621231320"
+    "express": "registry:dt/express#4.0.0+20160317120654",
+    "express-serve-static-core": "registry:dt/express-serve-static-core#0.0.0+20160625155614",
+    "mime": "registry:dt/mime#0.0.0+20160316155526",
+    "node": "registry:dt/node#6.0.0+20160621231320",
+    "serve-static": "registry:dt/serve-static#0.0.0+20160606155157"
   }
 }
