@@ -32,55 +32,74 @@ interface Ctx {
     subst: SMap<Cheerio>;
 }
 
+interface Pos {
+    filename: string;
+    startIdx: number;
+}
+
 function expandAsync(filename: string, html: string) {
     let h = cheerio.load(html, {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
         recognizeSelfClosing: true,
-        normalizeWhitespace: false
-    })
+        normalizeWhitespace: false,
+        withStartIndices: true
+    } as any)
+
+    let idToPos: SMap<Pos> = {}
 
     return recAsync({ filename, subst: {} }, h.root())
         .then(() => {
             h("group").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
-            return h.html()
+            return {
+                idToPos,
+                html: h.html()
+            }
         })
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         return getFileAsync(filename)
-            .then(f => {
+            .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
                     let ch2 = h(ch)
                     let id = ch2.attr("id")
                     if (id) {
                         subst[id] = ch2;
-                        (ch2 as any).gw_ctx = ctx; // save ctx for further expansion and filename tracking
+                        (ch2 as any).gw_ctx = ctx; // save outer ctx for further expansion and filename tracking
                     }
                 }
-                let n = h(f)
+                let n = h(fileContent)
                 e.replaceWith(n)
-                let ctx2: Ctx = {
-                    subst, filename
-                }
-                return recAsync(ctx, n)
+                return recAsync({ subst, filename }, n)
             })
     }
 
-    function recAsync(ctx: Ctx, e: Cheerio): Promise<void> {
-        let i = e.attr("id")
-        if (i && ctx.subst.hasOwnProperty(i)) {
-            let n = ctx.subst[i].clone()
-            e.replaceWith(n)
-            return recAsync((ctx.subst[i] as any).gw_ctx, n)
+    function recAsync(ctx: Ctx, elt: Cheerio): Promise<void> {
+        let eltId = elt.attr("id")
+        if (eltId && ctx.subst.hasOwnProperty(eltId)) {
+            let n = ctx.subst[eltId] // .clone()
+            elt.replaceWith(n)
+            return recAsync((ctx.subst[eltId] as any).gw_ctx, n)
         }
 
-        if (e.is("include")) {
-            return includeAsync(ctx, e, e.attr("src"))
+        if (eltId) {
+            if (idToPos.hasOwnProperty(eltId)) {
+                idToPos[eltId] = null
+            } else {
+                idToPos[eltId] = {
+                    filename: ctx.filename,
+                    startIdx: (elt[0] as any).startIndex
+                }
+            }
         }
-        return Promise.each(e.children().toArray(), ee => recAsync(ctx, h(ee)))
+
+        if (elt.is("include")) {
+            return includeAsync(ctx, elt, elt.attr("src"))
+        }
+        return Promise.each(elt.children().toArray(), ee => recAsync(ctx, h(ee)))
             .then(() => { })
     }
 }
@@ -94,6 +113,7 @@ function expandFileAsync(n: string) {
 export function test() {
     return expandFileAsync("welcome.html")
         .then(s => {
-            console.log(s)
+            console.log(s.html)
+            console.log(s.idToPos)
         })
 }
