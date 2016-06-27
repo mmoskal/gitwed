@@ -82,14 +82,19 @@ app.post("/api/update", (req, res) => {
                 let id: string = req.body.id
                 let val: string = req.body.value
                 let desc = page.idToPos[id]
+
+                val = "\n" + val + "\n"
+                val = val.replace(/\r/g, "")
+                val = val.replace(/\n+/g, "\n")
+
                 if (desc) {
                     gitlabfs.getAsync(desc.filename)
-                    .then(cont => 
-                    gitlabfs.setAsync(desc.filename, 
-                    cont.slice(0, desc.startIdx) + 
-                    val + cont.slice(desc.startIdx + desc.length)))
-                    .then(() => res.end("OK"))
-                }else{
+                        .then(cont =>
+                            gitlabfs.setAsync(desc.filename,
+                                cont.slice(0, desc.startIdx) +
+                                val + cont.slice(desc.startIdx + desc.length)))
+                        .then(() => res.end("OK"))
+                } else {
                     res.status(410).end()
                 }
             }))
