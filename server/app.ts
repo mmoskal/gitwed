@@ -30,14 +30,14 @@ app.use("/gw", express.static("node_modules/ContentTools/build"))
 
 app.use("/", express.static("html"))
 
-
 app.use((req, res) => {
   res.status(404).send('Page not found');
 })
 
 app.use((error:any, req:express.Request, res:express.Response, next:express.NextFunction) => {
   console.log(error.stack)
-  res.status(500).send('Internal Server Error, ' + error.stack);
+  res.writeHead(500, { 'Content-Type': 'text/plain'})
+  res.end('Internal Server Error, ' + error.stack);
 })
 
 app.listen(3000)

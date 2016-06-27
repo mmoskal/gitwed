@@ -16,7 +16,20 @@ function jsQuote(s: string) {
     }) + "\""
 }
 
-function error(msg: string) {
+function error(msg: string, ctx?: Ctx, elt?: Cheerio) {
+    if (ctx)
+        msg += " at " + ctx.filename
+    
+    if (elt && elt[0] && elt[0].startIndex != null) {
+        let idx = elt[0].startIndex
+        msg += "@" + idx
+        if (ctx)
+            msg += "  ..." + 
+                ctx.fileContent.slice(Math.max(0, idx - 10), idx) + 
+                "*" +
+                ctx.fileContent.slice(idx, idx + 20) + "..."
+    }
+
     throw new Error(msg)
 }
 
@@ -31,6 +44,7 @@ function getFileAsync(fn: string) {
 interface Ctx {
     filename: string;
     subst: SMap<Cheerio>;
+    fileContent: string;
 }
 
 interface Pos {
@@ -38,7 +52,7 @@ interface Pos {
     startIdx: number;
 }
 
-function expandAsync(filename: string, html: string) {
+function expandAsync(filename: string, fileContent: string) {
     let options: any = {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
@@ -46,12 +60,12 @@ function expandAsync(filename: string, html: string) {
         normalizeWhitespace: false,
         withStartIndices: true
     }
-    let h = cheerio.load(html, options)
+    let h = cheerio.load(fileContent, options)
 
     let idToPos: SMap<Pos> = {}
 
-    setLocations(h.root(), filename, html)
-    return recAsync({ filename, subst: {} }, h.root())
+    setLocations(h.root(), filename, fileContent)
+    return recAsync({ filename, subst: {}, fileContent }, h.root())
         .then(() => {
             h("group").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
@@ -101,7 +115,7 @@ function expandAsync(filename: string, html: string) {
                 let n = h(fileContent)
                 setLocations(n, filename, fileContent)
                 e.replaceWith(n)
-                return recAsync({ subst, filename }, n)
+                return recAsync({ subst, filename, fileContent }, n)
             })
     }
 
@@ -111,6 +125,14 @@ function expandAsync(filename: string, html: string) {
             let n = ctx.subst[eltId].clone()
             elt.replaceWith(n)
             return recAsync(ctx.subst[eltId].gw_ctx, n)
+        }
+
+        if (elt.attr("edit") != null) {
+            if (!eltId) error("no id on element marked with 'edit'", ctx, elt);
+            if (elt.find("p, ul, ol").length > 0)
+                elt.attr("data-editable", "true")
+            else
+                elt.attr("data-fixture", "true")
         }
 
         if (elt.is("include")) {
