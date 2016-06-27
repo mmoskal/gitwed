@@ -1,6 +1,7 @@
 import cheerio = require("cheerio")
 import Promise = require("bluebird")
-import fs = require("fs")
+import gitlabfs = require('./gitlabfs')
+
 let htmlparser2 = require("htmlparser2")
 
 function jsQuote(s: string) {
@@ -31,14 +32,6 @@ function error(msg: string, ctx?: Ctx, elt?: Cheerio) {
     }
 
     throw new Error(msg)
-}
-
-type SMap<T> = { [s: string]: T };
-
-let readAsync = Promise.promisify(fs.readFile)
-
-function getFileAsync(fn: string) {
-    return readAsync("html/" + fn).then(b => b.toString("utf8"))
 }
 
 interface Ctx {
@@ -101,7 +94,7 @@ function expandAsync(filename: string, fileContent: string) {
     }
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
-        return getFileAsync(filename)
+        return gitlabfs.getAsync(filename)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -144,14 +137,6 @@ function expandAsync(filename: string, fileContent: string) {
 }
 
 export function expandFileAsync(n: string) {
-    return getFileAsync(n)
+    return gitlabfs.getAsync(n)
         .then(s => expandAsync(n, s))
-}
-
-export function test() {
-    return expandFileAsync("welcome.html")
-        .then(s => {
-            console.log(s.html)
-            console.log(s.idToPos)
-        })
 }

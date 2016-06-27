@@ -12,6 +12,7 @@
   "dependencies": {
     "ContentTools": "^1.2.8",
     "bluebird": "^3.4.1",
+    "body-parser": "^1.15.2",
     "cheerio": "^0.20.0",
     "express": "^4.14.0",
     "gitlab": "^1.6.0",
