@@ -28,6 +28,9 @@ app.use("/gw", express.static("built/gw"))
 app.use("/gw", express.static("gw"))
 app.use("/gw", express.static("node_modules/ContentTools/build"))
 
+app.use("/", express.static("html"))
+
+
 app.use((req, res) => {
   res.status(404).send('Page not found');
 })

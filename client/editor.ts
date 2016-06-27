@@ -2,6 +2,7 @@
 /// <reference path="../typings/globals/bluebird/index.d.ts" />
 
 declare var ContentTools: any;
+declare var ContentEdit: any;
 
 namespace gw {
 
@@ -38,7 +39,7 @@ namespace gw {
             new ContentTools.Style('Author', 'author', ['p'])
         ])
         editor = ContentTools.EditorApp.get()
-        editor.init('*[data-editable]', 'id')
+        editor.init('[data-editable], [data-fixture]', 'id')
 
         editor.addEventListener('saved', (ev: any) => {
             let regions = ev.detail().regions
@@ -62,6 +63,14 @@ namespace gw {
                     editor.busy(false)
                     new ContentTools.FlashUI('no')
                 })
+        });
+
+        let FIXTURE_TOOLS = [['undo', 'redo', 'remove']];
+        ContentEdit.Root.get().bind('focus', (element: any) => {
+            let tools = element.isFixed() ? FIXTURE_TOOLS : ContentTools.DEFAULT_TOOLS;
+            if (editor.toolbox().tools() !== tools) {
+                return editor.toolbox().tools(tools);
+            }
         });
 
         let autoSaveTimer = -1

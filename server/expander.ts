@@ -81,7 +81,7 @@ function expandAsync(filename: string, html: string) {
                     start++;
                 start++;
             }
-            console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
+            //console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
             x.attr("gw-pos", filename + "@" + start + "-" + (end - start))
         })
     }
