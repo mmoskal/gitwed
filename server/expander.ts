@@ -1,6 +1,7 @@
 import cheerio = require("cheerio")
 import Promise = require("bluebird")
 import fs = require("fs")
+let htmlparser2 = require("htmlparser2")
 
 function jsQuote(s: string) {
     return "\"" + s.replace(/[\\"\n\r\t]/g, (m) => {
@@ -38,16 +39,18 @@ interface Pos {
 }
 
 function expandAsync(filename: string, html: string) {
-    let h = cheerio.load(html, {
+    let options: any = {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
         recognizeSelfClosing: true,
         normalizeWhitespace: false,
         withStartIndices: true
-    } as any)
+    }
+    let h = cheerio.load(html, options)
 
     let idToPos: SMap<Pos> = {}
 
+    setLocations(h.root(), filename, html)
     return recAsync({ filename, subst: {} }, h.root())
         .then(() => {
             h("group").each((i, e) => {
@@ -59,6 +62,30 @@ function expandAsync(filename: string, html: string) {
             }
         })
 
+    function setLocations(e: Cheerio, filename: string, fileContent: string) {
+        let mapping: SMap<number> = {}
+        let parser: any
+        let handler = new htmlparser2.DomHandler(options, (elt: CheerioElement) => {
+            //console.log(elt.tagName, elt.startIndex, parser.endIndex)
+            mapping[elt.startIndex + ""] = parser.startIndex
+        });
+        parser = new htmlparser2.Parser(handler, options)
+        parser.end(fileContent);
+
+        e.find("[id]").each((i, ch) => {
+            let x = h(ch)
+            let start = ch.startIndex
+            let end = mapping[start + ""]
+            if (fileContent[start] == "<") {
+                while (start < fileContent.length && fileContent[start] != ">")
+                    start++;
+                start++;
+            }
+            console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
+            x.attr("gw-pos", filename + "@" + start + "-" + (end - start))
+        })
+    }
+
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         return getFileAsync(filename)
             .then(fileContent => {
@@ -68,10 +95,11 @@ function expandAsync(filename: string, html: string) {
                     let id = ch2.attr("id")
                     if (id) {
                         subst[id] = ch2;
-                        (ch2 as any).gw_ctx = ctx; // save outer ctx for further expansion and filename tracking
+                        ch2.gw_ctx = ctx; // save outer ctx for further expansion and filename tracking
                     }
                 }
                 let n = h(fileContent)
+                setLocations(n, filename, fileContent)
                 e.replaceWith(n)
                 return recAsync({ subst, filename }, n)
             })
@@ -80,20 +108,9 @@ function expandAsync(filename: string, html: string) {
     function recAsync(ctx: Ctx, elt: Cheerio): Promise<void> {
         let eltId = elt.attr("id")
         if (eltId && ctx.subst.hasOwnProperty(eltId)) {
-            let n = ctx.subst[eltId] // .clone()
+            let n = ctx.subst[eltId].clone()
             elt.replaceWith(n)
-            return recAsync((ctx.subst[eltId] as any).gw_ctx, n)
-        }
-
-        if (eltId) {
-            if (idToPos.hasOwnProperty(eltId)) {
-                idToPos[eltId] = null
-            } else {
-                idToPos[eltId] = {
-                    filename: ctx.filename,
-                    startIdx: (elt[0] as any).startIndex
-                }
-            }
+            return recAsync(ctx.subst[eltId].gw_ctx, n)
         }
 
         if (elt.is("include")) {
