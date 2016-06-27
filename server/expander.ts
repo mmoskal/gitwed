@@ -121,10 +121,9 @@ function expandAsync(filename: string, html: string) {
     }
 }
 
-function expandFileAsync(n: string) {
+export function expandFileAsync(n: string) {
     return getFileAsync(n)
         .then(s => expandAsync(n, s))
-
 }
 
 export function test() {
