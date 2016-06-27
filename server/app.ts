@@ -24,6 +24,7 @@ app.get(/^\/\w+$/, (req, res, next) => {
   }
 })
 
+app.use("/gw", express.static("built/gw"))
 app.use("/gw", express.static("gw"))
 app.use("/gw", express.static("node_modules/ContentTools/build"))
 
