@@ -1,5 +1,7 @@
 /// <reference path="../typings/index.d.ts" />
 
+global.Promise = require("bluebird")
+
 import express = require('express');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
@@ -79,6 +81,17 @@ app.post("/api/update", (req, res) => {
             .then(page => {
                 let id: string = req.body.id
                 let val: string = req.body.value
+                let desc = page.idToPos[id]
+                if (desc) {
+                    gitlabfs.getAsync(desc.filename)
+                    .then(cont => 
+                    gitlabfs.setAsync(desc.filename, 
+                    cont.slice(0, desc.startIdx) + 
+                    val + cont.slice(desc.startIdx + desc.length)))
+                    .then(() => res.end("OK"))
+                }else{
+                    res.status(410).end()
+                }
             }))
 })
 

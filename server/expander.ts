@@ -1,5 +1,4 @@
 import cheerio = require("cheerio")
-import Promise = require("bluebird")
 import gitlabfs = require('./gitlabfs')
 
 let htmlparser2 = require("htmlparser2")
@@ -20,13 +19,13 @@ function jsQuote(s: string) {
 function error(msg: string, ctx?: Ctx, elt?: Cheerio) {
     if (ctx)
         msg += " at " + ctx.filename
-    
+
     if (elt && elt[0] && elt[0].startIndex != null) {
         let idx = elt[0].startIndex
         msg += "@" + idx
         if (ctx)
-            msg += "  ..." + 
-                ctx.fileContent.slice(Math.max(0, idx - 10), idx) + 
+            msg += "  ..." +
+                ctx.fileContent.slice(Math.max(0, idx - 10), idx) +
                 "*" +
                 ctx.fileContent.slice(idx, idx + 20) + "..."
     }
@@ -43,6 +42,7 @@ interface Ctx {
 interface Pos {
     filename: string;
     startIdx: number;
+    length: number;
 }
 
 function expandAsync(filename: string, fileContent: string) {
@@ -62,6 +62,15 @@ function expandAsync(filename: string, fileContent: string) {
         .then(() => {
             h("group").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
+            })
+            h("[gw-pos]").each((i, e) => {
+                let ee = h(e)
+                let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
+                idToPos[ee.attr("id")] = {
+                    filename: m[1],
+                    startIdx: parseInt(m[2]),
+                    length: parseInt(m[3])
+                }
             })
             return {
                 idToPos,
