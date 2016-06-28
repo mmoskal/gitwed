@@ -109,7 +109,7 @@ function expandAsync(filename: string, fileContent: string) {
     }
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
-        return gitlabfs.getAsync(filename)
+        return gitlabfs.getTextFileAsync(filename)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -152,6 +152,6 @@ function expandAsync(filename: string, fileContent: string) {
 }
 
 export function expandFileAsync(n: string) {
-    return gitlabfs.getAsync(n)
+    return gitlabfs.getTextFileAsync(n)
         .then(s => expandAsync(n, s))
 }
