@@ -24,7 +24,11 @@ interface CachedTree {
 // maps directory name to its listing
 let treeCache: SMap<CachedTree> = {}
 let apiLockAsync = tools.promiseQueue()
-let rootIdTime: number;
+let rootIdTime: number = 0
+
+let cachePath = "cache/"
+let treeCachePath = cachePath + "tree/"
+let blobCachePath = cachePath + "blobs/"
 
 let config: Config = JSON.parse(fs.readFileSync("config.json", "utf8"))
 
@@ -62,6 +66,8 @@ function getTreeAsync(fullname: string): Promise<CachedTree> {
                 return fetchChildrenAsync(e)
         } else {
             let spl = splitName(fullname)
+            //console.log(`split(${fullname}) = {${spl.parent},${spl.name}}`)            
+            
             return getTreeAsync(spl.parent)
                 .then(par => {
                     if (!par) return null
@@ -83,7 +89,7 @@ function getTreeAsync(fullname: string): Promise<CachedTree> {
         return repoRequestAsync({
             url: "tree",
             query: {
-                path: e.fullname,
+                path: e.fullname.replace(/^\/*/, ""),
                 ref_name: rootId
             }
         })
@@ -95,7 +101,7 @@ function getTreeAsync(fullname: string): Promise<CachedTree> {
     }
 
     function saveEntryAsync(e: CachedTree) {
-        let fn = "git/tree/" + e.fullname.replace(/\//g, "-_-") + ".json"
+        let fn = treeCachePath + e.fullname.replace(/\//g, "_-_") + ".json"
         return writeAsync(fn, JSON.stringify(e, null, 1))
     }
 }
@@ -113,10 +119,9 @@ export function getBlobIdAsync(fullname: string) {
 
 // TODO add some in-memory cache for small files?
 export function fetchBlobAsync(id: string) {
-    let fn = "cache/blobs/" + id
-    return apiLockAsync("blob/" + id, () => existsAsync(fn)
-        .then<Buffer>(ex => ex ?
-            readAsync(fn) :
+    let fn = blobCachePath + id
+    return apiLockAsync("blob/" + id, () => readAsync(fn)
+        .then(buf => buf, err =>
             repoRequestAsync({ url: "raw_blobs/" + id })
                 .then(r => {
                     return writeAsync(fn, r.buffer)
@@ -137,7 +142,7 @@ export function splitName(fullname: string) {
             throw new Error("bad name")
         }
     } else {
-        parent = m[1]
+        parent = m[1] || "/"
         name = m[2]
     }
     return { parent, name }
@@ -177,14 +182,14 @@ function refreshRootIdCoreAsync() {
         })
 }
 
-function initAsync() {
-    tools.mkdirP("cache/tree")
-    tools.mkdirP("cache/blobs")
+export function initAsync() {
+    tools.mkdirP(treeCachePath)
+    tools.mkdirP(blobCachePath)
 
-    return readdirAsync("cache/tree")
+    return readdirAsync(treeCachePath)
         .then(entries =>
             Promise.map(entries.filter(e => /\.json$/.test(e)),
-                fn => readAsync("cache/tree/" + fn)
+                fn => readAsync(treeCachePath + fn)
                     .then(buf => {
                         let e: CachedTree = JSON.parse(buf.toString("utf8"))
                         treeCache[e.fullname] = e

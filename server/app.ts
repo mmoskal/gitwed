@@ -95,6 +95,7 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
     res.end('Internal Server Error, ' + error.stack);
 })
 
-app.listen(3000)
+gitlabfs.initAsync()
+    .then(() => app.listen(3000))
 
 //expander.test()

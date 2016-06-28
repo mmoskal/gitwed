@@ -2,3 +2,4 @@ typings
 node_modules
 built
 config.json
+cache/
