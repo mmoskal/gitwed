@@ -5,49 +5,13 @@ global.Promise = require("bluebird")
 import express = require('express');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
+import tools = require('./tools')
 
-interface QEntry {
-    run: () => Promise<any>;
-    resolve: (v: any) => void;
-    reject: (err: any) => void;
-}
-
-function promiseQ() {
-    let awaiting: SMap<QEntry[]> = {}
-
-    function poke(id: string) {
-        let lst = awaiting[id]
-        if (!lst) return
-        let ent = lst[0]
-        let shift = () => {
-            lst.shift()
-            if (lst.length == 0) delete awaiting[id]
-            else Promise.resolve().then(() => poke(id))
-        }
-        ent.run().then(v => {
-            shift()
-            ent.resolve(v)
-        }, e => {
-            shift()
-            ent.reject(e)
-        })
-    }
-
-    function enq<T>(id: string, run: () => Promise<T>): Promise<T> {
-        return new Promise<T>((resolve, reject) => {
-            let lst = awaiting[id]
-            if (!lst) lst = awaiting[id] = []
-            lst.push({ resolve, reject, run })
-            if (lst.length == 1) poke(id)
-        })
-    }
-    return enq
-}
 
 var app = express();
 var bodyParser = require('body-parser')
 
-let fileLocks = promiseQ()
+let fileLocks = tools.promiseQueue()
 
 app.use(bodyParser.json())
 

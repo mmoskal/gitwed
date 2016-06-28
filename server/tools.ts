@@ -1,5 +1,7 @@
 import * as zlib from 'zlib';
 import * as url from 'url';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as http from 'http';
 import * as https from 'https';
 import * as events from 'events';
@@ -123,4 +125,56 @@ function httpRequestCoreAsync(options: HttpRequestOptions): Promise<HttpResponse
         req.on('error', (err: any) => reject(err))
         req.end(buf)
     })
+}
+
+export function mkdirP(thePath: string) {
+    if (thePath == ".") return;
+    if (!fs.existsSync(thePath)) {
+        mkdirP(path.dirname(thePath))
+        fs.mkdirSync(thePath)
+    }
+}
+
+interface QEntry {
+    run: () => Promise<any>;
+    resolve: (v: any) => void;
+    reject: (err: any) => void;
+}
+
+export function promiseQueue() {
+    let awaiting: SMap<QEntry[]> = {}
+
+    function poke(id: string) {
+        let lst = awaiting[id]
+        if (!lst) return
+        let ent = lst[0]
+        let shift = () => {
+            lst.shift()
+            if (lst.length == 0) delete awaiting[id]
+            else Promise.resolve().then(() => poke(id))
+        }
+        ent.run().then(v => {
+            shift()
+            ent.resolve(v)
+        }, e => {
+            shift()
+            ent.reject(e)
+        })
+    }
+
+    function enq<T>(id: string, run: () => Promise<T>): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            let lst = awaiting[id]
+            if (!lst) lst = awaiting[id] = []
+            lst.push({ resolve, reject, run })
+            if (lst.length == 1) poke(id)
+        })
+    }
+    return enq
+}
+
+export function lookup<T>(m: SMap<T>, key: string): T {
+    if (m.hasOwnProperty(key))
+        return m[key]
+    return null
 }
