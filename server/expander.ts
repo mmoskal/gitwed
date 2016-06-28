@@ -111,7 +111,21 @@ function expandAsync(filename: string, fileContent: string) {
         })
     }
 
+    function relativePath(curr:string, newpath:string) {
+        if (newpath[0] == "/") return newpath
+
+        let spl = gitlabfs.splitName(curr)
+        let res = spl.parent + "/" + newpath
+        res = res.replace(/\/+/g, "/")
+        res = res.replace(/\/\.\//g, "/")
+        res = res.replace(/^(\/\.\.\/)+/g, "/")
+        res = res.replace(/\/[^\/]+\/\.\.\//g, "/")
+
+        return res
+    }
+
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
+        filename = relativePath(ctx.filename, filename)
         return gitlabfs.getTextFileAsync(filename)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}

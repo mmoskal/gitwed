@@ -209,9 +209,15 @@ export function existsAsync(name: string) {
 }
 
 export function getTextFileAsync(name: string) {
-    return getBlobIdAsync(name)
-        .then(fetchBlobAsync)
-        .then(b => b.toString("utf8"))
+    let m = /^\/?gw\/(.*)/.exec(name)
+    if (m)
+        // the expander hits this
+        return readAsync("gw/" + m[1])
+            .then(b => b.toString("utf8"))
+    else
+        return getBlobIdAsync(name)
+            .then(id => id ? fetchBlobAsync(id) : Promise.reject(new Error(name + " not found")))
+            .then(b => b.toString("utf8"))
 }
 
 export function setTextFileAsync(name: string, val: string) {
@@ -226,5 +232,5 @@ export function setTextFileAsync(name: string, val: string) {
             commit_message: "Web update"
         }
     })
-    .then(() => refreshAsync(0))
+        .then(() => refreshAsync(0))
 }
