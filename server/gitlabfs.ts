@@ -35,6 +35,7 @@ function join(a: string, b: string) {
 function requestAsync(opts: tools.HttpRequestOptions) {
     if (!opts.headers) opts.headers = {}
     opts.headers["PRIVATE-TOKEN"] = config.gitlabToken
+    console.log("GitLab", opts.url, JSON.stringify(opts.query || {}))
     if (!/^https?:/.test(opts.url)) {
         opts.url = join(join(config.gitlabUrl, "api/v3"), opts.url)
     }
@@ -44,10 +45,6 @@ function requestAsync(opts: tools.HttpRequestOptions) {
 function repoRequestAsync(opts: tools.HttpRequestOptions) {
     opts.url = join("/projects/" + config.gitlabProjectId + "/repository", opts.url)
     return requestAsync(opts)
-}
-
-export function existsAsync(name: string) {
-    return Promise.resolve(fs.existsSync("html/" + name))
 }
 
 let readAsync = Promise.promisify(fs.readFile)
@@ -103,7 +100,31 @@ function getTreeAsync(fullname: string): Promise<CachedTree> {
     }
 }
 
-function splitName(fullname: string) {
+export function getBlobIdAsync(fullname: string) {
+    let spl = splitName(fullname)
+    return getTreeAsync(spl.parent)
+        .then(tree => {
+            if (!tree) return null
+            let e = tree.children.filter(x => x.name == spl.name)[0]
+            if (e && e.type == "blob") return e.id
+            else return null
+        })
+}
+
+// TODO add some in-memory cache for small files?
+export function fetchBlobAsync(id: string) {
+    let fn = "cache/blobs/" + id
+    return apiLockAsync("blob/" + id, () => existsAsync(fn)
+        .then<Buffer>(ex => ex ?
+            readAsync(fn) :
+            repoRequestAsync({ url: "raw_blobs/" + id })
+                .then(r => {
+                    return writeAsync(fn, r.buffer)
+                        .then(() => r.buffer)
+                })))
+}
+
+export function splitName(fullname: string) {
     let m = /(.*)\/([^\/]+)/.exec(fullname)
     let parent: string = null
     let name = ""
@@ -171,8 +192,15 @@ function initAsync() {
         .then(refreshRootIdCoreAsync)
 }
 
+export function existsAsync(name: string) {
+    return getBlobIdAsync(name)
+        .then(id => !!id)
+}
+
 export function getTextFileAsync(name: string) {
-    return readAsync("html/" + name).then(b => b.toString("utf8"))
+    return getBlobIdAsync(name)
+        .then(fetchBlobAsync)
+        .then(b => b.toString("utf8"))
 }
 
 export function setTextFileAsync(name: string, val: string) {

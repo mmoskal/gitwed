@@ -3,6 +3,7 @@
 global.Promise = require("bluebird")
 
 import express = require('express');
+import mime = require('mime');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
@@ -16,26 +17,7 @@ let fileLocks = tools.promiseQueue()
 app.use(bodyParser.json())
 
 app.get('/', (req, res) => {
-    res.redirect("/index")
-})
-
-let fnRx = /^\/\w+$/
-app.get(fnRx, (req, res, next) => {
-    let fn = req.path.slice(1) + ".html"
-    gitlabfs.existsAsync(fn)
-        .then(ex => {
-            if (!ex)
-                next()
-            else
-                expander.expandFileAsync(fn)
-                    .then(page => {
-                        res.writeHead(200, {
-                            'Content-Type': 'text/html; charset=utf8'
-                        })
-                        res.end(page.html)
-                    })
-                    .catch(next)
-        })
+    res.redirect("/sample/index")
 })
 
 app.post("/api/update", (req, res) => {
@@ -66,9 +48,42 @@ app.post("/api/update", (req, res) => {
 
 app.use("/gw", express.static("built/gw"))
 app.use("/gw", express.static("gw"))
-app.use("/gw", express.static("node_modules/ContentTools/build"))
+//app.use("/gw", express.static("node_modules/ContentTools/build"))
+//app.use("/", express.static("html"))
 
-app.use("/", express.static("html"))
+app.get(/.*/, (req, res, next) => {
+    let cleaned = req.path.replace(/\/+$/, "")
+    if (cleaned != req.path) {
+        return res.redirect(cleaned + req.url.slice(req.path.length + 1))
+    }
+
+    let spl = gitlabfs.splitName(cleaned.slice(1))
+    let isHtml = spl.name.indexOf(".") < 0
+
+    if (isHtml) cleaned += ".html"
+    gitlabfs.getBlobIdAsync(cleaned)
+        .then(id => {
+            if (!id) next()
+            else if (isHtml)
+                expander.expandFileAsync(cleaned)
+                    .then(page => {
+                        res.writeHead(200, {
+                            'Content-Type': 'text/html; charset=utf8'
+                        })
+                        res.end(page.html)
+                    })
+                    .catch(next)
+            else
+                gitlabfs.fetchBlobAsync(id)
+                    .then(buf => {
+                        res.writeHead(200, {
+                            'Content-Type': mime.lookup(cleaned),
+                            'Content-Length': buf.length
+                        })
+                        res.end(buf)
+                    })
+        })
+})
 
 app.use((req, res) => {
     res.status(404).send('Page not found');
