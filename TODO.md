@@ -1,7 +1,6 @@
 # GitWEd - TODO
 
 * authentication for `/api/update`
-* gzip response
 * image/binary data upload
 
 ## Maybe

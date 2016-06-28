@@ -14,6 +14,7 @@ var bodyParser = require('body-parser')
 
 let fileLocks = tools.promiseQueue()
 
+app.use(require("compression")())
 app.use(bodyParser.json())
 
 app.get('/', (req, res) => {
