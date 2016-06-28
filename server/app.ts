@@ -22,6 +22,8 @@ app.get('/', (req, res) => {
 
 app.post("/api/update", (req, res) => {
     let fn = req.body.page.slice(1) + ".html"
+    if (fn.indexOf("private") == 0)
+        return res.status(402).end()
     fileLocks(fn, () =>
         gitlabfs.refreshAsync()
             .then(() => expander.expandFileAsync(fn))
@@ -56,7 +58,12 @@ app.get(/.*/, (req, res, next) => {
         return res.redirect(cleaned + req.url.slice(req.path.length + 1))
     }
 
-    let spl = gitlabfs.splitName(cleaned.slice(1))
+    cleaned = cleaned.slice(1)
+
+    if (cleaned.indexOf("private") == 0)
+        return next()
+
+    let spl = gitlabfs.splitName(cleaned)
     let isHtml = spl.name.indexOf(".") < 0
 
     if (isHtml) cleaned += ".html"
