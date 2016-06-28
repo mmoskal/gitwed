@@ -23,7 +23,8 @@ app.get('/', (req, res) => {
 app.post("/api/update", (req, res) => {
     let fn = req.body.page.slice(1) + ".html"
     fileLocks(fn, () =>
-        expander.expandFileAsync(fn)
+        gitlabfs.refreshAsync()
+            .then(() => expander.expandFileAsync(fn))
             .then(page => {
                 let id: string = req.body.id
                 let val: string = req.body.value
@@ -34,11 +35,9 @@ app.post("/api/update", (req, res) => {
                 val = val.replace(/(^\n+)|(\n+$)/g, "\n")
 
                 if (desc) {
-                    gitlabfs.getTextFileAsync(desc.filename)
-                        .then(cont =>
-                            gitlabfs.setTextFileAsync(desc.filename,
-                                cont.slice(0, desc.startIdx) +
-                                val + cont.slice(desc.startIdx + desc.length)))
+                    let cont = page.allFiles[desc.filename]
+                    let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
+                    gitlabfs.setTextFileAsync(desc.filename, newCont)
                         .then(() => res.end("OK"))
                 } else {
                     res.status(410).end()

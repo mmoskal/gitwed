@@ -56,6 +56,7 @@ function expandAsync(filename: string, fileContent: string) {
     let h = cheerio.load(fileContent, options)
 
     let idToPos: SMap<Pos> = {}
+    let allFiles: SMap<string> = {}
 
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
@@ -79,12 +80,14 @@ function expandAsync(filename: string, fileContent: string) {
                 ee.removeAttr("gw-pos")
             })
             return {
+                allFiles,
                 idToPos,
                 html: h.html()
             }
         })
 
     function setLocations(e: Cheerio, filename: string, fileContent: string) {
+        allFiles[filename] = fileContent
         let mapping: SMap<number> = {}
         let parser: any
         let handler = new htmlparser2.DomHandler(options, (elt: CheerioElement) => {

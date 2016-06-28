@@ -56,18 +56,15 @@ let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = Promise.prom
 let readdirAsync = Promise.promisify(fs.readdir)
 
 function getTreeAsync(fullname: string): Promise<CachedTree> {
-    return apiLockAsync(fullname, () => {
+    return apiLockAsync("tree/" + fullname, () => {
         if (fullname == "/") {
             let e = getEntry("/")
-            if (Date.now() - rootIdTime > 2 * 60 * 1000)
-                return refreshRootIdCoreAsync()
-                    .then(() => fetchChildrenAsync(e))
-            else
-                return fetchChildrenAsync(e)
+            return refreshAsync(120)
+                .then(() => fetchChildrenAsync(e))
         } else {
             let spl = splitName(fullname)
             //console.log(`split(${fullname}) = {${spl.parent},${spl.name}}`)            
-            
+
             return getTreeAsync(spl.parent)
                 .then(par => {
                     if (!par) return null
@@ -182,6 +179,15 @@ function refreshRootIdCoreAsync() {
         })
 }
 
+export function refreshAsync(timeoutSeconds = 5) {
+    return apiLockAsync("root/refresh", () => {
+        if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
+            return refreshRootIdCoreAsync()
+        else
+            return Promise.resolve()
+    })
+}
+
 export function initAsync() {
     tools.mkdirP(treeCachePath)
     tools.mkdirP(blobCachePath)
@@ -209,5 +215,16 @@ export function getTextFileAsync(name: string) {
 }
 
 export function setTextFileAsync(name: string, val: string) {
-    return writeAsync("html/" + name, val)
+    return repoRequestAsync({
+        url: "files",
+        method: "PUT",
+        data: {
+            file_path: name,
+            branch_name: "master",
+            encoding: "text",
+            content: val,
+            commit_message: "Web update"
+        }
+    })
+    .then(() => refreshAsync(0))
 }
