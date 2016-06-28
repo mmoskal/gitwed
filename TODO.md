@@ -2,6 +2,9 @@
 
 * authentication for `/api/update`
 * image/binary data upload
+* editing of `<title>`, `description=...` etc
+* localization
+
 
 ## Maybe
 
