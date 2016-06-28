@@ -85,7 +85,7 @@ app.post("/api/update", (req, res) => {
 
                 val = "\n" + val + "\n"
                 val = val.replace(/\r/g, "")
-                val = val.replace(/\n+/g, "\n")
+                val = val.replace(/(^\n+)|(\n+$)/g, "\n")
 
                 if (desc) {
                     gitlabfs.getAsync(desc.filename)

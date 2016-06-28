@@ -66,11 +66,17 @@ function expandAsync(filename: string, fileContent: string) {
             h("[gw-pos]").each((i, e) => {
                 let ee = h(e)
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
-                idToPos[ee.attr("id")] = {
-                    filename: m[1],
-                    startIdx: parseInt(m[2]),
-                    length: parseInt(m[3])
-                }
+                let id = ee.attr("id")
+                if (idToPos.hasOwnProperty(id))
+                    // we don't want no duplicates
+                    idToPos[id] = null
+                else
+                    idToPos[id] = {
+                        filename: m[1],
+                        startIdx: parseInt(m[2]),
+                        length: parseInt(m[3])
+                    }
+                ee.removeAttr("gw-pos")
             })
             return {
                 idToPos,
