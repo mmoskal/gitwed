@@ -228,7 +228,7 @@ export function setTextFileAsync(name: string, val: string) {
         data: {
             file_path: name,
             branch_name: "master",
-            encoding: "text",
+            // encoding: "text",
             content: val,
             commit_message: "Web update"
         }
