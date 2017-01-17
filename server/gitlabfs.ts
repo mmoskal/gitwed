@@ -10,6 +10,7 @@ export interface Config {
     gitlabUrl: string;
     gitlabToken: string;
     gitlabProjectId: number;
+    jwtSecret: string;
     localRepo?: string;
 }
 
@@ -36,7 +37,7 @@ let cachePath = "cache/"
 let treeCachePath = cachePath + "tree/"
 let blobCachePath = cachePath + "blobs/"
 
-let config: Config
+export let config: Config
 
 function join(a: string, b: string) {
     return a.replace(/\/+$/, "") + "/" + b.replace(/^\/+/, "")

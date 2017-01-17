@@ -24,6 +24,7 @@ make
   * `/projects/<id>/repository/tree?path=<dirname(F)>`, cache at `<id>, dirname(F)`
   * `S := id(basename(F))`
   * `/projects/<id>/repository/raw_blobs/<S>`, cache at S
+* currently only a single `<id>` is supported
 
 ## Macro language
 
@@ -38,3 +39,12 @@ make
 
 * `<include>` - include a file. Content of the tag indicates what to replace - matching is done by ID.
 * `<group>` - all group tags are replaced with their content (they are invisible wrappers)
+
+
+## TODO
+
+* [ ] authentication
+* [ ] localization
+* [ ] creation of new pages
+* [ ] add base file name to ids?
+* [ ] extend the big "edit" button with custom actions (like 'add section')

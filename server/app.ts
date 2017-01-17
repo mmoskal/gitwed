@@ -3,10 +3,12 @@ global.Promise = require("bluebird")
 import express = require('express');
 import mime = require('mime');
 import fs = require('fs');
+import crypto = require("crypto")
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
+import auth = require('./auth')
 
 
 bluebird.longStackTraces()
@@ -16,14 +18,20 @@ var bodyParser = require('body-parser')
 
 let fileLocks = tools.promiseQueue()
 
+app.use(require('cookie-parser')());
 app.use(require("compression")())
 app.use(bodyParser.json({
     limit: 5 * 1024 * 1024
 }))
 
+
+auth.initCheck(app)
+
 app.get('/', (req, res) => {
     res.redirect("/sample/index")
 })
+
+auth.initRoutes(app)
 
 interface ImgData {
     page: string;
@@ -162,11 +170,16 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
 
 let dataDir = process.argv[2]
 let cfg: gitlabfs.Config = {} as any
+if (fs.existsSync("config.json"))
+    cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
+else if (!dataDir) {
+    console.log("need either config.json or data dir argument")
+    process.exit(1)
+}
+
 if (dataDir) {
     console.log('Using local datadir: ' + dataDir)
     cfg.localRepo = dataDir
-} else {
-    cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
 }
 
 gitlabfs.initAsync(cfg)
