@@ -56,7 +56,7 @@ let readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFile)
 let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 let readdirAsync = bluebird.promisify(fs.readdir)
 
-function getTreeAsync(fullname: string): Promise<CachedTree> {
+export function getTreeAsync(fullname: string): Promise<CachedTree> {
     return apiLockAsync("tree/" + fullname, () => {
         if (fullname == "/") {
             let e = getEntry("/")
@@ -231,6 +231,21 @@ export function setTextFileAsync(name: string, val: string) {
             // encoding: "text",
             content: val,
             commit_message: "Web update"
+        }
+    })
+        .then(() => refreshAsync(0))
+}
+
+export function setBinFileAsync(name: string, val: Buffer) {
+    return repoRequestAsync({
+        url: "files",
+        method: "PUT",
+        data: {
+            file_path: name,
+            branch_name: "master",
+            encoding: "base64",
+            content: val.toString("base64"),
+            commit_message: "Web update (bin)"
         }
     })
         .then(() => refreshAsync(0))

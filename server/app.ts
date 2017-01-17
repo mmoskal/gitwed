@@ -2,6 +2,7 @@ global.Promise = require("bluebird")
 
 import express = require('express');
 import mime = require('mime');
+import crypto = require('crypto');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
@@ -16,10 +17,70 @@ var bodyParser = require('body-parser')
 let fileLocks = tools.promiseQueue()
 
 app.use(require("compression")())
-app.use(bodyParser.json())
+app.use(bodyParser.json({
+    limit: 5 * 1024 * 1024
+}))
 
 app.get('/', (req, res) => {
     res.redirect("/sample/index")
+})
+
+interface ImgData {
+    page: string;
+    full: string;
+    thumb: string;
+    filename: string;
+    format: string;
+}
+
+app.post("/api/uploadimg", (req, res) => {
+    let data = req.body as ImgData
+    let pathElts = data.page.split(/\//).filter(s => !!s)
+    pathElts.pop()
+    pathElts.push("img")
+    let path = pathElts.join("/")
+    let fullPath = ""
+    fileLocks(path, () =>
+        gitlabfs.refreshAsync()
+            .then(() => gitlabfs.getTreeAsync(path))
+            .then(tree => {
+                let buf = new Buffer(data.full, "base64")
+
+                if (tree) {
+                    // compute git-hash of file
+                    let h = crypto.createHash("sha1")
+                    h.update("blob " + buf.length + "\u0000")
+                    h.update(buf)
+                    let hash = h.digest("hex")
+                    let existing = tree.children.filter(e => e.id == hash)[0]
+                    if (existing) {
+                        fullPath = path + "/" + existing.name
+                        return Promise.resolve()
+                    }
+                }
+
+                let basename = data.filename
+                    .replace(/.*[\/\\]/, "")
+                    .toLowerCase()
+                    .replace(/\.[a-z]+$/, "")
+                    .replace(/[^\w\-]+/g, "_")
+                let ext = "." + data.format
+                let hasName = (n: string) =>
+                    tree ? tree.children.some(f => f.name == n) : false
+                let fn = basename + ext
+                let cnt = 1
+                while (hasName(fn)) {
+                    fn = basename + "-" + cnt++ + ext
+                }
+
+                fullPath = path + "/" + fn
+                return gitlabfs.setBinFileAsync(fullPath, buf)
+            })
+            .then(() => {
+                res.json({
+                    url: "/" + fullPath
+                })
+            }))
 })
 
 app.post("/api/update", (req, res) => {

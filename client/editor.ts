@@ -2,6 +2,12 @@ declare var ContentTools: any;
 declare var ContentEdit: any;
 
 namespace gw {
+    export interface ImgResponse {
+        url: string;
+        thumbUrl: string;
+        w: number;
+        h: number;
+    }
 
     export interface RequestOptions {
         method?: string;
@@ -28,6 +34,131 @@ namespace gw {
     }
     export function postJsonAsync(path: string, data: any) {
         return httpRequestAsync({ url: path, data: data, method: "POST" })
+    }
+
+
+    function resizePicture(max: number, img: HTMLImageElement) {
+        var w = img.width;
+        var h = img.height;
+        var scale = 1;
+        if (w > h) {
+            if (w > max) {
+                scale = max / w;
+                w = max;
+                h = Math.floor(scale * h);
+            }
+        } else {
+            if (h > max) {
+                scale = max / h;
+                h = max;
+                w = Math.floor(scale * w);
+            }
+        }
+
+        var canvasJQ = $("<canvas/>");
+        var canvas = canvasJQ[0] as HTMLCanvasElement;
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, w, h);
+        var r = canvas.toDataURL("image/jpeg", 0.85);
+        return { src: r.replace(/^[^,]*,/, ""), w, h }
+    }
+
+
+    function postImgFileAsync(fileObj: File, maxSize = 1000) {
+        let reader = new FileReader();
+
+        return new Promise<ImgResponse>((resolve, reject) => {
+            reader.onload = (event) => {
+                let img = new Image();
+                img.onload = () => {
+                    let thumbnail = resizePicture(200, img).src;
+                    let fullimg = img.src
+                    let format = ""
+                    let w = img.width
+                    let h = img.height
+                    if (img.width > maxSize || img.height > maxSize) {
+                        let r = resizePicture(maxSize, img)
+                        w = r.w
+                        h = r.h
+                        fullimg = r.src
+                        format = "jpg"
+                    } else {
+                        if (/^data:image\/png/.test(fullimg)) format = "png"
+                        else format = "jpg"
+                        fullimg = fullimg.replace(/^[^,]*,/, "");
+                    }
+
+                    postJsonAsync("/api/uploadimg", {
+                        page: document.location.pathname,
+                        full: fullimg,
+                        thumb: thumbnail,
+                        filename: fileObj.name,
+                        format: format,
+                    }).then((v: ImgResponse) => {
+                        v.w = w
+                        v.h = h
+                        resolve(v)
+                    }, reject)
+                }
+                img.src = (event.target as any).result;
+            }
+            reader.readAsDataURL(fileObj);
+        })
+    }
+
+    function imgUploader(dialog: any) {
+        dialog.addEventListener('imageuploader.cancelupload', () => {
+            // Set the dialog to empty
+            dialog.state('empty');
+        });
+
+        dialog.addEventListener('imageuploader.fileready', (ev: any) => {
+            // Upload a file to the server
+            let formData;
+            let file = ev.detail().file;
+
+            // Set the dialog state to uploading and reset the progress bar to 0
+            dialog.state('uploading');
+            dialog.progress(0);
+
+            postImgFileAsync(file)
+                .then(resp => {
+                    dialog.save(
+                        resp.url,
+                        [resp.w, resp.h],
+                        {
+                            'alt': file.name,
+                            'data-ce-max-width': resp.w
+                        });
+                })
+
+
+            //    dialog.populate(image.url, image.size);
+            //    dialog.progress((ev.loaded / ev.total) * 100);
+
+            // The request failed, notify the user
+            //    new ContentTools.FlashUI('no');
+        });
+
+
+        dialog.addEventListener('imageuploader.save', function () {
+            /*
+            dialog.save(
+                response.url,
+                response.size,
+                {
+                    'alt': response.alt,
+                    'data-ce-max-width': response.size[0]
+                });
+            */
+
+            // Set the dialog to busy while the rotate is performed
+            dialog.busy(true);
+
+            debugger
+        });
     }
 
     $(window).on("load", () => {
@@ -83,6 +214,21 @@ namespace gw {
             clearInterval(autoSaveTimer);
         });
 
+        ContentTools.IMAGE_UPLOADER = imgUploader;
+
     })
+
+    window.addEventListener("unhandledrejection", (e: any) => {
+        // NOTE: e.preventDefault() must be manually called to prevent the default
+        // action which is currently to log the stack trace to console.warn
+        // e.preventDefault();
+
+        new ContentTools.FlashUI('no');
+
+        // var reason = e.detail.reason;
+        // var promise = e.detail.promise;
+        // See Promise.onPossiblyUnhandledRejection for parameter documentation
+    });
+
 
 }
