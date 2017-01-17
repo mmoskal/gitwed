@@ -1,11 +1,19 @@
 {
     "compilerOptions": {
         "target": "es5",
+        "lib": [
+            "es2016",
+            "dom"
+        ],
         "noImplicitAny": true,
         "noImplicitReturns": true,
         "out": "../built/gw/scripts.js",
         "rootDir": ".",
         "newLine": "LF",
+        "types": [
+            "bluebird",
+            "jquery"
+        ],
         "sourceMap": false
     }
 }

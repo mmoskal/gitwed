@@ -45,7 +45,7 @@ namespace gw {
 
             editor.busy(true);
 
-            Promise.each(Object.keys(regions), (id) =>
+            (Promise as any).each(Object.keys(regions), (id: string) =>
                 postJsonAsync("/api/update", {
                     page: document.location.pathname,
                     id: id,
@@ -55,7 +55,7 @@ namespace gw {
                     editor.busy(false)
                     new ContentTools.FlashUI('ok')
                 })
-                .catch(e => {
+                .catch((e: any) => {
                     console.error(e)
                     editor.busy(false)
                     new ContentTools.FlashUI('no')
