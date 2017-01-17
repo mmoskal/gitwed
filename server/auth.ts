@@ -25,6 +25,12 @@ function hashPass(u: User, pass: string) {
 
 export function initCheck(app: express.Express) {
     app.use((req, res, next) => {
+        // when running on localhost without secret make everyone an admin
+        if (!gitlabfs.config.jwtSecret && gitlabfs.config.localRepo) {
+            req.appuser = "admin"
+            return
+        }
+
         let tok = req.cookies["GWAUTH"]
         if (tok) {
             try {

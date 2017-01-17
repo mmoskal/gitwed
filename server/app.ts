@@ -199,6 +199,9 @@ if (dataDir) {
 }
 
 gitlabfs.initAsync(cfg)
-    .then(() => app.listen(3000))
+    .then(() => {
+        if (cfg.localRepo) app.listen(3000, "localhost")
+        else app.listen(3000)
+    })
 
 //expander.test()
