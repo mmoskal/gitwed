@@ -2,6 +2,19 @@
 
 Provide a git-backed WYSIWG website editing experience.
 
+## Running locally
+
+* checkout https://gitlab.dwbn.org/mmoskal/gitwed into `somewhere/gitwed`
+* checkout https://gitlab.dwbn.org/mmoskal/gitwed-data into `somewhere/gitwed-data`
+* go to `somewhere/gitwed`, run:
+```
+npm install
+make
+```
+* this will run a server on http://localhost:3000, serving from `somewhere/gitwed-data`
+* if you modify files via web interface, they will be modified in `somewhere/gitwed-data`
+* if you modify files in `somewhere/gitwed-data`, the changes should be visible at http://localhost:3000
+
 ## GitLab FS
 
 * periodically check SHA of master branch; when changes nuke all tree caches, but not blob caches
