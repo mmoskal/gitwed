@@ -140,10 +140,16 @@ app.get(/.*/, (req, res, next) => {
             else if (isHtml)
                 expander.expandFileAsync(cleaned)
                     .then(page => {
+                        let html = page.html
+                        if (req.appuser) {
+                            html = html
+                                .replace("<!-- @GITWED-EDIT@", "")
+                                .replace("@GITWED-EDIT@ -->", "")
+                        }
                         res.writeHead(200, {
                             'Content-Type': 'text/html; charset=utf8'
                         })
-                        res.end(page.html)
+                        res.end(html)
                     })
                     .then(v => v, next)
             else
