@@ -65,15 +65,11 @@ export function initRoutes(app: express.Express) {
         getUserConfigAsync()
             .then(cfg => {
                 let u = cfg.users.filter(u => u.login == req.query["user"])[0]
-                if (!u) {
-                    res.sendStatus(404)
-                    return
-                }
+                if (!u)
+                    return res.status(404).end()
                 let h = hashPass(u, req.query["pass"])
-                if (h !== u.hash) {
-                    res.sendStatus(403)
-                    return
-                }
+                if (h !== u.hash)
+                    return res.status(403).end()
 
                 // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
                 let jwtToken = jwt.encode({

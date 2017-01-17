@@ -272,9 +272,9 @@ export function getTextFileAsync(name: string): bluebird.Thenable<string> {
             .then(b => b.toString("utf8"))
 }
 
-export function setTextFileAsync(name: string, val: string) {
+export function setTextFileAsync(name: string, val: string, msg: string) {
     if (localRepo)
-        return setBinFileAsync(name, new Buffer(val, "utf8"))
+        return setBinFileAsync(name, new Buffer(val, "utf8"), msg)
     return repoRequestAsync({
         url: "files",
         method: "PUT",
@@ -283,13 +283,13 @@ export function setTextFileAsync(name: string, val: string) {
             branch_name: "master",
             // encoding: "text",
             content: val,
-            commit_message: "Web update"
+            commit_message: msg
         }
     })
         .then(() => refreshAsync(0))
 }
 
-export function setBinFileAsync(name: string, val: Buffer) {
+export function setBinFileAsync(name: string, val: Buffer, msg: string) {
     if (localRepo) {
         let spl = splitName(name)
         tools.mkdirP(localRepo + spl.parent)
@@ -305,7 +305,7 @@ export function setBinFileAsync(name: string, val: Buffer) {
             branch_name: "master",
             encoding: "base64",
             content: val.toString("base64"),
-            commit_message: "Web update (bin)"
+            commit_message: msg
         }
     })
         .then(() => refreshAsync(0))

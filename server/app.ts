@@ -42,6 +42,9 @@ interface ImgData {
 }
 
 app.post("/api/uploadimg", (req, res) => {
+    if (!req.appuser)
+        return res.status(403).end()
+
     let data = req.body as ImgData
     let pathElts = data.page.split(/\//).filter(s => !!s)
     pathElts.pop()
@@ -78,7 +81,7 @@ app.post("/api/uploadimg", (req, res) => {
                 }
 
                 fullPath = path + "/" + fn
-                return gitlabfs.setBinFileAsync(fullPath, buf)
+                return gitlabfs.setBinFileAsync(fullPath, buf, "Image " + fullPath + " by " + req.appuser)
             })
             .then(() => {
                 res.json({
@@ -88,6 +91,9 @@ app.post("/api/uploadimg", (req, res) => {
 })
 
 app.post("/api/update", (req, res) => {
+    if (!req.appuser)
+        return res.status(403).end()
+
     let fn = req.body.page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)
         return res.status(402).end()
@@ -106,7 +112,8 @@ app.post("/api/update", (req, res) => {
                 if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
-                    gitlabfs.setTextFileAsync(desc.filename, newCont)
+                    gitlabfs.setTextFileAsync(desc.filename, newCont,
+                        "Update " + desc.filename + " / " + id + " by " + req.appuser)
                         .then(() => res.end("OK"))
                 } else {
                     res.status(410).end()
@@ -171,7 +178,10 @@ app.use((req, res) => {
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.log(error.stack)
     res.writeHead(500, { 'Content-Type': 'text/plain' })
-    res.end('Internal Server Error, ' + error.stack);
+    if (req.appuser)
+        res.end('Internal Server Error, ' + error.stack);
+    else
+        res.end('Internal Server Error');
 })
 
 let dataDir = process.argv[2]
