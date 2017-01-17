@@ -2,7 +2,6 @@ global.Promise = require("bluebird")
 
 import express = require('express');
 import mime = require('mime');
-import crypto = require('crypto');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
@@ -47,11 +46,7 @@ app.post("/api/uploadimg", (req, res) => {
                 let buf = new Buffer(data.full, "base64")
 
                 if (tree) {
-                    // compute git-hash of file
-                    let h = crypto.createHash("sha1")
-                    h.update("blob " + buf.length + "\u0000")
-                    h.update(buf)
-                    let hash = h.digest("hex")
+                    let hash = gitlabfs.githash(buf)
                     let existing = tree.children.filter(e => e.id == hash)[0]
                     if (existing) {
                         fullPath = path + "/" + existing.name
@@ -164,7 +159,12 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
     res.end('Internal Server Error, ' + error.stack);
 })
 
-gitlabfs.initAsync()
+let dataDir = process.argv[2]
+if (dataDir) {
+    console.log('Using local datadir: ' + dataDir)
+}
+
+gitlabfs.initAsync(dataDir)
     .then(() => app.listen(3000))
 
 //expander.test()

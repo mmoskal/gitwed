@@ -1,6 +1,10 @@
 import fs = require("fs")
+import path = require("path")
+import crypto = require("crypto")
 import tools = require("./tools")
 import * as bluebird from "bluebird";
+
+let localRepo = ""
 
 interface Config {
     gitlabUrl: string;
@@ -56,7 +60,33 @@ let readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFile)
 let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 let readdirAsync = bluebird.promisify(fs.readdir)
 
+export function githash(buf: Buffer) {
+    let h = crypto.createHash("sha1")
+    h.update("blob " + buf.length + "\u0000")
+    h.update(buf)
+    return h.digest("hex")
+}
+
 export function getTreeAsync(fullname: string): Promise<CachedTree> {
+    if (localRepo) {
+        let p = localRepo + fullname
+        if (!fs.existsSync(p))
+            return Promise.resolve(null)
+        let ents = fs.readdirSync(p)
+        // this is only for duplicate-image detection
+        let r: CachedTree = {
+            children: ents.map(fn => ({
+                id: githash(fs.readFileSync(p + "/" + fn)),
+                name: fn,
+                type: "blob"
+            })),
+            self: null,
+            fullname,
+            parent: null,
+        }
+        return Promise.resolve(r)
+    }
+
     return apiLockAsync("tree/" + fullname, () => {
         if (fullname == "/") {
             let e = getEntry("/")
@@ -105,6 +135,12 @@ export function getTreeAsync(fullname: string): Promise<CachedTree> {
 }
 
 export function getBlobIdAsync(fullname: string) {
+    if (localRepo) {
+        if (fs.existsSync(localRepo + fullname))
+            return Promise.resolve(fullname)
+        else
+            return Promise.resolve(null)
+    }
     let spl = splitName(fullname)
     return getTreeAsync(spl.parent)
         .then(tree => {
@@ -117,6 +153,8 @@ export function getBlobIdAsync(fullname: string) {
 
 // TODO add some in-memory cache for small files?
 export function fetchBlobAsync(id: string): Promise<Buffer> {
+    if (localRepo)
+        return readAsync(localRepo + id)
     let fn = blobCachePath + id
     return apiLockAsync("blob/" + id, () => readAsync(fn)
         .then(buf => buf, err =>
@@ -181,6 +219,7 @@ function refreshRootIdCoreAsync() {
 }
 
 export function refreshAsync(timeoutSeconds = 5) {
+    if (localRepo) return Promise.resolve()
     return apiLockAsync("root/refresh", () => {
         if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
             return refreshRootIdCoreAsync()
@@ -189,7 +228,13 @@ export function refreshAsync(timeoutSeconds = 5) {
     })
 }
 
-export function initAsync() {
+export function initAsync(datapath: string) {
+    if (datapath) {
+        treeCache = null
+        localRepo = datapath.replace(/\/$/, "") + "/"
+        return bluebird.resolve()
+    }
+
     tools.mkdirP(treeCachePath)
     tools.mkdirP(blobCachePath)
 
@@ -222,6 +267,8 @@ export function getTextFileAsync(name: string): bluebird.Thenable<string> {
 }
 
 export function setTextFileAsync(name: string, val: string) {
+    if (localRepo)
+        return setBinFileAsync(name, new Buffer(val, "utf8"))
     return repoRequestAsync({
         url: "files",
         method: "PUT",
@@ -237,6 +284,13 @@ export function setTextFileAsync(name: string, val: string) {
 }
 
 export function setBinFileAsync(name: string, val: Buffer) {
+    if (localRepo) {
+        let spl = splitName(name)
+        tools.mkdirP(localRepo + spl.parent)
+        fs.writeFileSync(localRepo + name, val)
+        return Promise.resolve()
+    }
+
     return repoRequestAsync({
         url: "files",
         method: "PUT",
