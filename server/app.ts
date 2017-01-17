@@ -5,7 +5,10 @@ import mime = require('mime');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
+import bluebird = require('bluebird')
 
+
+bluebird.longStackTraces()
 
 var app = express();
 var bodyParser = require('body-parser')
