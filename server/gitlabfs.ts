@@ -6,10 +6,11 @@ import * as bluebird from "bluebird";
 
 let localRepo = ""
 
-interface Config {
+export interface Config {
     gitlabUrl: string;
     gitlabToken: string;
     gitlabProjectId: number;
+    localRepo?: string;
 }
 
 interface TreeEntry {
@@ -35,13 +36,15 @@ let cachePath = "cache/"
 let treeCachePath = cachePath + "tree/"
 let blobCachePath = cachePath + "blobs/"
 
-let config: Config = JSON.parse(fs.readFileSync("config.json", "utf8"))
+let config: Config
 
 function join(a: string, b: string) {
     return a.replace(/\/+$/, "") + "/" + b.replace(/^\/+/, "")
 }
 
 function requestAsync(opts: tools.HttpRequestOptions) {
+    if (localRepo)
+        throw new Error("shouldn't be here")
     if (!opts.headers) opts.headers = {}
     opts.headers["PRIVATE-TOKEN"] = config.gitlabToken
     console.log("GitLab", opts.url, JSON.stringify(opts.query || {}))
@@ -228,10 +231,12 @@ export function refreshAsync(timeoutSeconds = 5) {
     })
 }
 
-export function initAsync(datapath: string) {
-    if (datapath) {
+export function initAsync(cfg: Config) {
+    config = cfg
+
+    if (cfg.localRepo) {
         treeCache = null
-        localRepo = datapath.replace(/\/$/, "") + "/"
+        localRepo = cfg.localRepo.replace(/\/$/, "") + "/"
         return bluebird.resolve()
     }
 

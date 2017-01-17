@@ -2,6 +2,7 @@ global.Promise = require("bluebird")
 
 import express = require('express');
 import mime = require('mime');
+import fs = require('fs');
 import expander = require('./expander')
 import gitlabfs = require('./gitlabfs')
 import tools = require('./tools')
@@ -160,11 +161,15 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
 })
 
 let dataDir = process.argv[2]
+let cfg: gitlabfs.Config = {} as any
 if (dataDir) {
     console.log('Using local datadir: ' + dataDir)
+    cfg.localRepo = dataDir
+} else {
+    cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
 }
 
-gitlabfs.initAsync(dataDir)
+gitlabfs.initAsync(cfg)
     .then(() => app.listen(3000))
 
 //expander.test()
