@@ -1,6 +1,3 @@
-/// <reference path="../typings/globals/jquery/index.d.ts" />
-/// <reference path="../typings/globals/bluebird/index.d.ts" />
-
 declare var ContentTools: any;
 declare var ContentEdit: any;
 

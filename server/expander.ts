@@ -1,5 +1,6 @@
 import cheerio = require("cheerio")
 import gitlabfs = require('./gitlabfs')
+import * as bluebird from "bluebird";
 
 let htmlparser2 = require("htmlparser2")
 
@@ -144,7 +145,7 @@ function expandAsync(filename: string, fileContent: string) {
             })
     }
 
-    function recAsync(ctx: Ctx, elt: Cheerio): Promise<void> {
+    function recAsync(ctx: Ctx, elt: Cheerio): PromiseLike<void> {
         let eltId = elt.attr("id")
         if (eltId && ctx.subst.hasOwnProperty(eltId)) {
             let n = ctx.subst[eltId].clone()
@@ -163,7 +164,7 @@ function expandAsync(filename: string, fileContent: string) {
         if (elt.is("include")) {
             return includeAsync(ctx, elt, elt.attr("src"))
         }
-        return Promise.each(elt.children().toArray(), ee => recAsync(ctx, h(ee)))
+        return bluebird.each(elt.children().toArray(), ee => recAsync(ctx, h(ee)))
             .then(() => { })
     }
 }

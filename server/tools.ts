@@ -36,7 +36,7 @@ export interface HttpRequestOptions {
 export interface HttpResponse {
     statusCode: number;
     headers: SMap<string>;
-    buffer?: any;
+    buffer?: Buffer;
     text?: string;
     json?: any;
 }
@@ -76,7 +76,7 @@ function httpRequestCoreAsync(options: HttpRequestOptions): Promise<HttpResponse
     let data = options.data
     u.method = options.method || (data == null ? "GET" : "POST");
 
-    let mod = isHttps ? https : http;
+    let mod: any = isHttps ? https : http;
 
     let buf: Buffer = null;
 
@@ -99,7 +99,7 @@ function httpRequestCoreAsync(options: HttpRequestOptions): Promise<HttpResponse
         u.headers['content-length'] = buf.length
 
     return new Promise<HttpResponse>((resolve, reject) => {
-        let req = mod.request(u, res => {
+        let req = mod.request(u, (res: any) => {
             let g: events.EventEmitter = res;
             if (/gzip/.test(res.headers['content-encoding'])) {
                 let tmp = zlib.createUnzip();

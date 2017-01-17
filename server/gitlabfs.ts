@@ -1,5 +1,6 @@
 import fs = require("fs")
 import tools = require("./tools")
+import * as bluebird from "bluebird";
 
 interface Config {
     gitlabUrl: string;
@@ -51,9 +52,9 @@ function repoRequestAsync(opts: tools.HttpRequestOptions) {
     return requestAsync(opts)
 }
 
-let readAsync = Promise.promisify(fs.readFile)
-let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = Promise.promisify(fs.writeFile) as any
-let readdirAsync = Promise.promisify(fs.readdir)
+let readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFile) as any
+let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
+let readdirAsync = bluebird.promisify(fs.readdir)
 
 function getTreeAsync(fullname: string): Promise<CachedTree> {
     return apiLockAsync("tree/" + fullname, () => {
@@ -115,7 +116,7 @@ export function getBlobIdAsync(fullname: string) {
 }
 
 // TODO add some in-memory cache for small files?
-export function fetchBlobAsync(id: string) {
+export function fetchBlobAsync(id: string): Promise<Buffer> {
     let fn = blobCachePath + id
     return apiLockAsync("blob/" + id, () => readAsync(fn)
         .then(buf => buf, err =>
@@ -194,7 +195,7 @@ export function initAsync() {
 
     return readdirAsync(treeCachePath)
         .then(entries =>
-            Promise.map(entries.filter(e => /\.json$/.test(e)),
+            bluebird.map(entries.filter(e => /\.json$/.test(e)),
                 fn => readAsync(treeCachePath + fn)
                     .then(buf => {
                         let e: CachedTree = JSON.parse(buf.toString("utf8"))
@@ -208,7 +209,7 @@ export function existsAsync(name: string) {
         .then(id => !!id)
 }
 
-export function getTextFileAsync(name: string) {
+export function getTextFileAsync(name: string): bluebird.Thenable<string> {
     let m = /^\/?gw\/(.*)/.exec(name)
     if (m)
         // the expander hits this
@@ -216,7 +217,7 @@ export function getTextFileAsync(name: string) {
             .then(b => b.toString("utf8"))
     else
         return getBlobIdAsync(name)
-            .then(id => id ? fetchBlobAsync(id) : Promise.reject(new Error(name + " not found")))
+            .then(id => id ? fetchBlobAsync(id) : Promise.reject<Buffer>(new Error(name + " not found")))
             .then(b => b.toString("utf8"))
 }
 

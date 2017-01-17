@@ -1,5 +1,3 @@
-/// <reference path="../typings/index.d.ts" />
-
 global.Promise = require("bluebird")
 
 import express = require('express');
@@ -79,7 +77,7 @@ app.get(/.*/, (req, res, next) => {
                         })
                         res.end(page.html)
                     })
-                    .catch(next)
+                    .then(v => v, next)
             else
                 gitlabfs.fetchBlobAsync(id)
                     .then(buf => {

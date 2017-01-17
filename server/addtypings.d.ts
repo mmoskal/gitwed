@@ -7,4 +7,3 @@ interface Cheerio {
 }
 
 type SMap<T> = { [s: string]: T };
-

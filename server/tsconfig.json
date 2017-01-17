@@ -1,6 +1,10 @@
 {
     "compilerOptions": {
         "target": "es5",
+        "lib": [
+            "es2016",
+            "dom"
+        ],
         "noImplicitAny": true,
         "noImplicitReturns": true,
         "outDir": "../built",
