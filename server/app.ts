@@ -99,7 +99,9 @@ app.post("/api/update", (req, res) => {
         return res.status(402).end()
     fileLocks(fn, () =>
         gitlabfs.refreshAsync()
-            .then(() => expander.expandFileAsync(fn))
+            .then(() => expander.expandFileAsync({
+                rootFile: fn
+            }))
             .then(page => {
                 let id: string = req.body.id
                 let val: string = req.body.value
@@ -145,7 +147,9 @@ app.get(/.*/, (req, res, next) => {
         .then(id => {
             if (!id) next()
             else if (isHtml)
-                expander.expandFileAsync(cleaned)
+                expander.expandFileAsync({
+                    rootFile: cleaned
+                })
                     .then(page => {
                         let html = page.html
                         if (req.appuser) {

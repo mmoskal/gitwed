@@ -46,7 +46,12 @@ interface Pos {
     length: number;
 }
 
-function expandAsync(filename: string, fileContent: string) {
+export interface ExpansionConfig {
+    rootFile: string;
+    lang?: string;
+}
+
+function expandAsync(cfg: ExpansionConfig, fileContent: string) {
     let options: any = {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
@@ -59,6 +64,8 @@ function expandAsync(filename: string, fileContent: string) {
     let idToPos: SMap<Pos> = {}
     let allFiles: SMap<string> = {}
 
+    let filename = cfg.rootFile
+
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
         .then(() => {
@@ -69,7 +76,8 @@ function expandAsync(filename: string, fileContent: string) {
                 let ee = h(e)
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
                 let id = ee.attr("id")
-                id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "").replace(/[^\w]+/g, "_") + "-" + id
+                id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "") + "-" + id
+                id = id.replace(/[^\w]+/g, "_")
                 ee.attr("data-gw-id", id)
                 if (idToPos.hasOwnProperty(id))
                     // we don't want no duplicates
@@ -115,7 +123,7 @@ function expandAsync(filename: string, fileContent: string) {
         })
     }
 
-    function relativePath(curr:string, newpath:string) {
+    function relativePath(curr: string, newpath: string) {
         if (newpath[0] == "/") return newpath
 
         let spl = gitlabfs.splitName(curr)
@@ -172,7 +180,7 @@ function expandAsync(filename: string, fileContent: string) {
     }
 }
 
-export function expandFileAsync(n: string) {
-    return gitlabfs.getTextFileAsync(n)
-        .then(s => expandAsync(n, s))
+export function expandFileAsync(cfg: ExpansionConfig) {
+    return gitlabfs.getTextFileAsync(cfg.rootFile)
+        .then(s => expandAsync(cfg, s))
 }
