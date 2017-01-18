@@ -54,7 +54,8 @@ export interface ExpansionConfig {
     rootFile: string;
     lang?: string;
     langs?: string[];
-    langFile?: string;
+    langFileName?: string;
+    langFileContent?: string;
     rootFileContent?: string;
     pageConfig?: PageConfig;
 }
@@ -72,19 +73,40 @@ function relativePath(curr: string, newpath: string) {
     return res
 }
 
-function expandAsync(cfg: ExpansionConfig) {
-    let options: any = {
-        lowerCaseTags: true,
-        lowerCaseAttributeNames: true,
-        recognizeSelfClosing: true,
-        normalizeWhitespace: false,
-        withStartIndices: true
+let cheerioOptions: any = {
+    lowerCaseTags: true,
+    lowerCaseAttributeNames: true,
+    recognizeSelfClosing: true,
+    normalizeWhitespace: false,
+    withStartIndices: true
+}
+
+export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
+    let cont = cfg.langFileContent || ""
+    if (cont) cont = cont.replace(/\n*$/, "\n\n")
+    let h = cheerio.load(cont || "", cheerioOptions)
+    let elt = h(`<div data-gw-id="${key}">${val}</div>`)
+    h("[data-gw-id]").each((i, e) => {
+        let ee = h(e)
+        let id = ee.attr("data-gw-id")
+        if (id == key) {
+            ee.replaceWith(elt)
+            elt = null
+        }
+    })
+    if (elt) {
+        h.root().append(elt)
     }
+    return h.html()
+}
+
+function expandAsync(cfg: ExpansionConfig) {
+
     let filename = cfg.rootFile
     let fileContent = cfg.rootFileContent
 
-    let hLoc = cfg.langFile ? cheerio.load(cfg.langFile, options) : null
-    let h = cheerio.load(fileContent, options)
+    let hLoc = cfg.langFileContent ? cheerio.load(cfg.langFileContent, cheerioOptions) : null
+    let h = cheerio.load(fileContent, cheerioOptions)
 
     let idToPos: SMap<Pos> = {}
     let allFiles: SMap<string> = {}
@@ -123,10 +145,11 @@ function expandAsync(cfg: ExpansionConfig) {
                     langMap[id] = ee.html()
                 })
                 h("[data-gw-id]").each((i, e) => {
-                    let ee = hLoc(e)
+                    let ee = h(e)
                     let id = ee.attr("data-gw-id")
-                    if (langMap[id])
-                        ee.replaceWith(langMap[id])
+                    if (langMap[id]) {
+                        ee.html(langMap[id])
+                    }
                 })
             }
 
@@ -141,11 +164,11 @@ function expandAsync(cfg: ExpansionConfig) {
         allFiles[filename] = fileContent
         let mapping: SMap<number> = {}
         let parser: any
-        let handler = new htmlparser2.DomHandler(options, (elt: CheerioElement) => {
+        let handler = new htmlparser2.DomHandler(cheerioOptions, (elt: CheerioElement) => {
             //console.log(elt.tagName, elt.startIndex, parser.endIndex)
             mapping[elt.startIndex + ""] = parser.startIndex
         });
-        parser = new htmlparser2.Parser(handler, options)
+        parser = new htmlparser2.Parser(handler, cheerioOptions)
         parser.end(fileContent);
 
         e.find("[edit]").each((i, ch) => {
@@ -226,14 +249,15 @@ export function expandFileAsync(cfg: ExpansionConfig) {
                 }
             }
             if (!cfg.lang) cfg.lang = cfg.pageConfig.langs[0]
-            if (cfg.lang != cfg.pageConfig.langs[0])
-                return gitlabfs.getTextFileAsync(relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html"))
+            if (cfg.lang != cfg.pageConfig.langs[0]) {
+                cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
+                return gitlabfs.getTextFileAsync(cfg.langFileName)
                     .then(v => v, e => "")
-            else
+            } else
                 return null
         })
         .then(lnText => {
-            cfg.langFile = lnText
+            cfg.langFileContent = lnText
             return expandAsync(cfg)
         })
 }

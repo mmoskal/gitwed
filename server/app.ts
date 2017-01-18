@@ -97,21 +97,36 @@ app.post("/api/update", (req, res) => {
     let fn = req.body.page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)
         return res.status(402).end()
+
+    let lang: string = req.body.lang
+    let cfg: expander.ExpansionConfig = {
+        rootFile: fn,
+        langs: lang ? [lang] : null
+    }
+
     fileLocks(fn, () =>
         gitlabfs.refreshAsync()
-            .then(() => expander.expandFileAsync({
-                rootFile: fn
-            }))
+            .then(() => expander.expandFileAsync(cfg))
             .then(page => {
                 let id: string = req.body.id
                 let val: string = req.body.value
                 let desc = page.idToPos[id]
 
+                if (lang && cfg.lang != lang) {
+                    // didn't manage to set this language
+                    return res.status(411).end()
+                }
+
                 val = "\n" + val + "\n"
                 val = val.replace(/\r/g, "")
                 val = val.replace(/(^\n+)|(\n+$)/g, "\n")
 
-                if (desc) {
+                if (cfg.langFileName) {
+                    let newCont = expander.setTranslation(cfg, id, val)
+                    gitlabfs.setTextFileAsync(cfg.langFileName, newCont,
+                        "Translate " + cfg.langFileName + " / " + id + " by " + req.appuser)
+                        .then(() => res.end("OK"))
+                } else if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
                     gitlabfs.setTextFileAsync(desc.filename, newCont,
@@ -188,11 +203,12 @@ app.get(/.*/, (req, res, next) => {
                         let pageInfo = {
                             user: req.appuser || null,
                             lang: cfg.lang,
-                            langFileCreated: !!cfg.langFile,
+                            langFileCreated: !!cfg.langFileContent,
                             availableLangs: cfg.pageConfig.langs,
+                            isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
                             path: cleaned,
                         }
-                        html = html.replace("@GITWED-PAGE-INFO@", 
+                        html = html.replace("@GITWED-PAGE-INFO@",
                             "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")
                         res.writeHead(200, {
                             'Content-Type': 'text/html; charset=utf8'

@@ -1,7 +1,17 @@
 declare var ContentTools: any;
 declare var ContentEdit: any;
+declare var gitwedPageInfo: gw.PageInfo;
 
 namespace gw {
+    export interface PageInfo {
+        user: string;
+        lang: string;
+        langFileCreated: boolean;
+        availableLangs: string[];
+        isDefaultLang: boolean;
+        path: string;
+    }
+
     export interface ImgResponse {
         url: string;
         thumbUrl: string;
@@ -154,6 +164,7 @@ namespace gw {
             (Promise as any).each(Object.keys(regions), (id: string) =>
                 postJsonAsync("/api/update", {
                     page: document.location.pathname,
+                    lang: gitwedPageInfo.isDefaultLang ? null : gitwedPageInfo.lang,
                     id: id,
                     value: regions[id]
                 }))
