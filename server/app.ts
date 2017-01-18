@@ -129,6 +129,32 @@ app.use("/gw", express.static("gw"))
 //app.use("/", express.static("html"))
 
 app.get(/.*/, (req, res, next) => {
+    if (req.query["setlang"] != null) {
+        res.cookie("GWLANG", req.query['setlang'] || "")
+        return res.redirect(req.path)
+    }
+
+    let langs: string[] = []
+    let addLang = (s: string) => {
+        if (!s) return
+        s = s.toLowerCase()
+        let m = /^([a-z]+)(-[a-z]+)?/.exec(s)
+        if (m) {
+            let full = m[1] + m[2]
+            if (langs.indexOf(full) >= 0) return
+            langs.push(full)
+            if (m[1] != full)
+                langs.push(m[1])
+        }
+    }
+
+    addLang(req.query["lang"])
+    addLang(req.cookies['GWLANG'])
+    for (let s of (req.header("Accept-Language") || "").split(",")) {
+        let headerLang = (/^\s*([A-Za-z\-]+)/.exec(s) || [])[1];
+        addLang(headerLang)
+    }
+
     let cleaned = req.path.replace(/\/+$/, "")
     if (cleaned != req.path) {
         return res.redirect(cleaned + req.url.slice(req.path.length + 1))
@@ -146,10 +172,12 @@ app.get(/.*/, (req, res, next) => {
     gitlabfs.getBlobIdAsync(cleaned)
         .then(id => {
             if (!id) next()
-            else if (isHtml)
-                expander.expandFileAsync({
-                    rootFile: cleaned
-                })
+            else if (isHtml) {
+                let cfg: expander.ExpansionConfig = {
+                    rootFile: cleaned,
+                    langs
+                }
+                expander.expandFileAsync(cfg)
                     .then(page => {
                         let html = page.html
                         if (req.appuser) {
@@ -157,13 +185,22 @@ app.get(/.*/, (req, res, next) => {
                                 .replace("<!-- @GITWED-EDIT@", "")
                                 .replace("@GITWED-EDIT@ -->", "")
                         }
+                        let pageInfo = {
+                            user: req.appuser || null,
+                            lang: cfg.lang,
+                            langFileCreated: !!cfg.langFile,
+                            availableLangs: cfg.pageConfig.langs,
+                            path: cleaned,
+                        }
+                        html = html.replace("@GITWED-PAGE-INFO@", 
+                            "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")
                         res.writeHead(200, {
                             'Content-Type': 'text/html; charset=utf8'
                         })
                         res.end(html)
                     })
                     .then(v => v, next)
-            else
+            } else {
                 gitlabfs.fetchBlobAsync(id)
                     .then(buf => {
                         res.writeHead(200, {
@@ -172,6 +209,7 @@ app.get(/.*/, (req, res, next) => {
                         })
                         res.end(buf)
                     })
+            }
         })
 })
 

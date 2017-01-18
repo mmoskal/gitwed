@@ -46,12 +46,33 @@ interface Pos {
     length: number;
 }
 
+export interface PageConfig {
+    langs?: string[];
+}
+
 export interface ExpansionConfig {
     rootFile: string;
     lang?: string;
+    langs?: string[];
+    langFile?: string;
+    rootFileContent?: string;
+    pageConfig?: PageConfig;
 }
 
-function expandAsync(cfg: ExpansionConfig, fileContent: string) {
+function relativePath(curr: string, newpath: string) {
+    if (newpath[0] == "/") return newpath
+
+    let spl = gitlabfs.splitName(curr)
+    let res = spl.parent + "/" + newpath
+    res = res.replace(/\/+/g, "/")
+    res = res.replace(/\/\.\//g, "/")
+    res = res.replace(/^(\/\.\.\/)+/g, "/")
+    res = res.replace(/\/[^\/]+\/\.\.\//g, "/")
+
+    return res
+}
+
+function expandAsync(cfg: ExpansionConfig) {
     let options: any = {
         lowerCaseTags: true,
         lowerCaseAttributeNames: true,
@@ -59,12 +80,14 @@ function expandAsync(cfg: ExpansionConfig, fileContent: string) {
         normalizeWhitespace: false,
         withStartIndices: true
     }
+    let filename = cfg.rootFile
+    let fileContent = cfg.rootFileContent
+
+    let hLoc = cfg.langFile ? cheerio.load(cfg.langFile, options) : null
     let h = cheerio.load(fileContent, options)
 
     let idToPos: SMap<Pos> = {}
     let allFiles: SMap<string> = {}
-
-    let filename = cfg.rootFile
 
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
@@ -91,6 +114,22 @@ function expandAsync(cfg: ExpansionConfig, fileContent: string) {
                 ee.removeAttr("edit")
                 ee.removeAttr("gw-pos")
             })
+
+            if (hLoc) {
+                let langMap: SMap<string> = {}
+                hLoc("[data-gw-id]").each((i, e) => {
+                    let ee = hLoc(e)
+                    let id = ee.attr("data-gw-id")
+                    langMap[id] = ee.html()
+                })
+                h("[data-gw-id]").each((i, e) => {
+                    let ee = hLoc(e)
+                    let id = ee.attr("data-gw-id")
+                    if (langMap[id])
+                        ee.replaceWith(langMap[id])
+                })
+            }
+
             return {
                 allFiles,
                 idToPos,
@@ -121,19 +160,6 @@ function expandAsync(cfg: ExpansionConfig, fileContent: string) {
             //console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
             x.attr("gw-pos", filename + "@" + start + "-" + (end - start))
         })
-    }
-
-    function relativePath(curr: string, newpath: string) {
-        if (newpath[0] == "/") return newpath
-
-        let spl = gitlabfs.splitName(curr)
-        let res = spl.parent + "/" + newpath
-        res = res.replace(/\/+/g, "/")
-        res = res.replace(/\/\.\//g, "/")
-        res = res.replace(/^(\/\.\.\/)+/g, "/")
-        res = res.replace(/\/[^\/]+\/\.\.\//g, "/")
-
-        return res
     }
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
@@ -182,5 +208,32 @@ function expandAsync(cfg: ExpansionConfig, fileContent: string) {
 
 export function expandFileAsync(cfg: ExpansionConfig) {
     return gitlabfs.getTextFileAsync(cfg.rootFile)
-        .then(s => expandAsync(cfg, s))
+        .then(s => {
+            cfg.rootFileContent = s
+            return gitlabfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
+                .then(v => v, e => "")
+        })
+        .then(cfText => {
+            cfg.pageConfig = JSON.parse(cfText || "{}")
+            if (!cfg.pageConfig.langs || !cfg.pageConfig.langs.length)
+                cfg.pageConfig.langs = ["en"]
+            if (cfg.langs) {
+                for (let l of cfg.langs) {
+                    if (cfg.pageConfig.langs.indexOf(l) >= 0) {
+                        cfg.lang = l
+                        break
+                    }
+                }
+            }
+            if (!cfg.lang) cfg.lang = cfg.pageConfig.langs[0]
+            if (cfg.lang != cfg.pageConfig.langs[0])
+                return gitlabfs.getTextFileAsync(relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html"))
+                    .then(v => v, e => "")
+            else
+                return null
+        })
+        .then(lnText => {
+            cfg.langFile = lnText
+            return expandAsync(cfg)
+        })
 }

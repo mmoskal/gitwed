@@ -49,3 +49,4 @@ make
 * [ ] creation of new pages
 * [x] add base file name to ids?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
+* [ ] add language indication next to edit button
