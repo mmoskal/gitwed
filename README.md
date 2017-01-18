@@ -41,12 +41,36 @@ make
 * `<group>` - all group tags are replaced with their content (they are invisible wrappers)
 
 
+## Admin manual
+
+### Adding users
+
+You first need to log in as `admin` user.
+
+To create user named `joe` go to `/gw/create/joe`. It generates a random password and hashes it.
+It will return an authentication link like this:
+`https://example.com/gw/auth?user=joe&pass=291c72c0471d44d7189e0cc356db46f4308ce4c3`
+
+If the user already exists, you'll be given a chance to reset their password. You cannot reset admin 
+password this way.
+
+You can always append `&redirect=/foo/bar` to an authentication link.
+
+Users are stored in `private/users.json` file. Passwords are strongly hashed, random, and very long,
+so in principle this file can be world-readable.
+
+To create first `admin` user, go to `/gw/hash/admin`, which just creates a random password, 
+and copy `user` field into `users` array in `private/users.json`.
+
+
 ## TODO
 
 * [x] authentication
 * [ ] per-directory rights?
-* [ ] localization
+* [x] localization
 * [ ] creation of new pages
 * [x] add base file name to ids?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] add language indication next to edit button
+* [ ] add /gw/auth form with user/password (for password managers)
+

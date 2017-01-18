@@ -52,7 +52,7 @@ export function initRoutes(app: express.Express) {
         res.redirect(req.query["redirect"] || "/")
     })
 
-    app.get("/gw/hash/:name", (req, res, next) => {
+    function createUser(req: express.Request) {
         let pass = crypto.randomBytes(20).toString("hex")
         let salt = crypto.randomBytes(16).toString("hex")
         let u: User = {
@@ -61,10 +61,44 @@ export function initRoutes(app: express.Express) {
             hash: "",
         }
         u.hash = hashPass(u, pass)
-        res.json({
+        return {
             link: "https://" + req.header("host") + "/gw/auth?user=" + u.login + "&pass=" + pass,
             user: u
-        })
+        }
+    }
+
+    app.get("/gw/hash/:name", (req, res, next) => {
+        res.json(createUser(req))
+    })
+
+    app.get("/gw/create/:name", (req, res, next) => {
+        if (req.appuser !== "admin")
+            return res.status(403).end()
+
+        getUserConfigAsync()
+            .then(cfg => {
+                let name: string = req.params["name"]
+                if (name == "admin")
+                    return res.status(400).end()
+                let ex = cfg.users.filter(u => u.login == name)[0]
+                if (ex && !req.query["reset"])
+                    return res.end(`<p>User already exists. You can <a href="/gw/create/${name}?reset=true">reset password</a> instead. </p>`)
+                let r = createUser(req)
+                let action = "Adding"
+                if (ex) {
+                    action = "Resetting password for"
+                    ex.hash = r.user.hash
+                    ex.salt = r.user.salt
+                } else {
+                    cfg.users.push(r.user)
+                }
+                return gitlabfs.setTextFileAsync("private/users.json",
+                    JSON.stringify(cfg, null, 4),
+                    action + " user " + name)
+                    .then(() => {
+                        res.end(`<p>User created, authenticate at: <br>${r.link}</p>`)
+                    })
+            })
     })
 
     app.get("/gw/auth", (req, res, next) => {
