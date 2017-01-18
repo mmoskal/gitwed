@@ -43,8 +43,9 @@ make
 
 ## TODO
 
-* [ ] authentication
+* [x] authentication
+* [ ] per-directory rights?
 * [ ] localization
 * [ ] creation of new pages
-* [ ] add base file name to ids?
+* [x] add base file name to ids?
 * [ ] extend the big "edit" button with custom actions (like 'add section')

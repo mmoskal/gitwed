@@ -133,31 +133,6 @@ namespace gw {
                             'data-ce-max-width': resp.w
                         });
                 })
-
-
-            //    dialog.populate(image.url, image.size);
-            //    dialog.progress((ev.loaded / ev.total) * 100);
-
-            // The request failed, notify the user
-            //    new ContentTools.FlashUI('no');
-        });
-
-
-        dialog.addEventListener('imageuploader.save', function () {
-            /*
-            dialog.save(
-                response.url,
-                response.size,
-                {
-                    'alt': response.alt,
-                    'data-ce-max-width': response.size[0]
-                });
-            */
-
-            // Set the dialog to busy while the rotate is performed
-            dialog.busy(true);
-
-            debugger
         });
     }
 
@@ -167,7 +142,7 @@ namespace gw {
             new ContentTools.Style('Author', 'author', ['p'])
         ])
         editor = ContentTools.EditorApp.get()
-        editor.init('[data-editable], [data-fixture]', 'id')
+        editor.init('[data-editable], [data-fixture]', 'data-gw-id')
 
         editor.addEventListener('saved', (ev: any) => {
             let regions = ev.detail().regions

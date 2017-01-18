@@ -69,6 +69,8 @@ function expandAsync(filename: string, fileContent: string) {
                 let ee = h(e)
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
                 let id = ee.attr("id")
+                id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "").replace(/[^\w]+/g, "_") + "-" + id
+                ee.attr("data-gw-id", id)
                 if (idToPos.hasOwnProperty(id))
                     // we don't want no duplicates
                     idToPos[id] = null
@@ -78,6 +80,7 @@ function expandAsync(filename: string, fileContent: string) {
                         startIdx: parseInt(m[2]),
                         length: parseInt(m[3])
                     }
+                ee.removeAttr("edit")
                 ee.removeAttr("gw-pos")
             })
             return {
@@ -98,7 +101,7 @@ function expandAsync(filename: string, fileContent: string) {
         parser = new htmlparser2.Parser(handler, options)
         parser.end(fileContent);
 
-        e.find("[id]").each((i, ch) => {
+        e.find("[edit]").each((i, ch) => {
             let x = h(ch)
             let start = ch.startIndex
             let end = mapping[start + ""]
