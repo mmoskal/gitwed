@@ -5,7 +5,7 @@ import mime = require('mime');
 import fs = require('fs');
 import crypto = require("crypto")
 import expander = require('./expander')
-import gitlabfs = require('./gitlabfs')
+import gitfs = require('./gitlabfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import auth = require('./auth')
@@ -52,13 +52,13 @@ app.post("/api/uploadimg", (req, res) => {
     let path = pathElts.join("/")
     let fullPath = ""
     fileLocks(path, () =>
-        gitlabfs.refreshAsync()
-            .then(() => gitlabfs.getTreeAsync(path))
+        gitfs.refreshAsync()
+            .then(() => gitfs.getTreeAsync(path))
             .then(tree => {
                 let buf = new Buffer(data.full, "base64")
 
                 if (tree) {
-                    let hash = gitlabfs.githash(buf)
+                    let hash = gitfs.githash(buf)
                     let existing = tree.children.filter(e => e.id == hash)[0]
                     if (existing) {
                         fullPath = path + "/" + existing.name
@@ -81,7 +81,7 @@ app.post("/api/uploadimg", (req, res) => {
                 }
 
                 fullPath = path + "/" + fn
-                return gitlabfs.setBinFileAsync(fullPath, buf, "Image " + fullPath + " by " + req.appuser)
+                return gitfs.setBinFileAsync(fullPath, buf, "Image " + fullPath + " by " + req.appuser)
             })
             .then(() => {
                 res.json({
@@ -105,7 +105,7 @@ app.post("/api/update", (req, res) => {
     }
 
     fileLocks(fn, () =>
-        gitlabfs.refreshAsync()
+        gitfs.refreshAsync()
             .then(() => expander.expandFileAsync(cfg))
             .then(page => {
                 let id: string = req.body.id
@@ -123,13 +123,13 @@ app.post("/api/update", (req, res) => {
 
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
-                    gitlabfs.setTextFileAsync(cfg.langFileName, newCont,
+                    gitfs.setTextFileAsync(cfg.langFileName, newCont,
                         "Translate " + cfg.langFileName + " / " + id + " by " + req.appuser)
                         .then(() => res.end("OK"))
                 } else if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
-                    gitlabfs.setTextFileAsync(desc.filename, newCont,
+                    gitfs.setTextFileAsync(desc.filename, newCont,
                         "Update " + desc.filename + " / " + id + " by " + req.appuser)
                         .then(() => res.end("OK"))
                 } else {
@@ -180,11 +180,11 @@ app.get(/.*/, (req, res, next) => {
     if (cleaned.indexOf("private") == 0)
         return next()
 
-    let spl = gitlabfs.splitName(cleaned)
+    let spl = gitfs.splitName(cleaned)
     let isHtml = spl.name.indexOf(".") < 0
 
     if (isHtml) cleaned += ".html"
-    gitlabfs.getBlobIdAsync(cleaned)
+    gitfs.getBlobIdAsync(cleaned)
         .then(id => {
             if (!id) next()
             else if (isHtml) {
@@ -217,7 +217,7 @@ app.get(/.*/, (req, res, next) => {
                     })
                     .then(v => v, next)
             } else {
-                gitlabfs.fetchBlobAsync(id)
+                gitfs.fetchBlobAsync(id)
                     .then(buf => {
                         res.writeHead(200, {
                             'Content-Type': mime.lookup(cleaned),
@@ -243,7 +243,7 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
 })
 
 let dataDir = process.argv[2]
-let cfg: gitlabfs.Config = {} as any
+let cfg: gitfs.Config = {} as any
 if (fs.existsSync("config.json"))
     cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
 else if (!dataDir) {
@@ -256,7 +256,7 @@ if (dataDir) {
     cfg.localRepo = dataDir
 }
 
-gitlabfs.initAsync(cfg)
+gitfs.initAsync(cfg)
     .then(() => {
         if (cfg.localRepo) app.listen(3000, "localhost")
         else app.listen(3000)

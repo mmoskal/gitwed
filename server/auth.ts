@@ -1,6 +1,6 @@
 import express = require('express');
 import crypto = require("crypto")
-import gitlabfs = require('./gitlabfs')
+import gitfs = require('./gitlabfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import * as jwt from "jwt-simple";
@@ -26,7 +26,7 @@ function hashPass(u: User, pass: string) {
 export function initCheck(app: express.Express) {
     app.use((req, res, next) => {
         // when running on localhost without secret make everyone an admin
-        if (!gitlabfs.config.jwtSecret && gitlabfs.config.localRepo) {
+        if (!gitfs.config.jwtSecret && gitfs.config.localRepo) {
             req.appuser = "admin"
             return
         }
@@ -34,7 +34,7 @@ export function initCheck(app: express.Express) {
         let tok = req.cookies["GWAUTH"]
         if (tok) {
             try {
-                let dwauth = jwt.decode(tok, gitlabfs.config.jwtSecret)
+                let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
                 if (Date.now() / 1000 - dwauth.iat < cookieValidity) {
                     req.appuser = dwauth.sub
                 }
@@ -92,7 +92,7 @@ export function initRoutes(app: express.Express) {
                 } else {
                     cfg.users.push(r.user)
                 }
-                return gitlabfs.setTextFileAsync("private/users.json",
+                return gitfs.setTextFileAsync("private/users.json",
                     JSON.stringify(cfg, null, 4),
                     action + " user " + name)
                     .then(() => {
@@ -116,7 +116,7 @@ export function initRoutes(app: express.Express) {
                     iss: "GITwed",
                     sub: u.login,
                     iat: Math.floor(Date.now() / 1000)
-                }, gitlabfs.config.jwtSecret)
+                }, gitfs.config.jwtSecret)
 
                 res.cookie("GWAUTH", jwtToken, {
                     httpOnly: true,
@@ -130,7 +130,7 @@ export function initRoutes(app: express.Express) {
 }
 
 function getUserConfigAsync() {
-    return gitlabfs.getTextFileAsync("private/users.json")
+    return gitfs.getTextFileAsync("private/users.json")
         .then(t => {
             return JSON.parse(t) as UserConfig
         })

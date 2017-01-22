@@ -1,5 +1,5 @@
 import cheerio = require("cheerio")
-import gitlabfs = require('./gitlabfs')
+import gitfs = require('./gitlabfs')
 import * as bluebird from "bluebird";
 
 let htmlparser2 = require("htmlparser2")
@@ -63,7 +63,7 @@ export interface ExpansionConfig {
 function relativePath(curr: string, newpath: string) {
     if (newpath[0] == "/") return newpath
 
-    let spl = gitlabfs.splitName(curr)
+    let spl = gitfs.splitName(curr)
     let res = spl.parent + "/" + newpath
     res = res.replace(/\/+/g, "/")
     res = res.replace(/\/\.\//g, "/")
@@ -187,7 +187,7 @@ function expandAsync(cfg: ExpansionConfig) {
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         filename = relativePath(ctx.filename, filename)
-        return gitlabfs.getTextFileAsync(filename)
+        return gitfs.getTextFileAsync(filename)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -230,10 +230,10 @@ function expandAsync(cfg: ExpansionConfig) {
 }
 
 export function expandFileAsync(cfg: ExpansionConfig) {
-    return gitlabfs.getTextFileAsync(cfg.rootFile)
+    return gitfs.getTextFileAsync(cfg.rootFile)
         .then(s => {
             cfg.rootFileContent = s
-            return gitlabfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
+            return gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
                 .then(v => v, e => "")
         })
         .then(cfText => {
@@ -251,7 +251,7 @@ export function expandFileAsync(cfg: ExpansionConfig) {
             if (!cfg.lang) cfg.lang = cfg.pageConfig.langs[0]
             if (cfg.lang != cfg.pageConfig.langs[0]) {
                 cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-                return gitlabfs.getTextFileAsync(cfg.langFileName)
+                return gitfs.getTextFileAsync(cfg.langFileName)
                     .then(v => v, e => "")
             } else
                 return null

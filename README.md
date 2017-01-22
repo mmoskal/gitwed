@@ -74,3 +74,11 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] add language indication next to edit button
 * [ ] add /gw/auth form with user/password (for password managers)
 
+
+
+## Git checkouts
+
+git pull --strategy=recursive --strategy-option=ours --no-edit
+git log --name-status --pretty=fuller
+git cat-file --batch
+  - need to parse trees, commits are in text form
