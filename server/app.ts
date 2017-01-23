@@ -165,8 +165,7 @@ app.get(/.*/, (req, res, next) => {
     if (isHtml) cleaned += ".html"
     gitfs.getFileAsync(cleaned)
         .then(buf => {
-            if (!buf) next()
-            else if (isHtml) {
+            if (isHtml) {
                 let cfg: expander.ExpansionConfig = {
                     rootFile: cleaned,
                     rootFileContent: buf.toString("utf8"),
@@ -203,6 +202,9 @@ app.get(/.*/, (req, res, next) => {
                 })
                 res.end(buf)
             }
+        }, e => {
+            console.log("error: " + cleaned + " " + e.message)
+            next()
         })
 })
 
