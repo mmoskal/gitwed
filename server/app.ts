@@ -5,7 +5,7 @@ import mime = require('mime');
 import fs = require('fs');
 import crypto = require("crypto")
 import expander = require('./expander')
-import gitfs = require('./gitlabfs')
+import gitfs = require('./gitfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import auth = require('./auth')
@@ -50,40 +50,19 @@ app.post("/api/uploadimg", (req, res) => {
     pathElts.pop()
     pathElts.push("img")
     let path = pathElts.join("/")
-    let fullPath = ""
+    let basename = data.filename
+        .replace(/.*[\/\\]/, "")
+        .toLowerCase()
+        .replace(/\.[a-z]+$/, "")
+        .replace(/[^\w\-]+/g, "_")
+    let ext = "." + data.format
+    let buf = new Buffer(data.full, "base64")
+    let msg = "Image at " + path + " / " + basename + ext + " by " + req.appuser
+
     fileLocks(path, () =>
         gitfs.refreshAsync()
-            .then(() => gitfs.getTreeAsync(path))
-            .then(tree => {
-                let buf = new Buffer(data.full, "base64")
-
-                if (tree) {
-                    let hash = gitfs.githash(buf)
-                    let existing = tree.children.filter(e => e.id == hash)[0]
-                    if (existing) {
-                        fullPath = path + "/" + existing.name
-                        return Promise.resolve()
-                    }
-                }
-
-                let basename = data.filename
-                    .replace(/.*[\/\\]/, "")
-                    .toLowerCase()
-                    .replace(/\.[a-z]+$/, "")
-                    .replace(/[^\w\-]+/g, "_")
-                let ext = "." + data.format
-                let hasName = (n: string) =>
-                    tree ? tree.children.some(f => f.name == n) : false
-                let fn = basename + ext
-                let cnt = 1
-                while (hasName(fn)) {
-                    fn = basename + "-" + cnt++ + ext
-                }
-
-                fullPath = path + "/" + fn
-                return gitfs.setBinFileAsync(fullPath, buf, "Image " + fullPath + " by " + req.appuser)
-            })
-            .then(() => {
+            .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg))
+            .then(fullPath => {
                 res.json({
                     url: "/" + fullPath
                 })
@@ -184,12 +163,13 @@ app.get(/.*/, (req, res, next) => {
     let isHtml = spl.name.indexOf(".") < 0
 
     if (isHtml) cleaned += ".html"
-    gitfs.getBlobIdAsync(cleaned)
-        .then(id => {
-            if (!id) next()
+    gitfs.getFileAsync(cleaned)
+        .then(buf => {
+            if (!buf) next()
             else if (isHtml) {
                 let cfg: expander.ExpansionConfig = {
                     rootFile: cleaned,
+                    rootFileContent: buf.toString("utf8"),
                     langs
                 }
                 expander.expandFileAsync(cfg)
@@ -217,14 +197,11 @@ app.get(/.*/, (req, res, next) => {
                     })
                     .then(v => v, next)
             } else {
-                gitfs.fetchBlobAsync(id)
-                    .then(buf => {
-                        res.writeHead(200, {
-                            'Content-Type': mime.lookup(cleaned),
-                            'Content-Length': buf.length
-                        })
-                        res.end(buf)
-                    })
+                res.writeHead(200, {
+                    'Content-Type': mime.lookup(cleaned),
+                    'Content-Length': buf.length
+                })
+                res.end(buf)
             }
         })
 })

@@ -4,30 +4,22 @@ import crypto = require("crypto")
 import tools = require("./tools")
 import * as child_process from "child_process";
 import * as bluebird from "bluebird";
+import express = require('express');
 
 export interface Config {
     jwtSecret: string;
     localRepo?: string;
 }
 
-interface CachedTree {
-    children: TreeEntry[];
-    self: TreeEntry;
-    fullname: string;
-    parent: string;
-}
-
 let repoPath = ""
 let justDir = false
 
 // maps directory name to its listing
-let treeCache: SMap<CachedTree> = {}
 let apiLockAsync = tools.promiseQueue()
 let rootIdTime: number = 0
+let rootId = ""
 
-let cachePath = "cache/"
-let treeCachePath = cachePath + "tree/"
-let blobCachePath = cachePath + "blobs/"
+//let cachePath = "cache/"
 
 export let config: Config
 
@@ -46,102 +38,48 @@ export function githash(buf: Buffer) {
     return h.digest("hex")
 }
 
-export function getTreeAsync(fullname: string): Promise<CachedTree> {
-    if (justDir) {
-        let p = repoPath + fullname
-        if (!fs.existsSync(p))
-            return Promise.resolve(null)
-        let ents = fs.readdirSync(p)
-        // this is only for duplicate-image detection
-        let r: CachedTree = {
-            children: ents.map(fn => ({
-                id: githash(fs.readFileSync(p + "/" + fn)),
-                name: fn,
-                type: "blob"
-            })),
-            self: null,
-            fullname,
-            parent: null,
-        }
-        return Promise.resolve(r)
-    }
-
-    return apiLockAsync("tree/" + fullname, () => {
-        if (fullname == "/") {
-            let e = getEntry("/")
-            return refreshAsync(120)
-                .then(() => fetchChildrenAsync(e))
-        } else {
-            let spl = splitName(fullname)
-            //console.log(`split(${fullname}) = {${spl.parent},${spl.name}}`)            
-
-            return getTreeAsync(spl.parent)
-                .then(par => {
-                    if (!par) return null
-                    let us = par.children.filter(c => c.name == spl.name)[0]
-                    if (!us || us.type != "tree") return null
-                    let e = getEntry(fullname)
-                    if (us.id != e.self.id) {
-                        e.self.id = us.id
-                        e.children = null
-                    }
-                    return fetchChildrenAsync(e)
-                })
-        }
-    })
-
-    function fetchChildrenAsync(e: CachedTree) {
-        if (e.children) return Promise.resolve(e)
-        let rootId = getEntry("/").self.id
-        return repoRequestAsync({
-            url: "tree",
-            query: {
-                path: e.fullname.replace(/^\/*/, ""),
-                ref_name: rootId
+export function createBinFileAsync(dir: string, basename: string, ext: string, buf: Buffer, msg: string) {
+    let p = repoPath + dir + "/"
+    tools.mkdirP(p)
+    let ents = fs.readdirSync(p)
+    for (let bn of ents) {
+        let st = fs.statSync(p + bn)
+        if (st.size == buf.length) {
+            let buf0 = fs.readFileSync(p + bn)
+            if (buf0.equals(buf)) {
+                return Promise.resolve(dir + "/" + bn)
             }
-        })
-            .then(r => {
-                e.children = r.json
-                return saveEntryAsync(e)
-            })
-            .then(() => e)
+        }
     }
 
-    function saveEntryAsync(e: CachedTree) {
-        let fn = treeCachePath + e.fullname.replace(/\//g, "_-_") + ".json"
-        return writeAsync(fn, JSON.stringify(e, null, 1))
+    let fn = dir + basename + ext
+    if (ents.indexOf(fn) >= 0) {
+        let no = 1
+        while (ents.indexOf(basename + "-" + no + ext) >= 0)
+            no++
+        fn = dir + basename + "-" + no + ext
     }
-}
 
-export function getBlobIdAsync(fullname: string) {
-    if (justDir) {
-        if (fs.existsSync(repoPath + fullname))
-            return Promise.resolve(fullname)
-        else
-            return Promise.resolve(null)
-    }
-    let spl = splitName(fullname)
-    return getTreeAsync(spl.parent)
-        .then(tree => {
-            if (!tree) return null
-            let e = tree.children.filter(x => x.name == spl.name)[0]
-            if (e && e.type == "blob") return e.id
-            else return null
-        })
+    // write it, so we get a lock on the name
+    fs.writeFileSync(repoPath + fn, buf)
+
+    // this will write the file again
+    return setBinFileAsync(fn, buf, "")
+        .then(() => fn)
 }
 
 // TODO add some in-memory cache for small files?
-export function fetchBlobAsync(id: string): Promise<Buffer> {
+export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
     if (justDir)
-        return readAsync(repoPath + id)
-    let fn = blobCachePath + id
-    return apiLockAsync("blob/" + id, () => readAsync(fn)
-        .then(buf => buf, err =>
-            repoRequestAsync({ url: "raw_blobs/" + id })
-                .then(r => {
-                    return writeAsync(fn, r.buffer)
-                        .then(() => r.buffer)
-                })))
+        return readAsync(repoPath + name)
+    return getGitObjectAsync(ref + ":" + name)
+        .then(obj => {
+            if (obj.type == "blob") {
+                return obj.data
+            } else {
+                throw new Error("not found")
+            }
+        })
 }
 
 export function splitName(fullname: string) {
@@ -163,43 +101,21 @@ export function splitName(fullname: string) {
     return { parent, name }
 }
 
-function getEntry(fullname: string) {
-    let entry = tools.lookup(treeCache, fullname)
-    if (entry) return entry
-
-    let spl = splitName(fullname)
-
-    entry = {
-        children: null,
-        self: {
-            name: spl.name,
-            id: "bogus",
-            type: "tree"
-        },
-        parent: spl.parent,
-        fullname: fullname,
-    }
-    treeCache[fullname] = entry
-
-    return entry
-}
-
 function refreshRootIdCoreAsync() {
-    return repoRequestAsync({ url: "branches/master" })
-        .then(r => {
-            let rootEntry = getEntry("/")
-            let rootId: string = r.json.commit.id
-            rootIdTime = Date.now()
-            if (rootEntry.self.id != rootId) {
-                rootEntry.self.id = rootId
-                rootEntry.children = null
-            }
+    if (justDir)
+        return Promise.resolve()
+    return Promise.resolve()
+        .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit"]))
+        .then(() => readAsync(repoPath + ".git/refs/heads/master"))
+        .then(buf => {
+            rootId = buf.toString("utf8").trim()
         })
 }
 
 export function refreshAsync(timeoutSeconds = 5) {
-    if (justDir) return Promise.resolve()
-    return apiLockAsync("root/refresh", () => {
+    if (justDir)
+        return Promise.resolve()
+    return apiLockAsync("commit", () => {
         if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
             return refreshRootIdCoreAsync()
         else
@@ -211,40 +127,23 @@ export function initAsync(cfg: Config) {
     config = cfg
 
     if (cfg.localRepo) {
-        treeCache = null
         repoPath = cfg.localRepo.replace(/\/$/, "") + "/"
-        return bluebird.resolve()
+        justDir = true
+        return Promise.resolve()
     }
 
-    tools.mkdirP(treeCachePath)
-    tools.mkdirP(blobCachePath)
-
-    return readdirAsync(treeCachePath)
-        .then(entries =>
-            bluebird.map(entries.filter(e => /\.json$/.test(e)),
-                fn => readAsync(treeCachePath + fn)
-                    .then(buf => {
-                        let e: CachedTree = JSON.parse(buf.toString("utf8"))
-                        treeCache[e.fullname] = e
-                    })))
-        .then(refreshRootIdCoreAsync)
+    return refreshRootIdCoreAsync()
 }
 
-export function existsAsync(name: string) {
-    return getBlobIdAsync(name)
-        .then(id => !!id)
-}
-
-export function getTextFileAsync(name: string): bluebird.Thenable<string> {
+export function getTextFileAsync(name: string, ref = "master"): bluebird.Thenable<string> {
     let m = /^\/?gw\/(.*)/.exec(name)
     if (m)
         // the expander hits this
         return readAsync("gw/" + m[1])
             .then(b => b.toString("utf8"))
     else
-        return getBlobIdAsync(name)
-            .then(id => id ? fetchBlobAsync(id) : Promise.reject<Buffer>(new Error(name + " not found")))
-            .then(b => b.toString("utf8"))
+        return getFileAsync(name, ref)
+            .then(buf => buf.toString("utf8"))
 }
 
 export function setTextFileAsync(name: string, val: string, msg: string) {
@@ -395,8 +294,8 @@ function parseCommit(buf: Buffer): Commit {
 }
 
 function getGitObjectAsync(id: string) {
-    if (!/^[0-9a-f]{40}$/.exec(id))
-        throw new Error("Invalid ID: " + id)
+    if (/[\r\n]/.test(id))
+        throw new Error("bad id: " + id)
     return apiLockAsync("cat-file", () => {
         startGitCatFile()
         gitCatFile.stdin.write(id + "\n")

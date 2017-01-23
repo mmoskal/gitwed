@@ -1,6 +1,6 @@
 import express = require('express');
 import crypto = require("crypto")
-import gitfs = require('./gitlabfs')
+import gitfs = require('./gitfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import * as jwt from "jwt-simple";

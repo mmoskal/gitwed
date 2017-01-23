@@ -1,5 +1,5 @@
 import cheerio = require("cheerio")
-import gitfs = require('./gitlabfs')
+import gitfs = require('./gitfs')
 import * as bluebird from "bluebird";
 
 let htmlparser2 = require("htmlparser2")
@@ -52,11 +52,11 @@ export interface PageConfig {
 
 export interface ExpansionConfig {
     rootFile: string;
+    rootFileContent?: string;
     lang?: string;
     langs?: string[];
     langFileName?: string;
     langFileContent?: string;
-    rootFileContent?: string;
     pageConfig?: PageConfig;
 }
 
@@ -229,13 +229,19 @@ function expandAsync(cfg: ExpansionConfig) {
     }
 }
 
-export function expandFileAsync(cfg: ExpansionConfig) {
+function fillContentAsync(cfg: ExpansionConfig) {
+    if (cfg.rootFileContent != null)
+        return Promise.resolve()
     return gitfs.getTextFileAsync(cfg.rootFile)
         .then(s => {
             cfg.rootFileContent = s
-            return gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
-                .then(v => v, e => "")
         })
+}
+
+export function expandFileAsync(cfg: ExpansionConfig) {
+    return fillContentAsync(cfg)
+        .then(() => gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
+            .then(v => v, e => ""))
         .then(cfText => {
             cfg.pageConfig = JSON.parse(cfText || "{}")
             if (!cfg.pageConfig.langs || !cfg.pageConfig.langs.length)
