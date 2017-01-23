@@ -6,7 +6,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as events from 'events';
 import * as querystring from 'querystring';
-
+import * as bluebird from 'bluebird';
 
 export function readResAsync(g: events.EventEmitter) {
     return new Promise<Buffer>((resolve, reject) => {
@@ -177,4 +177,45 @@ export function lookup<T>(m: SMap<T>, key: string): T {
     if (m.hasOwnProperty(key))
         return m[key]
     return null
+}
+
+export class PromiseBuffer<T> {
+    private waiting: ((v: (T | Error)) => void)[] = [];
+    private available: (T | Error)[] = [];
+
+    drain() {
+        for (let f of this.waiting) {
+            f(new Error("Promise Buffer Reset"))
+        }
+        this.waiting = []
+        this.available = []
+    }
+
+
+    pushError(v: Error) {
+        this.push(v as any)
+    }
+
+    push(v: T) {
+        let f = this.waiting.shift()
+        if (f) f(v)
+        else this.available.push(v)
+    }
+
+    shiftAsync() {
+        if (this.available.length > 0) {
+            let v = this.available.shift()
+            if (v instanceof Error)
+                return Promise.reject<T>(v)
+            else
+                return Promise.resolve<T>(v)
+        } else
+            return new Promise<T>((resolve, reject) => {
+                let f = (v: (T | Error)) => {
+                    if (v instanceof Error) reject(v)
+                    else resolve(v)
+                }
+                this.waiting.push(f)
+            })
+    }
 }
