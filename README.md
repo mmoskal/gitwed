@@ -15,17 +15,6 @@ make
 * if you modify files via web interface, they will be modified in `somewhere/gitwed-data`
 * if you modify files in `somewhere/gitwed-data`, the changes should be visible at http://localhost:3000
 
-## GitLab FS
-
-* periodically check SHA of master branch; when changes nuke all tree caches, but not blob caches
-* get directory D:
-  * `/projects/<id>/repository/tree?path=<D>`, cache at `<id>, <D>`
-* get file F:
-  * `/projects/<id>/repository/tree?path=<dirname(F)>`, cache at `<id>, dirname(F)`
-  * `S := id(basename(F))`
-  * `/projects/<id>/repository/raw_blobs/<S>`, cache at S
-* currently only a single `<id>` is supported
-
 ## Macro language
 
 ```html
