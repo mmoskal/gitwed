@@ -5,6 +5,7 @@ import tools = require("./tools")
 import * as child_process from "child_process";
 import * as bluebird from "bluebird";
 import express = require('express');
+import winston = require('winston');
 
 export interface Config {
     jwtSecret: string;
@@ -158,7 +159,7 @@ function maybeGcGitCatFile() {
     if (!gitCatFile) return
     let d = Date.now() - lastUsage
     if (d < 15000) return
-    console.log("[gc] git cat-file")
+    winston.debug("[gc] git cat-file")
     gitCatFile.stdin.end()
     gitCatFile = null
     gitCatFileBuf.drain()
@@ -170,7 +171,7 @@ function startGitCatFile() {
     }
     lastUsage = Date.now()
     if (!gitCatFile) {
-        console.log("[run] git cat-file --batch")
+        winston.debug("[run] git cat-file --batch")
         gitCatFile = child_process.spawn("git", ["cat-file", "--batch"], {
             cwd: repoPath,
             env: process.env,
@@ -179,7 +180,7 @@ function startGitCatFile() {
         })
         gitCatFile.stderr.setEncoding("utf8")
         gitCatFile.stderr.on('data', (msg: string) => {
-            console.error("[git cat-file error] " + msg)
+            winston.error("[git cat-file error] " + msg)
         })
         gitCatFile.stdout.on('data', (buf: Buffer) => gitCatFileBuf.push(buf))
     }
@@ -349,7 +350,7 @@ function getGitObjectAsync(id: string) {
 
 function runGitAsync(args: string[]) {
     let info = "git " + args.join(" ")
-    console.log("[run] " + info)
+    winston.debug("[run] " + info)
     return new Promise<string>((resolve, reject) => {
         let ch = child_process.spawn("git", args, {
             cwd: repoPath,
@@ -368,7 +369,7 @@ function runGitAsync(args: string[]) {
         })
         ch.on('close', (code: number) => {
             if (errbufs.length)
-                console.error(Buffer.concat(errbufs).toString("utf8"))
+                winston.info(Buffer.concat(errbufs).toString("utf8"))
             if (code != 0) {
                 reject(new Error("Exit code: " + code + " from " + info))
             }
@@ -385,6 +386,7 @@ export function logAsync(path = ".") {
 
 export function setBinFileAsync(name: string, val: Buffer, msg: string) {
     return apiLockAsync("commit", () => {
+        winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}`)
         let spl = splitName(name)
         tools.mkdirP(repoPath + spl.parent)
         fs.writeFileSync(repoPath + name, val)

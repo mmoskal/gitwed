@@ -7,6 +7,7 @@ import * as https from 'https';
 import * as events from 'events';
 import * as querystring from 'querystring';
 import * as bluebird from 'bluebird';
+import * as crypto from "crypto";
 
 export function readResAsync(g: events.EventEmitter) {
     return new Promise<Buffer>((resolve, reject) => {
@@ -218,4 +219,95 @@ export class PromiseBuffer<T> {
                 this.waiting.push(f)
             })
     }
+}
+
+export function formatDate(d: Date) {
+    function t(n: number) {
+        return ("0" + n).slice(-2)
+    }
+    return d.getFullYear() + "-" + t(d.getMonth() + 1) + "-" + t(d.getDate())
+}
+
+/** Generate a random id consisting of upper and lower case letters */
+export function createRandomId(size: number): string {
+    let buf = crypto.randomBytes(size * 2)
+    let s = buf.toString("base64").replace(/[^a-zA-Z]/g, "");
+    if (s.length < size) {
+        // this is very unlikely
+        return createRandomId(size);
+    }
+    else {
+        return s.substr(0, size);
+    }
+}
+
+export function sha256(d: string | Buffer) {
+    let h = crypto.createHash("sha256")
+    h.update(d)
+    return h.digest("hex").toLowerCase()
+}
+
+export function copyFields(trg: any, src: any) {
+    for (let k of Object.keys(src))
+        trg[k] = src[k];
+}
+
+export function values<T>(v: SMap<T>): T[] {
+    let r: T[] = []
+    for (let k of Object.keys(v)) {
+        r.push(v[k])
+    }
+    return r
+}
+
+export function strcmp(a: string, b: string) {
+    if (a == b) return 0;
+    if (a < b) return -1;
+    return 1;
+}
+
+export function checkError(err: Error) {
+    if (err) {
+        var newOne = new Error(err.message)
+        var inner = (<any>err).innerExn || err;
+        (<any>newOne).innerExn = inner;
+        throw newOne;
+    }
+}
+
+export function clone<T>(v: T): T {
+    return JSON.parse(JSON.stringify(v))
+}
+
+export function max(n: number[]) {
+    let m = n[0] || 0
+    for (let i = 1; i < n.length; ++i)
+        if (n[i] > m) m = n[i]
+    return m
+}
+
+export function min(n: number[]) {
+    let m = n[0] || 0
+    for (let i = 1; i < n.length; ++i)
+        if (n[i] < m) m = n[i]
+    return m
+}
+
+export function forEachFile(
+    dir: string, validPostfix: string, invalidPostfix: string,
+    action: (file: string) => void
+) {
+    fs.readdirSync(dir).forEach(d => {
+        if (d.indexOf(validPostfix) == -1)
+            return
+        if (invalidPostfix && invalidPostfix.length && d.indexOf(invalidPostfix) != -1)
+            return
+        action(d)
+    })
+}
+
+export function throwError(code: number) {
+    var e = new Error("Error: " + code);
+    (<any>e).statusCode = code
+    throw e
 }

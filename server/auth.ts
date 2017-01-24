@@ -3,6 +3,7 @@ import crypto = require("crypto")
 import gitfs = require('./gitfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
+import winston = require('winston')
 import * as jwt from "jwt-simple";
 
 // two weeks
@@ -39,7 +40,7 @@ export function initCheck(app: express.Express) {
                     req.appuser = dwauth.sub
                 }
             } catch (e) {
-                console.error("error veryfing token: " + tok + ": " + e.message)
+                winston.warn("error veryfing token: " + tok + ": " + e.message)
             }
         }
         next();

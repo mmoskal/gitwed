@@ -9,14 +9,22 @@ import gitfs = require('./gitfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import auth = require('./auth')
+import winston = require('winston')
+import logs = require('./logs')
 
-
-bluebird.longStackTraces()
+bluebird.longStackTraces();
+logs.init()
 
 var app = express();
 var bodyParser = require('body-parser')
 
 let fileLocks = tools.promiseQueue()
+
+app.use((req, res, next) => {
+    winston.debug(req.method + " " + req.url);
+    (<any>req)._response = res;
+    next();
+});
 
 app.use(require('cookie-parser')());
 app.use(require("compression")())
@@ -203,7 +211,7 @@ app.get(/.*/, (req, res, next) => {
                 res.end(buf)
             }
         }, e => {
-            console.log("error: " + cleaned + " " + e.message)
+            winston.info("error: " + cleaned + " " + e.message)
             next()
         })
 })
@@ -213,12 +221,7 @@ app.use((req, res) => {
 })
 
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.log(error.stack)
-    res.writeHead(500, { 'Content-Type': 'text/plain' })
-    if (req.appuser)
-        res.end('Internal Server Error, ' + error.stack);
-    else
-        res.end('Internal Server Error');
+    logs.logError(error, req)
 })
 
 let dataDir = process.argv[2]
@@ -226,12 +229,12 @@ let cfg: gitfs.Config = {} as any
 if (fs.existsSync("config.json"))
     cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
 else if (!dataDir) {
-    console.log("need either config.json or data dir argument")
+    winston.error("need either config.json or data dir argument")
     process.exit(1)
 }
 
 if (dataDir) {
-    console.log('Using local datadir: ' + dataDir)
+    winston.info('Using local datadir: ' + dataDir)
     cfg.localRepo = dataDir
 }
 
