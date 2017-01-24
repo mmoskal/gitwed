@@ -54,19 +54,19 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
         }
     }
 
-    let fn = dir + basename + ext
+    let fn = basename + ext
     if (ents.indexOf(fn) >= 0) {
         let no = 1
         while (ents.indexOf(basename + "-" + no + ext) >= 0)
             no++
-        fn = dir + basename + "-" + no + ext
+        fn = basename + "-" + no + ext
     }
 
     // write it, so we get a lock on the name
     fs.writeFileSync(repoPath + fn, buf)
 
     // this will write the file again
-    return setBinFileAsync(fn, buf, "")
+    return setBinFileAsync(dir + "/" + fn, buf, "")
         .then(() => fn)
 }
 

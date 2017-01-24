@@ -3,6 +3,8 @@ declare var ContentEdit: any;
 declare var gitwedPageInfo: gw.PageInfo;
 
 namespace gw {
+    let supportAutoSave = false
+
     export interface PageInfo {
         user: string;
         lang: string;
@@ -10,6 +12,8 @@ namespace gw {
         availableLangs: string[];
         isDefaultLang: boolean;
         path: string;
+        ref: string;
+        isEditable: boolean;
     }
 
     export interface ImgResponse {
@@ -147,6 +151,9 @@ namespace gw {
     }
 
     $(window).on("load", () => {
+        if (!gitwedPageInfo.isEditable)
+            return
+
         let editor: any
         ContentTools.StylePalette.add([
             new ContentTools.Style('Author', 'author', ['p'])
@@ -187,18 +194,20 @@ namespace gw {
             }
         });
 
-        let autoSaveTimer = -1
+        if (supportAutoSave) {
+            let autoSaveTimer = -1
 
-        // Add support for auto-save
-        editor.addEventListener('start', () => {
-            autoSaveTimer = setInterval(() => {
-                editor.save(true)
-            }, 30 * 1000);
-        });
+            // Add support for auto-save
+            editor.addEventListener('start', () => {
+                autoSaveTimer = setInterval(() => {
+                    editor.save(true)
+                }, 30 * 1000);
+            });
 
-        editor.addEventListener('stop', () => {
-            clearInterval(autoSaveTimer);
-        });
+            editor.addEventListener('stop', () => {
+                clearInterval(autoSaveTimer);
+            });
+        }
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 

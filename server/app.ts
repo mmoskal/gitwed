@@ -77,9 +77,9 @@ app.post("/api/uploadimg", (req, res) => {
     fileLocks(path, () =>
         gitfs.refreshAsync()
             .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg))
-            .then(fullPath => {
+            .then(imgName => {
                 res.json({
-                    url: "/" + fullPath
+                    url: "img/" + imgName
                 })
             }))
 })
@@ -95,6 +95,7 @@ app.post("/api/update", (req, res) => {
     let lang: string = req.body.lang
     let cfg: expander.ExpansionConfig = {
         rootFile: fn,
+        ref: "master",
         langs: lang ? [lang] : null
     }
 
@@ -171,6 +172,12 @@ app.get(/.*/, (req, res, next) => {
 
     cleaned = cleaned.slice(1)
 
+    let ref = "master"
+    if (/^[0-9a-f]{40}\//.test(cleaned)) {
+        ref = cleaned.slice(0, 40)
+        cleaned = cleaned.slice(41)
+    }
+
     if (cleaned.indexOf("private") == 0)
         return next()
 
@@ -178,11 +185,12 @@ app.get(/.*/, (req, res, next) => {
     let isHtml = spl.name.indexOf(".") < 0
 
     if (isHtml) cleaned += ".html"
-    gitfs.getFileAsync(cleaned)
+    gitfs.getFileAsync(cleaned, ref)
         .then(buf => {
             if (isHtml) {
                 let cfg: expander.ExpansionConfig = {
                     rootFile: cleaned,
+                    ref,
                     rootFileContent: buf.toString("utf8"),
                     langs
                 }
@@ -201,6 +209,8 @@ app.get(/.*/, (req, res, next) => {
                             availableLangs: cfg.pageConfig.langs,
                             isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
                             path: cleaned,
+                            isEditable: ref == "master",
+                            ref: ref,
                         }
                         html = html.replace("@GITWED-PAGE-INFO@",
                             "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")

@@ -52,6 +52,7 @@ export interface PageConfig {
 
 export interface ExpansionConfig {
     rootFile: string;
+    ref: string;
     rootFileContent?: string;
     lang?: string;
     langs?: string[];
@@ -187,7 +188,7 @@ function expandAsync(cfg: ExpansionConfig) {
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         filename = relativePath(ctx.filename, filename)
-        return gitfs.getTextFileAsync(filename)
+        return gitfs.getTextFileAsync(filename, cfg.ref)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -232,7 +233,7 @@ function expandAsync(cfg: ExpansionConfig) {
 function fillContentAsync(cfg: ExpansionConfig) {
     if (cfg.rootFileContent != null)
         return Promise.resolve()
-    return gitfs.getTextFileAsync(cfg.rootFile)
+    return gitfs.getTextFileAsync(cfg.rootFile, cfg.ref)
         .then(s => {
             cfg.rootFileContent = s
         })
@@ -240,6 +241,7 @@ function fillContentAsync(cfg: ExpansionConfig) {
 
 export function expandFileAsync(cfg: ExpansionConfig) {
     return fillContentAsync(cfg)
+        // config always takes from master
         .then(() => gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
             .then(v => v, e => ""))
         .then(cfText => {
@@ -257,7 +259,7 @@ export function expandFileAsync(cfg: ExpansionConfig) {
             if (!cfg.lang) cfg.lang = cfg.pageConfig.langs[0]
             if (cfg.lang != cfg.pageConfig.langs[0]) {
                 cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-                return gitfs.getTextFileAsync(cfg.langFileName)
+                return gitfs.getTextFileAsync(cfg.langFileName, cfg.ref)
                     .then(v => v, e => "")
             } else
                 return null
