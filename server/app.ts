@@ -49,6 +49,13 @@ interface ImgData {
     format: string;
 }
 
+app.get("/api/logs", (req, res) => {
+    if (!req.appuser)
+        tools.throwError(402)
+    res.contentType("text/plain");
+    res.send(logs.getLogs())
+})
+
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()

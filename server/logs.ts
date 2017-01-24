@@ -35,6 +35,10 @@ export function init() {
 let logs = ""
 let logsPrev = ""
 
+export function getLogs() {
+    return logsPrev + logs
+}
+
 class MemLogger extends winston.Transport {
     name: string;
     level: string;
@@ -42,7 +46,7 @@ class MemLogger extends winston.Transport {
     constructor(options: any) {
         super(options)
         this.name = 'memLogger';
-        this.level = options.level || 'info';
+        this.level = options.level || 'debug';
     }
 
     log(level: string, msg: string, meta: any, callback: (err: Error, data: boolean) => void) {
