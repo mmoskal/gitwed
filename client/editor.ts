@@ -5,6 +5,35 @@ declare var gitwedPageInfo: gw.PageInfo;
 namespace gw {
     let supportAutoSave = false
 
+    export function timeAgo(tm: number) {
+        var diff = (Date.now() - tm) / 1000;
+        function nAgo(n: number, noun: string) {
+            n = Math.round(n);
+            if (n == 1) return "one " + noun + " ago";
+            else return n + " " + noun + "s ago";
+        }
+        if (diff <= 1) return "now";
+        if (diff <= 60) return nAgo(diff, "second");
+        diff /= 60;
+        if (diff <= 60) return nAgo(diff, "minute");
+        diff /= 60;
+        if (diff <= 24) return nAgo(diff, "hour");
+        diff /= 24;
+        if (diff <= 30) return nAgo(diff, "day");
+        diff /= 30.417;
+        if (diff <= 12) return nAgo(diff, "month");
+        diff /= 12;
+        return nAgo(diff, "year");
+    }
+
+    export interface LogEntry {
+        id: string;
+        author: string;
+        date: number;
+        files: string[];
+        msg: string;
+    }
+
     export interface PageInfo {
         user: string;
         lang: string;
@@ -48,6 +77,10 @@ namespace gw {
     }
     export function postJsonAsync(path: string, data: any) {
         return httpRequestAsync({ url: path, data: data, method: "POST" })
+    }
+
+    export function getJsonAsync(path: string) {
+        return httpRequestAsync({ url: path })
     }
 
 
@@ -208,6 +241,40 @@ namespace gw {
                 clearInterval(autoSaveTimer);
             });
         }
+
+        let hist = $("<div class='ct-ignition__button ct-ignition__button--history'></div>")
+        hist.click(() => {
+            let modal = new ContentTools.ModalUI()
+            let dialog = new ContentTools.DialogUI('History')
+            let app = ContentTools.EditorApp.get()
+            app.attach(modal)
+            app.attach(dialog)
+            modal.show()
+            dialog.show()
+            $(dialog._domElement).addClass("ct-history-dialog");
+            $(dialog._domView).append("Loading...")
+            $(dialog._domClose).click(() => {
+                modal.hide()
+                dialog.hide()
+            })
+            let dir = document.location.pathname.replace(/\/[^\/]+$/, "")
+            getJsonAsync("/api/history?path=" + encodeURIComponent(dir))
+                .then((data: LogEntry[]) => {
+                    let ch: JQuery[] = []
+                    for (let e of data) {
+                        let lnk = $("<a target=_blank></a>")
+                        lnk.attr("href", "/" + e.id + document.location.pathname)
+                        lnk.text(timeAgo(e.date*1000))
+                        let ent = $("<div class='ct-history-entry'></div>")
+                            .append(lnk)
+                            .append(" ")
+                            .append($("<span class='ct-msg'></span>").text(e.msg))
+                        ch.push(ent)
+                    }
+                    $(dialog._domView).empty().append(ch)
+                })
+        })
+        $(".ct-ignition").append(hist)
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 

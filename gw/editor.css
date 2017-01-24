@@ -45,3 +45,34 @@
     text-align: right;
 }
 
+
+.ct-app .ct-widget.ct-ignition .ct-ignition__button--history {
+    display: block;
+    top: 64px;
+    left: 0px;
+    background: #ff4500;
+}
+.ct-widget .ct-ignition__button--history:before {
+    content: '\e94e';
+}
+.ct-app .ct-widget.ct-ignition .ct-ignition__button--history:hover {
+    background: #ff7e4e;
+}
+
+.ct-widget.ct-history-dialog .ct-dialog__view {
+    overflow-y: scroll;
+    overflow-x: hidden;
+    margin-top: 10px;
+    height: 400px;
+}
+
+.ct-widget.ct-history-dialog .ct-dialog__body {
+    width: 635px;
+}
+
+.ct-widget.ct-history-dialog .ct-history-entry a {
+    width: 8em;
+    display: inline-block;
+    color: #999;
+    font-weight: bold;
+}
