@@ -46,10 +46,9 @@
 }
 
 
-.ct-app .ct-widget.ct-ignition .ct-ignition__button--history {
+.ct-app .ct-widget.ct-ignition.ct-ignition--ready .ct-ignition__button--history {
     display: block;
-    top: 58px;
-    left: 0px;
+    left: 64px;
     background: #ff4500;
 }
 .ct-widget .ct-ignition__button--history:before {
@@ -73,6 +72,21 @@
 .ct-widget.ct-history-dialog .ct-history-entry a {
     width: 8em;
     display: inline-block;
-    color: #999;
+    color: #333;
     font-weight: bold;
+}
+
+#ct-msgbox {
+    position: absolute;
+    top: 55px;
+    left: 0;
+    background: cornflowerblue;
+    color: white;
+    width: 100px;
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
+.ct-ignition--ready #ct-msgbox {
+    display: none;
 }

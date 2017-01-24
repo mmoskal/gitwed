@@ -186,6 +186,8 @@ namespace gw {
     $(window).on("load", () => {
         if (!gitwedPageInfo.isEditable)
             return
+        
+        let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
         let editor: any
         ContentTools.StylePalette.add([
@@ -264,7 +266,7 @@ namespace gw {
                     for (let e of data) {
                         let lnk = $("<a target=_blank></a>")
                         lnk.attr("href", "/" + e.id + document.location.pathname)
-                        lnk.text(timeAgo(e.date*1000))
+                        lnk.text(timeAgo(e.date * 1000))
                         let ent = $("<div class='ct-history-entry'></div>")
                             .append(lnk)
                             .append(" ")
@@ -274,7 +276,7 @@ namespace gw {
                     $(dialog._domView).empty().append(ch)
                 })
         })
-        $(".ct-ignition").append(hist)
+        $(".ct-ignition").append(hist).append(msgbox)
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 
