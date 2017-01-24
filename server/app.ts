@@ -56,12 +56,26 @@ app.get("/api/logs", (req, res) => {
     res.send(logs.getLogs())
 })
 
+function sanitizePath(p: string) {
+    p = p + ""
+    return p.split(/\//).filter(s => !!s && s != "." && s != "..")
+}
+
+app.get("/api/history", (req, res) => {
+    if (!req.appuser)
+        tools.throwError(402)
+    let p = sanitizePath(req.query["path"] || "/").join("/")
+
+    gitfs.logAsync(p || ".")
+        .then(j => res.json(j))
+})
+
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
 
     let data = req.body as ImgData
-    let pathElts = data.page.split(/\//).filter(s => !!s)
+    let pathElts = sanitizePath(data.page)
     pathElts.pop()
     pathElts.push("img")
     let path = pathElts.join("/")

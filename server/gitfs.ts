@@ -243,7 +243,7 @@ function parseLog(fulllog: string) {
                 currEntry.date = Math.round(new Date(m[2]).getTime() / 1000)
             else {
                 m = /^[A-Z]\t(.*)/.exec(l)
-                if (l) currEntry.files.push(m[1])
+                if (m) currEntry.files.push(m[1])
             }
         }
     }
@@ -380,7 +380,7 @@ function runGitAsync(args: string[]) {
 
 export function logAsync(path = ".") {
     return apiLockAsync("log", () =>
-        runGitAsync(["log", "--name-status", "--pretty=fuller", path])
+        runGitAsync(["log", "--name-status", "--pretty=fuller", "--max-count=200", path])
             .then(buf => parseLog(buf)))
 }
 
