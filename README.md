@@ -14,6 +14,7 @@ make
 * this will run a server on http://localhost:3000, serving from `somewhere/gitwed-data`
 * if you modify files via web interface, they will be modified in `somewhere/gitwed-data`
 * if you modify files in `somewhere/gitwed-data`, the changes should be visible at http://localhost:3000
+* there is no need to worry about user accounts unless you add `jwtSecret` to `config.json` - everyone connecting will be treated as an admin
 
 ## Macro language
 

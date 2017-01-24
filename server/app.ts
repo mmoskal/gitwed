@@ -231,24 +231,33 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
     logs.logError(error, req)
 })
 
-let dataDir = process.argv[2]
 let cfg: gitfs.Config = {} as any
 if (fs.existsSync("config.json"))
     cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
-else if (!dataDir) {
-    winston.error("need either config.json or data dir argument")
+cfg.justDir = true
+let args = process.argv.slice(2)
+if (args[0] == "-i") {
+    args.shift()
+    cfg.justDir = false
+}
+if (args[0]) {
+    cfg.repoPath = args[0]
+}
+
+if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
+    winston.error(`cannot find repoPath (${cfg.repoPath}) in config.json or as argument`)
     process.exit(1)
 }
 
-if (dataDir) {
-    winston.info('Using local datadir: ' + dataDir)
-    cfg.localRepo = dataDir
-}
+let port = 3000
 
 gitfs.initAsync(cfg)
     .then(() => {
-        if (cfg.localRepo) app.listen(3000, "localhost")
-        else app.listen(3000)
+        if (cfg.justDir) {
+            winston.info(`listen on http://localhost:${port} using local file modifications`)
+            app.listen(port, "localhost")
+        } else {
+            winston.info(`listen on http://*:${port} with git push/pull`)
+            app.listen(port)
+        }
     })
-
-//expander.test()

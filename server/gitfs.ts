@@ -9,7 +9,8 @@ import winston = require('winston');
 
 export interface Config {
     jwtSecret: string;
-    localRepo?: string;
+    justDir?: boolean;
+    repoPath?: string;
 }
 
 let repoPath = ""
@@ -73,7 +74,8 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
 export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
     if (justDir)
         return readAsync(repoPath + name)
-    return getGitObjectAsync(ref + ":" + name)
+    return refreshAsync(120)
+        .then(() => getGitObjectAsync(ref + ":" + name))
         .then(obj => {
             if (obj.type == "blob") {
                 return obj.data
@@ -102,15 +104,24 @@ export function splitName(fullname: string) {
     return { parent, name }
 }
 
-function refreshRootIdCoreAsync() {
+function getHeadRevAsync() {
     if (justDir)
         return Promise.resolve()
     return Promise.resolve()
-        .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit"]))
-        .then(() => readAsync(repoPath + ".git/refs/heads/master"))
+        .then(() => runGitAsync(["rev-parse", "HEAD"]))
         .then(buf => {
-            rootId = buf.toString("utf8").trim()
+            rootId = buf.trim()
+            rootIdTime = Date.now()
+            winston.debug(`HEAD now at ${rootId}`)
         })
+}
+
+function pullAsync() {
+    if (justDir)
+        return Promise.resolve()
+    return Promise.resolve()
+        .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit", "--quiet"]))
+        .then(getHeadRevAsync)
 }
 
 export function refreshAsync(timeoutSeconds = 5) {
@@ -118,22 +129,10 @@ export function refreshAsync(timeoutSeconds = 5) {
         return Promise.resolve()
     return apiLockAsync("commit", () => {
         if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
-            return refreshRootIdCoreAsync()
+            return pullAsync()
         else
             return Promise.resolve()
     })
-}
-
-export function initAsync(cfg: Config) {
-    config = cfg
-
-    if (cfg.localRepo) {
-        repoPath = cfg.localRepo.replace(/\/$/, "") + "/"
-        justDir = true
-        return Promise.resolve()
-    }
-
-    return refreshRootIdCoreAsync()
 }
 
 export function getTextFileAsync(name: string, ref = "master"): bluebird.Thenable<string> {
@@ -339,6 +338,7 @@ function getGitObjectAsync(id: string) {
                 })
         return loop()
     }).then(obj => {
+        winston.debug(`[cat-file] ${id} -> ${obj.id} ${obj.type} ${obj.data.length}`)
         if (obj.type == "tree") {
             obj.tree = parseTree(obj.data)
         } else if (obj.type == "commit") {
@@ -369,7 +369,7 @@ function runGitAsync(args: string[]) {
         })
         ch.on('close', (code: number) => {
             if (errbufs.length)
-                winston.info(Buffer.concat(errbufs).toString("utf8"))
+                winston.info(Buffer.concat(errbufs).toString("utf8").trim())
             if (code != 0) {
                 reject(new Error("Exit code: " + code + " from " + info))
             }
@@ -397,8 +397,34 @@ export function setBinFileAsync(name: string, val: Buffer, msg: string) {
         return Promise.resolve()
             .then(() => runGitAsync(["add", name]))
             .then(() => runGitAsync(["commit", "-m", msg]))
-            .then(() => runGitAsync(["push"]))
-            .then(() => {
-            })
+            .then(() => runGitAsync(["push", "--quiet"]).then(
+                () => { },
+                // if we get an error from push, trying pulling first
+                e =>
+                    pullAsync()
+                        .then(() => runGitAsync(["push"]))))
+            .then(getHeadRevAsync)
     })
+}
+
+function statusCleanAsync() {
+    return runGitAsync(["status", "--porcelain", "--untracked-files"])
+        .then(outp => {
+            if (outp.trim()) {
+                winston.error(`git status output:\n${outp}`)
+                throw new Error("git not clean")
+            }
+        })
+}
+
+export function initAsync(cfg: Config) {
+    config = cfg
+    repoPath = cfg.repoPath.replace(/\/$/, "") + "/"
+    justDir = !!cfg.justDir
+
+    if (justDir)
+        return Promise.resolve()
+
+    return statusCleanAsync()
+        .then(pullAsync)
 }
