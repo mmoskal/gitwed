@@ -72,7 +72,7 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
 
 // TODO add some in-memory cache for small files?
 export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
-    if (justDir)
+    if (justDir && ref == "master")
         return readAsync(repoPath + name)
     return refreshAsync(120)
         .then(() => getGitObjectAsync(ref + ":" + name))
