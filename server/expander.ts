@@ -1,6 +1,7 @@
 import cheerio = require("cheerio")
 import gitfs = require('./gitfs')
 import * as bluebird from "bluebird";
+import * as winston from "winston";
 
 let htmlparser2 = require("htmlparser2")
 
@@ -111,6 +112,7 @@ function expandAsync(cfg: ExpansionConfig) {
 
     let idToPos: SMap<Pos> = {}
     let allFiles: SMap<string> = {}
+    let trees: SMap<Promise<gitfs.TreeEntry[]>> = {}
 
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
@@ -153,13 +155,114 @@ function expandAsync(cfg: ExpansionConfig) {
                     }
                 })
             }
-
+        })
+        .then(cdnRewriteAsync)
+        .then(() => {
             return {
                 allFiles,
                 idToPos,
                 html: h.html()
             }
         })
+
+    function getTreeAsync(path: string) {
+        if (trees[path])
+            return trees[path]
+        return (trees[path] =
+            gitfs.getTreeAsync(path, cfg.ref)
+                .then(ents => {
+                    if (!ents)
+                        winston.debug("no such tree: " + path + " in " + cfg.ref)
+                    return ents
+                }))
+    }
+
+    function replUrlAsync(url: string) {
+        let resolved = relativePath(cfg.rootFile, url)
+        let spl = gitfs.splitName(resolved)
+        return getTreeAsync(spl.parent)
+            .then(ents => {
+                if (!ents)
+                    return url
+                let e = ents.find(x => x.name == spl.name)
+                if (e) {
+                    let ext = spl.name.replace(/.*\./, ".")
+                    return "/cdn/" + spl.name + "-" + e.sha + ext
+                } else {
+                    winston.debug("no such file: " + resolved + " in " + cfg.ref)
+                    return url
+                }
+            })
+    }
+
+    function canBeCdned(v: string, canHaveRelativeLinks = false) {
+        if (!v) return false
+        if (/^[\w-]+:\/\//.test(v)) return false
+        if (/^\/common\//.test(v)) return true
+        if (canHaveRelativeLinks && !/(^|\/)cdn\//.test(v)) return false
+        return true
+    }
+
+    function cdnRewriteAsync() {
+        let promises: Promise<void>[] = []
+        let replIdx = 0
+
+        let repl = (e: CheerioElement, attrName: string, canHaveRelativeLinks = false) => {
+            let ee = h(e)
+            let v = ee.attr(attrName)
+            if (!canBeCdned(v, canHaveRelativeLinks)) return
+            promises.push(replUrlAsync(v).then(r => {
+                winston.debug("repl: " + v + " -> " + r)
+                ee.attr(attrName, r)
+            }))
+        }
+        h("img, audio, video, track").each((idx, e) => {
+            repl(e, "src")
+            if (e.tagName != "img")
+                repl(e, "poster")
+        })
+        h("script").each((idx, e) => {
+            repl(e, "src", true)
+        })
+        h("link").each((idx, e) => {
+            let ee = h(e)
+            let rels = (ee.attr("rel") || "").split(/\s+/)
+            if (rels.indexOf("stylesheet") >= 0)
+                repl(e, "href", true)
+            if (rels.indexOf("icon") >= 0)
+                repl(e, "href")
+        })
+        h("style").each((idx, e) => {
+            let ee = h(e)
+            let lprom: Promise<void>[] = []
+            let map: SMap<string> = {}
+            let addrepl = (s: string) => {
+                s = s.trim()
+                let m = /^'(.*)'$/.exec(s)
+                if (m) s = m[1]
+                m = /^"(.*)"$/.exec(s)
+                if (m) s = m[1]
+                let tag = "##REPL##" + ++replIdx + "#"
+                if (canBeCdned(s, true)) {
+                    lprom.push(replUrlAsync(s).then(r => {
+                        map[tag] = r
+                    }))
+                } else {
+                    map[tag] = s
+                }
+                return tag
+            }
+            let t0 = ee.text()
+                .replace(/url\(([^\)]+)\)/g, (f, u) => "url(" + addrepl(u) + ")")
+                .replace(/@import ("[^"]+"|'[^']+')/g, (f, u) => "@import " + addrepl(u))
+            promises.push(Promise.all(lprom)
+                .then(() => {
+                    ee.text(t0.replace(/##REPL##\d+#/g, f => "\"" + map[f] + "\""))
+                }))
+        })
+
+        return Promise.all(promises)
+    }
 
     function setLocations(e: Cheerio, filename: string, fileContent: string) {
         allFiles[filename] = fileContent

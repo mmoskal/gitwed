@@ -7,6 +7,9 @@ import * as bluebird from "bluebird";
 import express = require('express');
 import winston = require('winston');
 
+const maxCacheSize = 32 * 1024 * 1024
+const maxCacheEltSize = 256 * 1024
+
 export interface Config {
     jwtSecret: string;
     justDir?: boolean;
@@ -20,6 +23,8 @@ let justDir = false
 let apiLockAsync = tools.promiseQueue()
 let rootIdTime: number = 0
 let rootId = ""
+let gitCacheSize = 0
+let gitObjCache: SMap<GitObject> = {}
 
 //let cachePath = "cache/"
 
@@ -105,8 +110,6 @@ export function splitName(fullname: string) {
 }
 
 function getHeadRevAsync() {
-    if (justDir)
-        return Promise.resolve()
     return Promise.resolve()
         .then(() => runGitAsync(["rev-parse", "HEAD"]))
         .then(buf => {
@@ -118,15 +121,13 @@ function getHeadRevAsync() {
 
 function pullAsync() {
     if (justDir)
-        return Promise.resolve()
+        return getHeadRevAsync()
     return Promise.resolve()
         .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit", "--quiet"]))
         .then(getHeadRevAsync)
 }
 
 export function refreshAsync(timeoutSeconds = 5) {
-    if (justDir)
-        return Promise.resolve()
     return apiLockAsync("commit", () => {
         if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
             return pullAsync()
@@ -188,6 +189,7 @@ function startGitCatFile() {
 interface GitObject {
     id: string;
     type: string;
+    memsize: number;
     data: Buffer;
     tree?: TreeEntry[];
     commit?: Commit;
@@ -201,7 +203,7 @@ interface Commit {
     msg: string;
 }
 
-interface TreeEntry {
+export interface TreeEntry {
     mode: string;
     name: string;
     sha: string;
@@ -294,9 +296,19 @@ function parseCommit(buf: Buffer): Commit {
 }
 
 function getGitObjectAsync(id: string) {
-    if (/[\r\n]/.test(id))
+    if (!id || /[\r\n]/.test(id))
         throw new Error("bad id: " + id)
+
+    let cached = gitObjCache[id]
+    if (cached)
+        return Promise.resolve(cached)
+
     return apiLockAsync("cat-file", () => {
+        // check again, maybe the object has been cached while we were waiting
+        cached = gitObjCache[id]
+        if (cached)
+            return Promise.resolve(cached)
+
         startGitCatFile()
         gitCatFile.stdin.write(id + "\n")
         let sizeLeft = 0
@@ -304,6 +316,7 @@ function getGitObjectAsync(id: string) {
         let res: GitObject = {
             id: id,
             type: "",
+            memsize: 64,
             data: null
         }
         let loop = (): Promise<GitObject> =>
@@ -323,6 +336,7 @@ function getGitObjectAsync(id: string) {
                         res.id = m[1]
                         res.type = m[2]
                         sizeLeft = parseInt(m[3])
+                        res.memsize += sizeLeft // approximate
                     }
                     if (buf.length > sizeLeft) {
                         buf = buf.slice(0, sizeLeft)
@@ -336,16 +350,58 @@ function getGitObjectAsync(id: string) {
                         return loop()
                     }
                 })
-        return loop()
-    }).then(obj => {
-        winston.debug(`[cat-file] ${id} -> ${obj.id} ${obj.type} ${obj.data.length}`)
-        if (obj.type == "tree") {
-            obj.tree = parseTree(obj.data)
-        } else if (obj.type == "commit") {
-            obj.commit = parseCommit(obj.data)
-        }
-        return obj
+
+        return loop().then(obj => {
+            winston.debug(`[cat-file] ${id} -> ${obj.id} ${obj.type} ${obj.data.length}`)
+            if (obj.type == "tree") {
+                obj.tree = parseTree(obj.data)
+                obj.data = null
+            } else if (obj.type == "commit") {
+                obj.commit = parseCommit(obj.data)
+                obj.data = null
+            }
+
+            // check if this is an object in a specific revision, not say on 'master'
+            // and if it's small enough to warant caching
+            if (/^[0-9a-f]{40}/.test(id) && obj.memsize <= maxCacheEltSize) {
+                gitCacheSize += obj.memsize
+                // this is quite dumm, but simple and works
+                if (gitCacheSize > maxCacheSize) {
+                    gitCacheSize = obj.memsize
+                    gitObjCache = {}
+                }
+                gitObjCache[id] = obj
+            }
+
+            return obj
+        })
     })
+}
+
+export function getTreeAsync(path: string, ref: string): Promise<TreeEntry[]> {
+    if (ref == "HEAD" || ref == "master") ref = rootId
+    if (!/^[0-9a-f]{40}$/.test(ref))
+        throw new Error("bad ref: " + ref)
+    if (path == "/")
+        return getGitObjectAsync(ref)
+            .then(obj => {
+                if (obj.type != "commit")
+                    throw new Error("bad type")
+                return getGitObjectAsync(obj.commit.tree)
+                    .then(o => o.tree)
+            })
+
+    let spl = splitName(path.replace(/\/$/, ""))
+    return getTreeAsync(spl.parent, ref)
+        .then(ents => {
+            if (!ents)
+                return null
+            let e = ents.find(x => x.name == spl.name)
+            if (!e)
+                return null
+            return getGitObjectAsync(e.sha)
+                .then(o => o.tree)
+        })
 }
 
 function runGitAsync(args: string[]) {
@@ -408,6 +464,9 @@ export function setBinFileAsync(name: string, val: Buffer, msg: string) {
 }
 
 function statusCleanAsync() {
+    if (justDir)
+        return Promise.resolve()
+
     return runGitAsync(["status", "--porcelain", "--untracked-files"])
         .then(outp => {
             if (outp.trim()) {
@@ -421,9 +480,6 @@ export function initAsync(cfg: Config) {
     config = cfg
     repoPath = cfg.repoPath.replace(/\/$/, "") + "/"
     justDir = !!cfg.justDir
-
-    if (justDir)
-        return Promise.resolve()
 
     return statusCleanAsync()
         .then(pullAsync)

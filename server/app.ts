@@ -233,10 +233,9 @@ app.get(/.*/, (req, res, next) => {
                 expander.expandFileAsync(cfg)
                     .then(page => {
                         let html = page.html
-                        if (req.appuser) {
+                        if (!req.appuser) {
                             html = html
-                                .replace("<!-- @GITWED-EDIT@", "")
-                                .replace("@GITWED-EDIT@ -->", "")
+                                .replace(/<!-- @GITWED-EDIT@ -->[^]*?<!-- @GITWED-EDIT-END@ -->/, "")
                         }
                         let pageInfo = {
                             user: req.appuser || null,

@@ -65,6 +65,8 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] set user doing commit
 * [ ] history restore
 * [ ] logout button
+* [x] cat-file cache
+* [x] rewriting to CDN locations
 
 ### Login system
 * [ ] short-lived emailed tokens
