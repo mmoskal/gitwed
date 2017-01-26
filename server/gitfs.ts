@@ -309,6 +309,8 @@ function getGitObjectAsync(id: string) {
         if (cached)
             return Promise.resolve(cached)
 
+        winston.debug("cat: " + id)
+
         startGitCatFile()
         gitCatFile.stdin.write(id + "\n")
         let sizeLeft = 0
@@ -324,6 +326,7 @@ function getGitObjectAsync(id: string) {
                 .then(buf => {
                     startGitCatFile() // make sure the usage counter is updated
                     if (!res.type) {
+                        winston.debug(`cat-file ${id} -> ${buf.length} bytes`)
                         let end = buf.indexOf(10)
                         let line = buf
                         if (end >= 0) {
@@ -332,7 +335,14 @@ function getGitObjectAsync(id: string) {
                         } else {
                             throw new Error("bad cat-file respose: " + buf.toString("utf8").slice(0, 100))
                         }
-                        let m = /^([0-9a-f]{40}) (\S+) (\d+)/.exec(line.toString("utf8"))
+                        let lineS = line.toString("utf8")
+                        if (/ missing/.test(lineS)) {
+                            throw new Error("file missing")
+                        }
+                        let m = /^([0-9a-f]{40}) (\S+) (\d+)/.exec(lineS)
+                        if (!m)
+                            throw new Error("invalid cat-file response: "
+                                + lineS + " <nl> " + buf.toString("utf8"))
                         res.id = m[1]
                         res.type = m[2]
                         sizeLeft = parseInt(m[3])
