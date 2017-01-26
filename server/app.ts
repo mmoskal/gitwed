@@ -149,6 +149,8 @@ app.post("/api/update", (req, res) => {
 
 app.use("/gw", express.static("built/gw"))
 app.use("/gw", express.static("gw"))
+// support let's encrypt cert renewal (when hidden behind apache)
+app.use("/.well-known", express.static("/var/www/html/.well-known"))
 //app.use("/gw", express.static("node_modules/ContentTools/build"))
 //app.use("/", express.static("html"))
 
