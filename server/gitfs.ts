@@ -343,7 +343,7 @@ function getGitObjectAsync(id: string) {
                             } else {
                                 typeBuf = buf
                             }
-                            winston.info(`retrying read; sz=${typeBuf.length}`)
+                            winston.info(`retrying read; sz=${buf.length}`)
                             return loop()
                         }
                         let line = buf
