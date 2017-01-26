@@ -29,6 +29,7 @@ export function initCheck(app: express.Express) {
         // when running on localhost without secret make everyone an admin
         if (!gitfs.config.jwtSecret && gitfs.config.repoPath) {
             req.appuser = "admin"
+            next()
             return
         }
 
