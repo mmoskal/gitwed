@@ -158,7 +158,7 @@ let gitCatFileBuf = new tools.PromiseBuffer<Buffer>()
 function maybeGcGitCatFile() {
     if (!gitCatFile) return
     let d = Date.now() - lastUsage
-    if (d < 15000) return
+    if (d < 3000) return
     winston.debug("[gc] git cat-file")
     gitCatFile.stdin.end()
     gitCatFile = null
@@ -167,7 +167,7 @@ function maybeGcGitCatFile() {
 
 function startGitCatFile() {
     if (!lastUsage) {
-        setInterval(maybeGcGitCatFile, 5000)
+        setInterval(maybeGcGitCatFile, 1000)
     }
     lastUsage = Date.now()
     if (!gitCatFile) {
