@@ -333,7 +333,11 @@ function getGitObjectAsync(id: string) {
                         }
                         let end = buf.indexOf(10)
                         if (end <= 0) {
-                            typeBuf = buf
+                            if (buf.length == 1 && buf[0] == 10) {
+                                // skip it
+                            } else {
+                                typeBuf = buf
+                            }
                             winston.info(`retrying read; sz=${typeBuf.length}`)
                             return loop()
                         }
