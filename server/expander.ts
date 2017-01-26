@@ -346,7 +346,10 @@ export function expandFileAsync(cfg: ExpansionConfig) {
     return fillContentAsync(cfg)
         // config always takes from master
         .then(() => gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
-            .then(v => v, e => ""))
+            .then(v => v, e => {
+                winston.info("config.json: " + e.message)
+                return ""
+            }))
         .then(cfText => {
             cfg.pageConfig = JSON.parse(cfText || "{}")
             if (!cfg.pageConfig.langs || !cfg.pageConfig.langs.length)
