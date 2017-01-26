@@ -321,13 +321,21 @@ function getGitObjectAsync(id: string) {
             memsize: 64,
             data: null
         }
+        let typeBuf: Buffer = null
         let loop = (): Promise<GitObject> =>
             gitCatFileBuf.shiftAsync()
                 .then(buf => {
                     startGitCatFile() // make sure the usage counter is updated
                     if (!res.type) {
-                        winston.debug(`cat-file ${id} -> ${buf.length} bytes`)
+                        winston.debug(`cat-file ${id} -> ${buf.length} bytes; ${buf[0]} ${buf[1]}`)
+                        if (typeBuf) {
+                            buf = Buffer.concat([typeBuf, buf])
+                        }
                         let end = buf.indexOf(10)
+                        if (end <= 0) {
+                            typeBuf = buf
+                            return loop()
+                        }
                         let line = buf
                         if (end >= 0) {
                             line = buf.slice(0, end)
