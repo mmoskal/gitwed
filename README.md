@@ -62,6 +62,10 @@ and copy `user` field into `users` array in `private/users.json`.
 * [x] add base file name to ids?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [x] add language indication next to edit button
-* [ ] add /gw/auth form with user/password (for password managers)
 * [ ] set user doing commit
 * [ ] history restore
+* [ ] logout button
+
+### Login system
+* [ ] short-lived emailed tokens
+* [ ] invite user option

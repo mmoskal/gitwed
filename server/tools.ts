@@ -8,6 +8,7 @@ import * as events from 'events';
 import * as querystring from 'querystring';
 import * as bluebird from 'bluebird';
 import * as crypto from "crypto";
+import express = require('express');
 
 export function readResAsync(g: events.EventEmitter) {
     return new Promise<Buffer>((resolve, reject) => {
@@ -310,4 +311,23 @@ export function throwError(code: number) {
     var e = new Error("Error: " + code);
     (<any>e).statusCode = code
     throw e
+}
+
+export function etagMatches(req: express.Request, etag: string) {
+    let response: express.Response = req._response
+    if (!etag) return false
+    if (etag[0] != "\"") etag = "\"" + etag + "\""
+    if (req.header("if-none-match") == etag) {
+        response.status(304)
+        response.end()
+        return true
+    } else {
+        response.setHeader("ETag", etag)
+        return false
+    }
+}
+
+export function allowReqCache(req: express.Request) {
+    let response: express.Response = req._response
+    response.setHeader("Cache-Control", "public, max-age=604800")
 }

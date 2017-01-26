@@ -75,7 +75,7 @@ export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
     if (justDir && ref == "master")
         return readAsync(repoPath + name)
     return refreshAsync(120)
-        .then(() => getGitObjectAsync(ref + ":" + name))
+        .then(() => getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name))
         .then(obj => {
             if (obj.type == "blob") {
                 return obj.data

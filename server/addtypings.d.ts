@@ -13,5 +13,6 @@ type SMap<T> = { [s: string]: T };
 declare namespace Express {
     export interface Request {
         appuser: string;
+        _response: any;
     }
 }

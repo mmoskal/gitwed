@@ -87,7 +87,7 @@ export function logError(err: any, req: express.Request = null) {
     }
 
     if (req) {
-        let resp: express.Response = (<any>req)._response
+        let resp: express.Response = req._response
         if (resp) {
             resp.status(code).send({ error: err.message, errorId: errId })
         }

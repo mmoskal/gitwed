@@ -22,7 +22,7 @@ let fileLocks = tools.promiseQueue()
 
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
-    (<any>req)._response = res;
+    req._response = res;
     next();
 });
 
@@ -154,6 +154,26 @@ app.use("/.well-known", express.static("/var/www/html/.well-known"))
 //app.use("/gw", express.static("node_modules/ContentTools/build"))
 //app.use("/", express.static("html"))
 
+app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
+    let sha = req.params[1]
+    let filename = req.params[2]
+    if (filename[0] == ".") filename = "blob" + filename
+    if (tools.etagMatches(req, sha + "-0"))
+        return
+    tools.allowReqCache(req)
+    gitfs.getFileAsync(sha, "SHA")
+        .then(buf => {
+            res.writeHead(200, {
+                'Content-Type': mime.lookup(filename),
+                'Content-Length': buf.length
+            })
+            res.end(buf)
+        }, e => {
+            winston.info("error (cdn): " + req.path + " " + e.message)
+            res.status(404).end('Page not found (CDN)');
+        })
+})
+
 app.get(/.*/, (req, res, next) => {
     if (req.query["setlang"] != null) {
         res.cookie("GWLANG", req.query['setlang'] || "")
@@ -250,7 +270,7 @@ app.get(/.*/, (req, res, next) => {
 })
 
 app.use((req, res) => {
-    res.status(404).send('Page not found');
+    res.status(404).end('Page not found');
 })
 
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
