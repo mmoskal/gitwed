@@ -330,10 +330,13 @@ function getGitObjectAsync(id: string) {
                         winston.debug(`cat-file ${id} -> ${buf.length} bytes; ${buf[0]} ${buf[1]}`)
                         if (typeBuf) {
                             buf = Buffer.concat([typeBuf, buf])
+                        } else {
+                            while (buf[0] == 10)
+                                buf = buf.slice(1)
                         }
                         let end = buf.indexOf(10)
-                        if (end <= 0) {
-                            if (buf.length == 1 && buf[0] == 10) {
+                        if (end < 0) {
+                            if (buf.length == 0) {
                                 // skip it
                             } else {
                                 typeBuf = buf
