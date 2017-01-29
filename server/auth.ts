@@ -54,6 +54,10 @@ export function initRoutes(app: express.Express) {
         res.redirect(req.query["redirect"] || "/")
     })
 
+    app.post("/gw/login", (req, res, next) => {
+        res.redirect("/gw/sent")
+    })
+
     function createUser(req: express.Request) {
         let pass = crypto.randomBytes(20).toString("hex")
         let salt = crypto.randomBytes(16).toString("hex")

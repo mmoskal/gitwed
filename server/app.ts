@@ -220,52 +220,58 @@ app.get(/.*/, (req, res, next) => {
     let spl = gitfs.splitName(cleaned)
     let isHtml = spl.name.indexOf(".") < 0
 
-    if (isHtml) cleaned += ".html"
-    gitfs.getFileAsync(cleaned, ref)
-        .then(buf => {
-            if (isHtml) {
-                let cfg: expander.ExpansionConfig = {
-                    rootFile: cleaned,
-                    ref,
-                    rootFileContent: buf.toString("utf8"),
-                    langs
-                }
-                expander.expandFileAsync(cfg)
-                    .then(page => {
-                        let html = page.html
-                        if (!req.appuser) {
-                            html = html
-                                .replace(/<!-- @GITWED-EDIT@ -->[^]*?<!-- @GITWED-EDIT-END@ -->/, "")
-                        }
-                        let pageInfo = {
-                            user: req.appuser || null,
-                            lang: cfg.lang,
-                            langFileCreated: !!cfg.langFileContent,
-                            availableLangs: cfg.pageConfig.langs,
-                            isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
-                            path: cleaned,
-                            isEditable: ref == "master",
-                            ref: ref,
-                        }
-                        html = html.replace("@GITWED-PAGE-INFO@",
-                            "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")
-                        res.writeHead(200, {
-                            'Content-Type': 'text/html; charset=utf8'
-                        })
-                        res.end(html)
-                    })
-                    .then(v => v, next)
-            } else {
+    let errHandler = (e: any) => {
+        winston.info("error: " + cleaned + " " + e.message)
+        next()
+    }
+
+    if (!isHtml) {
+        gitfs.getFileAsync(cleaned, ref)
+            .then(buf => {
                 res.writeHead(200, {
                     'Content-Type': mime.lookup(cleaned),
                     'Content-Length': buf.length
                 })
                 res.end(buf)
+            }, errHandler)
+        return
+    }
+
+    cleaned += ".html"
+    gitfs.getTextFileAsync(cleaned, ref)
+        .then(str => {
+            let cfg: expander.ExpansionConfig = {
+                rootFile: cleaned,
+                ref,
+                rootFileContent: str,
+                langs
             }
-        }, e => {
-            winston.info("error: " + cleaned + " " + e.message)
-            next()
-        })
+            expander.expandFileAsync(cfg)
+                .then(page => {
+                    let html = page.html
+                    if (!req.appuser) {
+                        html = html
+                            .replace(/<!-- @GITWED-EDIT@ -->[^]*?<!-- @GITWED-EDIT-END@ -->/, "")
+                    }
+                    let pageInfo = {
+                        user: req.appuser || null,
+                        lang: cfg.lang,
+                        langFileCreated: !!cfg.langFileContent,
+                        availableLangs: cfg.pageConfig.langs,
+                        isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
+                        path: cleaned,
+                        isEditable: ref == "master",
+                        ref: ref,
+                    }
+                    html = html.replace("@GITWED-PAGE-INFO@",
+                        "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")
+                    res.writeHead(200, {
+                        'Content-Type': 'text/html; charset=utf8'
+                    })
+                    res.end(html)
+                })
+                .then(v => v, next)
+        }, errHandler)
 })
 
 app.use((req, res) => {
