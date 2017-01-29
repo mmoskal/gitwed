@@ -14,6 +14,8 @@ export interface Config {
     jwtSecret: string;
     justDir?: boolean;
     repoPath?: string;
+    mailgunApiKey?: string;
+    mailgunDomain?: string;
 }
 
 let repoPath = ""

@@ -67,6 +67,11 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] logout button
 * [x] cat-file cache
 * [x] rewriting to CDN locations
+* [ ] add secure=true to cookie
+* [ ] add HSTS
+* [ ] forbid GET on config.json
+* [ ] disable CDN rewrite in file mode
+
 
 ### Login system
 * [ ] short-lived emailed tokens
