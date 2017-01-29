@@ -32,13 +32,13 @@ export function initCheck(app: express.Express) {
             return
         }
 
-        let tok = req.cookies["GWAUTH"]
+
+        let tok: string = req.cookies["GWAUTH"]
         if (tok) {
             try {
                 let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
-                if (tok.iss == "GITwed"
+                if (dwauth.iss == "GITwed"
                     && Date.now() / 1000 - dwauth.iat < cookieValidity) {
-                    winston.debug("set appuser=" + dwauth.sub)
                     req.appuser = dwauth.sub
                 }
             } catch (e) {
