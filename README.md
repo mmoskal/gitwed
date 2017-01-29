@@ -70,9 +70,10 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] add secure=true to cookie
 * [ ] add HSTS
 * [ ] forbid GET on config.json
-* [ ] disable CDN rewrite in file mode
+* [x] disable CDN rewrite in file mode
 
 
 ### Login system
-* [ ] short-lived emailed tokens
+* [x] short-lived emailed tokens
 * [ ] invite user option
+* [ ] throttle email sending

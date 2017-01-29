@@ -1,27 +1,26 @@
 import express = require('express');
 import crypto = require("crypto")
 import gitfs = require('./gitfs')
+import mail = require('./mail')
 import tools = require('./tools')
+import routing = require('./routing')
 import bluebird = require('bluebird')
 import winston = require('winston')
 import * as jwt from "jwt-simple";
 
 // two weeks
 let cookieValidity = 14 * 24 * 3600;
+// 10min
+let emailValidity = 10 * 60;
 
 
 interface User {
-    login: string;
-    hash: string;
-    salt: string;
+    email: string;
+    nickname: string;
 }
 
 interface UserConfig {
     users: User[];
-}
-
-function hashPass(u: User, pass: string) {
-    return crypto.pbkdf2Sync(pass, u.salt, 20000, 32, "sha256").toString("hex")
 }
 
 export function initCheck(app: express.Express) {
@@ -37,7 +36,9 @@ export function initCheck(app: express.Express) {
         if (tok) {
             try {
                 let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
-                if (Date.now() / 1000 - dwauth.iat < cookieValidity) {
+                if (tok.iss == "GITwed"
+                    && Date.now() / 1000 - dwauth.iat < cookieValidity) {
+                    winston.debug("set appuser=" + dwauth.sub)
                     req.appuser = dwauth.sub
                 }
             } catch (e) {
@@ -48,89 +49,107 @@ export function initCheck(app: express.Express) {
     })
 }
 
+function lookupUserAsync(email: string) {
+    return getUserConfigAsync()
+        .then(cfg => {
+            email = email.toLowerCase().trim()
+            // we allow ::: instead of @ in case the repo is public and we want
+            // to avoid exposing email addresses to scanners
+            return cfg.users.find(u => u.email.replace(/:::/, "@") == email) || null
+        })
+}
+
 export function initRoutes(app: express.Express) {
     app.get("/gw/logout", (req, res, next) => {
         res.clearCookie("GWAUTH")
         res.redirect(req.query["redirect"] || "/")
     })
 
-    app.post("/gw/login", (req, res, next) => {
-        res.redirect("/gw/sent")
-    })
-
-    function createUser(req: express.Request) {
-        let pass = crypto.randomBytes(20).toString("hex")
-        let salt = crypto.randomBytes(16).toString("hex")
-        let u: User = {
-            login: req.params["name"],
-            salt,
-            hash: "",
+    app.all("/gw/login", (req, res, next) => {
+        let redir: string = (req.query["redirect"] || "").slice(0, 200)
+        let email: string = (req.body ? req.body["email"] || "" : "") || req.query["email"] || ""
+        email = email.trim().toLowerCase()
+        if (!email) {
+            routing.sendTemplate(req, "/gw/login.html")
+            return
         }
-        u.hash = hashPass(u, pass)
-        return {
-            link: "https://" + req.header("host") + "/gw/auth?user=" + u.login + "&pass=" + pass,
-            user: u
+
+        if (!/^\S+@\S+/.test(email)) {
+            routing.sendError(req,
+                "Invalid email",
+                "The email address you have supplied doesn't look valid.")
         }
-    }
 
-    app.get("/gw/hash/:name", (req, res, next) => {
-        res.json(createUser(req))
-    })
-
-    app.get("/gw/create/:name", (req, res, next) => {
-        if (req.appuser !== "admin")
-            return res.status(403).end()
-
-        getUserConfigAsync()
-            .then(cfg => {
-                let name: string = req.params["name"]
-                if (name == "admin")
-                    return res.status(400).end()
-                let ex = cfg.users.filter(u => u.login == name)[0]
-                if (ex && !req.query["reset"])
-                    return res.end(`<p>User already exists. You can <a href="/gw/create/${name}?reset=true">reset password</a> instead. </p>`)
-                let r = createUser(req)
-                let action = "Adding"
-                if (ex) {
-                    action = "Resetting password for"
-                    ex.hash = r.user.hash
-                    ex.salt = r.user.salt
-                } else {
-                    cfg.users.push(r.user)
+        lookupUserAsync(email)
+            .then(u => {
+                if (!u) {
+                    routing.sendError(req,
+                        "Email not registered",
+                        "We do not have any record of the supplied email address.")
+                    return
                 }
-                return gitfs.setTextFileAsync("private/users.json",
-                    JSON.stringify(cfg, null, 4),
-                    action + " user " + name)
+
+                // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
+                let jwtToken = jwt.encode({
+                    iss: "GITwed-email",
+                    sub: email,
+                    iat: Math.floor(Date.now() / 1000),
+                    rdr: redir
+                }, gitfs.config.jwtSecret)
+
+                let link = gitfs.config.authDomain + "/gw/auth?tok=" + jwtToken
+                mail.sendAsync({
+                    to: email,
+                    subject: "Login at " + gitfs.config.serviceName,
+                    text: `Please follow the link below to login:\n` +
+                    `    ${link}\n\n` +
+                    `The link will remain valid for 10 minutes.\n`
+                })
                     .then(() => {
-                        res.end(`<p>User created, authenticate at: <br>${r.link}</p>`)
+                        routing.sendMsg(req,
+                            "Email sent",
+                            "We have sent you an email with authentication link.")
+                    }, err => {
+                        routing.sendError(req,
+                            "Failed to send email",
+                            "Sorry, we couldn't send email. Contact support.")
                     })
             })
     })
 
     app.get("/gw/auth", (req, res, next) => {
-        getUserConfigAsync()
-            .then(cfg => {
-                let u = cfg.users.filter(u => u.login == req.query["user"])[0]
-                if (!u)
-                    return res.status(404).end()
-                let h = hashPass(u, req.query["pass"])
-                if (h !== u.hash)
-                    return res.status(403).end()
+        let tok: string = req.query["tok"] || ""
+        try {
+            let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
+            if (dwauth.iss == "GITwed-email") {
+                if (Date.now() / 1000 - dwauth.iat > emailValidity) {
+                    let again = "/gw/login?email=" + encodeURIComponent(dwauth.sub) +
+                        "&redirect=" + encodeURIComponent(dwauth.rdr || "")
+                    routing.sendMsg(req, "Token expired",
+                        `The token you used has expired. You can <a href="${again}">resend authenication email</a>.`)
+                } else {
+                    // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
+                    let jwtToken = jwt.encode({
+                        iss: "GITwed",
+                        sub: dwauth.sub,
+                        iat: Math.floor(Date.now() / 1000)
+                    }, gitfs.config.jwtSecret)
 
-                // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
-                let jwtToken = jwt.encode({
-                    iss: "GITwed",
-                    sub: u.login,
-                    iat: Math.floor(Date.now() / 1000)
-                }, gitfs.config.jwtSecret)
-
-                res.cookie("GWAUTH", jwtToken, {
-                    httpOnly: true,
-                    secure: req.secure,
-                    maxAge: cookieValidity * 1000,
-                })
-                res.redirect(req.query["redirect"] || "/")
-            })
+                    res.cookie("GWAUTH", jwtToken, {
+                        httpOnly: true,
+                        secure: req.secure,
+                        maxAge: cookieValidity * 1000,
+                    })
+                    res.redirect(dwauth["rdr"] || "/")
+                }
+            } else {
+                throw new Error("bad issuer")
+            }
+        } catch (e) {
+            winston.warn("error veryfing token: " + tok + ": " + e.message)
+            routing.sendError(req, "Invalid token",
+                "The authentication link looks invalid.")
+        }
     })
 
 }

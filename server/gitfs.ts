@@ -16,6 +16,8 @@ export interface Config {
     repoPath?: string;
     mailgunApiKey?: string;
     mailgunDomain?: string;
+    authDomain?: string;
+    serviceName?: string;
 }
 
 let repoPath = ""

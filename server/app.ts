@@ -31,6 +31,9 @@ app.use(require("compression")())
 app.use(bodyParser.json({
     limit: 5 * 1024 * 1024
 }))
+app.use(bodyParser.urlencoded({
+    extended: false
+}))
 
 
 auth.initCheck(app)
@@ -294,6 +297,12 @@ if (args[0] == "-i") {
 if (args[0]) {
     cfg.repoPath = args[0]
 }
+
+if (!cfg.authDomain)
+    cfg.authDomain = "http://localhost:3000"
+
+if (!cfg.serviceName)
+    cfg.serviceName = "GITwed"
 
 if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
     winston.error(`cannot find repoPath (${cfg.repoPath}) in config.json or as argument`)

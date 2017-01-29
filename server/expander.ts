@@ -207,6 +207,9 @@ function expandAsync(cfg: ExpansionConfig) {
         let promises: Promise<void>[] = []
         let replIdx = 0
 
+        if (gitfs.config.justDir)
+            return Promise.resolve()
+
         let repl = (e: CheerioElement, attrName: string, canHaveRelativeLinks = false) => {
             let ee = h(e)
             let v = ee.attr(attrName)
@@ -261,7 +264,8 @@ function expandAsync(cfg: ExpansionConfig) {
                 }))
         })
 
-        return Promise.all(promises)
+        return Promise.all(promises).then(() => {
+        })
     }
 
     function setLocations(e: Cheerio, filename: string, fileContent: string) {

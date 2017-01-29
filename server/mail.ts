@@ -22,7 +22,7 @@ export function sendAsync(msg: Message) {
         });
     }
     if (!msg.from)
-        msg.from = "GitWed Login <no-reply@" + gitfs.config.mailgunDomain + ">"
+        msg.from = gitfs.config.serviceName + " <no-reply@" + gitfs.config.mailgunDomain + ">"
     return new Promise<void>((resolve, reject) => {
         mailgun.messages().send(msg, (err: any, body: any) => {
             if (err) {
