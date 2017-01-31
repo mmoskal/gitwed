@@ -186,7 +186,7 @@ namespace gw {
     $(window).on("load", () => {
         if (!gitwedPageInfo.isEditable)
             return
-        
+
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
         let editor: any
@@ -244,39 +244,58 @@ namespace gw {
             });
         }
 
-        let hist = $("<div class='ct-ignition__button ct-ignition__button--history'></div>")
-        hist.click(() => {
+        let moreBtn = $("<div class='ct-ignition__button ct-ignition__button--more'></div>")
+        moreBtn.click(() => {
             let modal = new ContentTools.ModalUI()
-            let dialog = new ContentTools.DialogUI('History')
+            let dialog = new ContentTools.DialogUI('GitWED options')
             let app = ContentTools.EditorApp.get()
             app.attach(modal)
             app.attach(dialog)
             modal.show()
             dialog.show()
             $(dialog._domElement).addClass("ct-history-dialog");
-            $(dialog._domView).append("Loading...")
+
+            let root = $(dialog._domView)
+
+            root.append(
+                `
+<p>
+Logged in as ${gitwedPageInfo.user}. 
+<a href="/gw/logout?redirect=${encodeURIComponent(location.pathname)}">Logout</a> <br>
+Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(default)" : ""} <br>
+</p>
+`)
+            let hist = $("<button>Show page history</button>")
+            hist.click(() => {
+                root.empty()
+                root.append("Loading...")
+                let dir = document.location.pathname.replace(/\/[^\/]+$/, "")
+                getJsonAsync("/api/history?path=" + encodeURIComponent(dir))
+                    .then((data: LogEntry[]) => {
+                        let ch: JQuery[] = []
+                        for (let e of data) {
+                            let lnk = $("<a target=_blank></a>")
+                            lnk.attr("href", "/" + e.id + document.location.pathname)
+                            lnk.text(timeAgo(e.date * 1000))
+                            let ent = $("<div class='ct-history-entry'></div>")
+                                .append(lnk)
+                                .append(" ")
+                                .append($("<span class='ct-msg'></span>").text(e.msg))
+                            ch.push(ent)
+                        }
+                        $(dialog._domView).empty().append(ch)
+                    })
+
+            })
+            root.append(hist)
+
             $(dialog._domClose).click(() => {
                 modal.hide()
                 dialog.hide()
             })
-            let dir = document.location.pathname.replace(/\/[^\/]+$/, "")
-            getJsonAsync("/api/history?path=" + encodeURIComponent(dir))
-                .then((data: LogEntry[]) => {
-                    let ch: JQuery[] = []
-                    for (let e of data) {
-                        let lnk = $("<a target=_blank></a>")
-                        lnk.attr("href", "/" + e.id + document.location.pathname)
-                        lnk.text(timeAgo(e.date * 1000))
-                        let ent = $("<div class='ct-history-entry'></div>")
-                            .append(lnk)
-                            .append(" ")
-                            .append($("<span class='ct-msg'></span>").text(e.msg))
-                        ch.push(ent)
-                    }
-                    $(dialog._domView).empty().append(ch)
-                })
+
         })
-        $(".ct-ignition").append(hist).append(msgbox)
+        $(".ct-ignition").append(moreBtn).append(msgbox)
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 

@@ -162,7 +162,8 @@ export function initRoutes(app: express.Express) {
 
                     res.cookie("GWAUTH", jwtToken, {
                         httpOnly: true,
-                        secure: req.secure,
+                        // assume proxy runs HTTPS
+                        secure: req.secure || gitfs.config.proxy,
                         maxAge: cookieValidity * 1000,
                     })
                     res.redirect(dwauth["rdr"] || "/")

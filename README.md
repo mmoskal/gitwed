@@ -67,13 +67,13 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] logout button
 * [x] cat-file cache
 * [x] rewriting to CDN locations
-* [ ] add secure=true to cookie
+* [x] add secure=true to cookie
 * [ ] add HSTS
 * [ ] forbid GET on config.json
 * [x] disable CDN rewrite in file mode
 * [ ] nicer 404
 * [ ] sort out image centering when not in edit mode
-* [ ] add logout button (and user indication)
+* [x] add logout button (and user indication)
 * [ ] redirect to index
 
 ### Login system
