@@ -197,6 +197,11 @@ export function initRoutes(app: express.Express) {
         if (!cfgPath)
             return res.status(400).end()
 
+        let editUrl = gitfs.config.authDomain + page
+        let acceptLink = gitfs.config.authDomain + "/gw/login?email=" +
+            encodeURIComponent(email) +
+            "&redirect=" + encodeURIComponent(page)
+
         expander.hasWritePermAsync(req.appuser, page)
             .then(() => gitfs.refreshAsync())
             .then(() => lookupUserAsync(email))
@@ -215,10 +220,18 @@ export function initRoutes(app: express.Express) {
             .then(() => expander.getPageConfigAsync(page))
             .then(cfg => {
                 if (!cfg.users) cfg.users = []
+                if (cfg.users.indexOf(email) >= 0)
+                    return Promise.resolve()
                 cfg.users.push(email)
                 return gitfs.setJsonFileAsync(cfgPath, cfg,
                     "Adding user " + email + " to " + page)
             })
+            .then(() =>
+                mail.sendAsync({
+                    to: email,
+                    subject: "Invitation to edit " + editUrl,
+                    text: `${req.appuser} has invited you to edit ${editUrl}. To accept, please follow the link below:\n\n    ${acceptLink}\n`
+                }))
             .then(() => {
                 res.json({})
             })
@@ -230,6 +243,8 @@ export function hasWritePermAsync(appuser: string, localUsers: string[]) {
     appuser = normalizeEmail(appuser)
     return lookupUserAsync(appuser)
         .then(u => {
+            if (!u)
+                return false
             if (u.admin)
                 return true
             if (!localUsers)

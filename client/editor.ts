@@ -270,12 +270,12 @@ Logged in as ${gitwedPageInfo.user}.
 Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(default)" : ""} <br>
 </p>
 `)
-            let dir = document.location.pathname.replace(/\/[^\/]+$/, "")
+            let currPath = document.location.pathname
 
             let hist = $("<button>Show page history</button>")
             hist.click(() => {
                 status("Loading...")
-                getJsonAsync("/api/history?path=" + encodeURIComponent(dir))
+                getJsonAsync("/api/history?path=" + encodeURIComponent(currPath.replace(/\/[^\/]+$/, "")))
                     .then((data: LogEntry[]) => {
                         let ch: JQuery[] = []
                         for (let e of data) {
@@ -297,6 +297,7 @@ Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(defa
             let invite = $("<button>Invite someone to edit</button>")
             invite.click(() => {
                 root.empty()
+                let dir = "/" + currPath.slice(1).replace(/\/.*/, "")
                 root.append(`The person you're inviting will be able to edit the website under <strong>${dir}</strong>.<br>
                 Their email: `)
                 let inp = $("<input type=email>")
@@ -313,7 +314,7 @@ Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(defa
                     status("Inviting...")
 
                     postJsonAsync("/api/invite", {
-                        path: dir,
+                        path: currPath,
                         email: e
                     })
                         .then(res => {
