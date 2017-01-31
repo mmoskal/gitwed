@@ -256,6 +256,7 @@ app.get(/.*/, (req, res, next) => {
         return
     }
 
+    let orig = cleaned
     cleaned += ".html"
     gitfs.getTextFileAsync(cleaned, ref)
         .then(str => {
@@ -274,7 +275,12 @@ app.get(/.*/, (req, res, next) => {
                     res.end(page.html)
                 })
                 .then(v => v, next)
-        }, errHandler)
+        }, err => {
+            gitfs.getTextFileAsync(orig + "/index.html")
+                .then(() => {
+                    res.redirect(orig + "/index")
+                }, _ => errHandler(err))
+        })
 })
 
 app.use((req, res) => {

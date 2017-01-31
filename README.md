@@ -42,11 +42,11 @@ Users are stored in `private/users.json` file.
 
 ## TODO
 
-* [ ] set user doing commit
+* [x] set user doing commit
 * [ ] creation of new pages
 * [ ] nicer 404
 * [ ] sort out image centering when not in edit mode
-* [ ] redirect to index
+* [x] redirect to index
 * [ ] language switcher
 
 ## Further down TODO
