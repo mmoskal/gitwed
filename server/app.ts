@@ -11,6 +11,7 @@ import bluebird = require('bluebird')
 import auth = require('./auth')
 import winston = require('winston')
 import logs = require('./logs')
+import routing = require('./routing')
 
 bluebird.longStackTraces();
 logs.init()
@@ -284,7 +285,9 @@ app.get(/.*/, (req, res, next) => {
 })
 
 app.use((req, res) => {
-    res.status(404).end('Page not found');
+    res.status(404)
+    routing.sendError(req, "Page not found",
+        "Whoops! We couldn't find the page your were looking for.")
 })
 
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
