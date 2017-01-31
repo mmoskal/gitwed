@@ -11,3 +11,6 @@ remote:
 
 local:
 	node server ../gitwed-data
+
+watch:
+	cd client && node ../node_modules/typescript/bin/tsc --watch

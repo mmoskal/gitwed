@@ -4,12 +4,13 @@ import gitfs = require('./gitfs')
 import mail = require('./mail')
 import tools = require('./tools')
 import routing = require('./routing')
+import expander = require('./expander')
 import bluebird = require('bluebird')
 import winston = require('winston')
 import * as jwt from "jwt-simple";
 
-// two weeks
-let cookieValidity = 14 * 24 * 3600;
+// two weeks and half day - so that it tends to expire at night
+let cookieValidity = (14 * 24 + 12) * 3600;
 // 10min
 let emailValidity = 10 * 60;
 
@@ -17,6 +18,7 @@ let emailValidity = 10 * 60;
 interface User {
     email: string;
     nickname: string;
+    admin?: boolean;
 }
 
 interface UserConfig {
@@ -49,13 +51,18 @@ export function initCheck(app: express.Express) {
     })
 }
 
+function normalizeEmail(email: string) {
+    email = email.toLowerCase().trim()
+    // we allow ::: instead of @ in case the repo is public and we want
+    // to avoid exposing email addresses to scanners
+    return email.replace(/:::/, "@")
+}
+
 function lookupUserAsync(email: string) {
     return getUserConfigAsync()
         .then(cfg => {
-            email = email.toLowerCase().trim()
-            // we allow ::: instead of @ in case the repo is public and we want
-            // to avoid exposing email addresses to scanners
-            return cfg.users.find(u => u.email.replace(/:::/, "@") == email) || null
+            email = normalizeEmail(email)
+            return cfg.users.find(u => normalizeEmail(u.email) == email) || null
         })
 }
 
@@ -120,7 +127,7 @@ export function initRoutes(app: express.Express) {
                 }, gitfs.config.jwtSecret)
 
                 let link = gitfs.config.authDomain + "/gw/auth?tok=" + jwtToken
-                
+
                 throttle(req, 15 * 60) // only one email every 15min
 
                 mail.sendAsync({
@@ -178,6 +185,59 @@ export function initRoutes(app: express.Express) {
         }
     })
 
+
+    app.post("/api/invite", (req, res) => {
+        if (!req.appuser)
+            return res.status(403).end()
+
+        let page = req.body.path + ""
+        let email = normalizeEmail(req.body.email + "")
+
+        let cfgPath = expander.pageConfigPath(page)
+        if (!cfgPath)
+            return res.status(400).end()
+
+        expander.hasWritePermAsync(req.appuser, page)
+            .then(() => gitfs.refreshAsync())
+            .then(() => lookupUserAsync(email))
+            .then(u => {
+                if (u) return Promise.resolve()
+                return getUserConfigAsync()
+                    .then(cfg => {
+                        cfg.users.push({
+                            email: email,
+                            nickname: email.replace(/@.*/, "")
+                        })
+                        return gitfs.setJsonFileAsync("private/users.json", cfg,
+                            "Adding user " + email + " for the first time")
+                    })
+            })
+            .then(() => expander.getPageConfigAsync(page))
+            .then(cfg => {
+                if (!cfg.users) cfg.users = []
+                cfg.users.push(email)
+                return gitfs.setJsonFileAsync(cfgPath, cfg,
+                    "Adding user " + email + " to " + page)
+            })
+            .then(() => {
+                res.json({})
+            })
+    })
+}
+
+export function hasWritePermAsync(appuser: string, localUsers: string[]) {
+    if (!appuser) return Promise.resolve(false)
+    appuser = normalizeEmail(appuser)
+    return lookupUserAsync(appuser)
+        .then(u => {
+            if (u.admin)
+                return true
+            if (!localUsers)
+                return false
+            if (localUsers.find(e => normalizeEmail(e) == appuser))
+                return true
+            return false
+        })
 }
 
 function getUserConfigAsync() {

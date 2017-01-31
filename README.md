@@ -74,6 +74,8 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] sort out image centering when not in edit mode
 * [x] add logout button (and user indication)
 * [ ] redirect to index
+* [ ] language switcher
+
 
 ### Login system
 * [x] short-lived emailed tokens

@@ -91,14 +91,21 @@ app.post("/api/uploadimg", (req, res) => {
     let buf = new Buffer(data.full, "base64")
     let msg = "Image at " + path + " / " + basename + ext + " by " + req.appuser
 
-    fileLocks(path, () =>
-        gitfs.refreshAsync()
-            .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg))
-            .then(imgName => {
-                res.json({
-                    url: "img/" + imgName
-                })
-            }))
+    expander.hasWritePermAsync(req.appuser, path)
+        .then(hasPerm => {
+            if (!hasPerm)
+                return res.status(403).end()
+
+            fileLocks(path, () =>
+                gitfs.refreshAsync()
+                    .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg))
+                    .then(imgName => {
+                        res.json({
+                            url: "img/" + imgName
+                        })
+                    }))
+        })
+
 })
 
 app.post("/api/update", (req, res) => {
@@ -121,6 +128,9 @@ app.post("/api/update", (req, res) => {
         gitfs.refreshAsync()
             .then(() => expander.expandFileAsync(cfg))
             .then(page => {
+                if (!cfg.hasWritePerm)
+                    return res.status(402).end()
+
                 let id: string = req.body.id
                 let val: string = req.body.value
                 let desc = page.idToPos[id]
@@ -220,7 +230,7 @@ app.get(/.*/, (req, res, next) => {
 
     if (cleaned.indexOf("private") == 0)
         return next()
-    
+
     cleaned = cleaned.replace(/\.html?$/i, "")
 
     let spl = gitfs.splitName(cleaned)

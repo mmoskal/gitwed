@@ -157,6 +157,10 @@ export function setTextFileAsync(name: string, val: string, msg: string) {
     return setBinFileAsync(name, new Buffer(val, "utf8"), msg)
 }
 
+export function setJsonFileAsync(name: string, val: {}, msg: string) {
+    return setBinFileAsync(name, new Buffer(JSON.stringify(val, null, 4), "utf8"), msg)
+}
+
 let gitCatFile: child_process.ChildProcess
 let lastUsage = 0
 let gitCatFileBuf = new tools.PromiseBuffer<Buffer>()

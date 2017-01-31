@@ -1,5 +1,6 @@
 import cheerio = require("cheerio")
 import gitfs = require('./gitfs')
+import auth = require('./auth')
 import * as bluebird from "bluebird";
 import * as winston from "winston";
 
@@ -49,6 +50,7 @@ interface Pos {
 
 export interface PageConfig {
     langs?: string[];
+    users?: string[];
 }
 
 export interface ExpansionConfig {
@@ -61,6 +63,7 @@ export interface ExpansionConfig {
     langFileName?: string;
     langFileContent?: string;
     pageConfig?: PageConfig;
+    hasWritePerm?: boolean;
     vars?: SMap<string>;
 }
 
@@ -359,16 +362,39 @@ function fillContentAsync(cfg: ExpansionConfig) {
         })
 }
 
-export function expandFileAsync(cfg: ExpansionConfig) {
-    return fillContentAsync(cfg)
-        // config always takes from master
-        .then(() => gitfs.getTextFileAsync(relativePath(cfg.rootFile, "config.json"))
+export function pageConfigPath(page: string) {
+    let m = /^\/?([^\/]+)/.exec(page)
+    if (!m)
+        return null
+    return "/" + m[1] + "/config.json"
+}
+
+export function getPageConfigAsync(page: string) {
+    let path = pageConfigPath(page)
+    if (!path)
+        return Promise.resolve({} as PageConfig)
+    // config always takes from master
+    return Promise.resolve()
+        .then(() => gitfs.getTextFileAsync(path)
             .then(v => v, e => {
-                winston.info("config.json: " + e.message)
+                winston.info(path + ": " + e.message)
                 return ""
             }))
         .then(cfText => {
-            cfg.pageConfig = JSON.parse(cfText || "{}")
+            return JSON.parse(cfText || "{}") as PageConfig
+        })
+}
+
+export function hasWritePermAsync(appuser: string, page: string) {
+    return getPageConfigAsync(page)
+        .then(cfg => auth.hasWritePermAsync(appuser, cfg.users))
+}
+
+export function expandFileAsync(cfg: ExpansionConfig) {
+    return fillContentAsync(cfg)
+        .then(() => getPageConfigAsync(cfg.rootFile))
+        .then(pcfg => {
+            cfg.pageConfig = pcfg
             if (!cfg.pageConfig.langs || !cfg.pageConfig.langs.length)
                 cfg.pageConfig.langs = ["en"]
             if (cfg.langs) {
@@ -389,8 +415,11 @@ export function expandFileAsync(cfg: ExpansionConfig) {
         })
         .then(lnText => {
             cfg.langFileContent = lnText
-
+            return auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
+        })
+        .then(hasWrite => {
             if (!cfg.vars) cfg.vars = {}
+            cfg.hasWritePerm = hasWrite
             let pageInfo = {
                 user: cfg.appuser || null,
                 lang: cfg.lang,
@@ -398,7 +427,7 @@ export function expandFileAsync(cfg: ExpansionConfig) {
                 availableLangs: cfg.pageConfig.langs,
                 isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
                 path: cfg.rootFile,
-                isEditable: cfg.ref == "master",
+                isEditable: hasWrite && cfg.ref == "master",
                 ref: cfg.ref,
             }
             cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
