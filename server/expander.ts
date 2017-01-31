@@ -341,14 +341,20 @@ function expandAsync(cfg: ExpansionConfig) {
                 elt.attr("data-fixture", "true")
         }
 
-        if (elt.is("include")) {
+        let tag = elt[0].tagName
+        if (elt.length > 1) tag = ""
+
+        if (tag == "include") {
             return includeAsync(ctx, elt, elt.attr("src"))
         }
-        if (elt.is("if-edit") && !cfg.appuser) {
+
+        if (tag == "if-edit" && !cfg.appuser) {
             elt.replaceWith("")
             return Promise.resolve()
         }
-        return bluebird.each(elt.children().toArray(), ee => recAsync(ctx, h(ee)))
+
+        let arr = elt.length > 1 ? elt.toArray() : elt.children().toArray()
+        return bluebird.each(arr, ee => recAsync(ctx, h(ee)))
             .then(() => { })
     }
 }

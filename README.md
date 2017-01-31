@@ -45,9 +45,11 @@ Users are stored in `private/users.json` file.
 * [x] set user doing commit
 * [ ] creation of new pages
 * [x] nicer 404
-* [ ] sort out image centering when not in edit mode
+* [x] sort out image centering when not in edit mode
 * [x] redirect to index
 * [x] language switcher
+* [ ] title+meta editing
+* [ ] make sure no /gw/* files are required when not editing
 
 ## Further down TODO
 
