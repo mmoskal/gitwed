@@ -18,6 +18,7 @@ export interface Config {
     mailgunDomain?: string;
     authDomain?: string;
     serviceName?: string;
+    proxy?: boolean;
 }
 
 let repoPath = ""

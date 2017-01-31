@@ -59,6 +59,26 @@ function lookupUserAsync(email: string) {
         })
 }
 
+let timestamps: SMap<number> = {}
+export function throttle(req: express.Request, seconds: number) {
+    let ip = req.connection.remoteAddress
+    if (gitfs.config.proxy) {
+        let h = req.header("x-forwarded-for")
+        if (h) ip = h.replace(/.*,\s*/, "") // take the last one
+    }
+
+    let now = Math.floor(Date.now() / 1000)
+    if (!timestamps[ip])
+        timestamps[ip] = now - 3600
+    let newTime = timestamps[ip] + seconds
+    if (newTime > now) {
+        let res: express.Response = req._response
+        res.status(429).end("Too many requests!")
+        tools.throwError(429)
+    }
+    timestamps[ip] = newTime
+}
+
 export function initRoutes(app: express.Express) {
     app.get("/gw/logout", (req, res, next) => {
         res.clearCookie("GWAUTH")
@@ -73,6 +93,8 @@ export function initRoutes(app: express.Express) {
             routing.sendTemplate(req, "/gw/login.html")
             return
         }
+
+        throttle(req, 10)
 
         if (!/^\S+@\S+/.test(email)) {
             routing.sendError(req,
@@ -98,6 +120,9 @@ export function initRoutes(app: express.Express) {
                 }, gitfs.config.jwtSecret)
 
                 let link = gitfs.config.authDomain + "/gw/auth?tok=" + jwtToken
+                
+                throttle(req, 15 * 60) // only one email every 15min
+
                 mail.sendAsync({
                     to: email,
                     subject: "Login at " + gitfs.config.serviceName,

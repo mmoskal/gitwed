@@ -311,13 +311,19 @@ if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
 
 let port = 3000
 
+if (cfg.justDir) {
+    winston.info(`using local file modifications`)
+} else {
+    winston.info(`using git push/pull`)
+}
+
 gitfs.initAsync(cfg)
     .then(() => {
-        if (cfg.justDir) {
-            winston.info(`listen on http://localhost:${port} using local file modifications`)
+        if (cfg.justDir || cfg.proxy) {
+            winston.info(`listen on http://localhost:${port}`)
             app.listen(port, "localhost")
         } else {
-            winston.info(`listen on http://*:${port} with git push/pull`)
+            winston.info(`listen on http://*:${port}`)
             app.listen(port)
         }
     })
