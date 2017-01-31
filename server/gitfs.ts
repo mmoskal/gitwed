@@ -19,6 +19,7 @@ export interface Config {
     authDomain?: string;
     serviceName?: string;
     proxy?: boolean;
+    cdnPath?: string;
 }
 
 let repoPath = ""

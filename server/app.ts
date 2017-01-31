@@ -289,6 +289,9 @@ if (!cfg.authDomain)
 if (!cfg.serviceName)
     cfg.serviceName = "GITwed"
 
+if (!cfg.justDir && !cfg.cdnPath)
+    cfg.cdnPath = "/cdn"
+
 if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
     winston.error(`cannot find repoPath (${cfg.repoPath}) in config.json or as argument`)
     process.exit(1)

@@ -189,7 +189,7 @@ function expandAsync(cfg: ExpansionConfig) {
                 let e = ents.find(x => x.name == spl.name)
                 if (e) {
                     let ext = spl.name.replace(/.*\./, ".")
-                    return "/cdn/" + spl.name + "-" + e.sha + ext
+                    return gitfs.config.cdnPath + "/" + spl.name + "-" + e.sha + ext
                 } else {
                     winston.debug("no such file: " + resolved + " in " + cfg.ref)
                     return url
@@ -201,6 +201,7 @@ function expandAsync(cfg: ExpansionConfig) {
         if (!v) return false
         if (/^[\w-]+:\/\//.test(v)) return false
         if (/^\/common\//.test(v)) return true
+        if (/\.(png|jpe?g|ico)$/i.test(v)) return true
         if (canHaveRelativeLinks && !/(^|\/)cdn\//.test(v)) return false
         return true
     }
@@ -209,13 +210,13 @@ function expandAsync(cfg: ExpansionConfig) {
         let promises: Promise<void>[] = []
         let replIdx = 0
 
-        if (gitfs.config.justDir)
+        if (gitfs.config.justDir && !gitfs.config.cdnPath)
             return Promise.resolve()
 
-        let repl = (e: CheerioElement, attrName: string, canHaveRelativeLinks = false) => {
+        let repl = (e: CheerioElement, attrName: string, mayHaveRelativeLinks = false) => {
             let ee = h(e)
             let v = ee.attr(attrName)
-            if (!canBeCdned(v, canHaveRelativeLinks)) return
+            if (!canBeCdned(v, mayHaveRelativeLinks)) return
             promises.push(replUrlAsync(v).then(r => {
                 winston.debug("repl: " + v + " -> " + r)
                 ee.attr(attrName, r)
@@ -234,8 +235,14 @@ function expandAsync(cfg: ExpansionConfig) {
             let rels = (ee.attr("rel") || "").split(/\s+/)
             if (rels.indexOf("stylesheet") >= 0)
                 repl(e, "href", true)
-            if (rels.indexOf("icon") >= 0)
+            if (rels.indexOf("icon") >= 0 || rels.indexOf("apple-touch-icon") >= 0)
                 repl(e, "href")
+        })
+        h("meta").each((idx, e) => {
+            let ee = h(e)
+            let p = ee.attr("property") || ee.attr("name")
+            if (/(TileImage|:image)$/.test(p))
+                repl(e, "content")
         })
         h("style").each((idx, e) => {
             let ee = h(e)
