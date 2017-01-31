@@ -71,9 +71,12 @@ and copy `user` field into `users` array in `private/users.json`.
 * [ ] add HSTS
 * [ ] forbid GET on config.json
 * [x] disable CDN rewrite in file mode
-
+* [ ] nicer 404
+* [ ] sort out image centering when not in edit mode
+* [ ] add logout button (and user indication)
+* [ ] redirect to index
 
 ### Login system
 * [x] short-lived emailed tokens
 * [ ] invite user option
-* [ ] throttle email sending
+* [x] throttle email sending

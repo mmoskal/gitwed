@@ -113,7 +113,8 @@ app.post("/api/update", (req, res) => {
     let cfg: expander.ExpansionConfig = {
         rootFile: fn,
         ref: "master",
-        langs: lang ? [lang] : null
+        langs: lang ? [lang] : null,
+        appuser: req.appuser
     }
 
     fileLocks(fn, () =>
@@ -247,31 +248,15 @@ app.get(/.*/, (req, res, next) => {
                 rootFile: cleaned,
                 ref,
                 rootFileContent: str,
-                langs
+                langs,
+                appuser: req.appuser
             }
             expander.expandFileAsync(cfg)
                 .then(page => {
-                    let html = page.html
-                    if (!req.appuser) {
-                        html = html
-                            .replace(/<!-- @GITWED-EDIT@ -->[^]*?<!-- @GITWED-EDIT-END@ -->/, "")
-                    }
-                    let pageInfo = {
-                        user: req.appuser || null,
-                        lang: cfg.lang,
-                        langFileCreated: !!cfg.langFileContent,
-                        availableLangs: cfg.pageConfig.langs,
-                        isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
-                        path: cleaned,
-                        isEditable: ref == "master",
-                        ref: ref,
-                    }
-                    html = html.replace("@GITWED-PAGE-INFO@",
-                        "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n")
                     res.writeHead(200, {
                         'Content-Type': 'text/html; charset=utf8'
                     })
-                    res.end(html)
+                    res.end(page.html)
                 })
                 .then(v => v, next)
         }, errHandler)

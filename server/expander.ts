@@ -54,12 +54,14 @@ export interface PageConfig {
 export interface ExpansionConfig {
     rootFile: string;
     ref: string;
+    appuser: string;
     rootFileContent?: string;
     lang?: string;
     langs?: string[];
     langFileName?: string;
     langFileContent?: string;
     pageConfig?: PageConfig;
+    vars?: SMap<string>;
 }
 
 function relativePath(curr: string, newpath: string) {
@@ -117,7 +119,7 @@ function expandAsync(cfg: ExpansionConfig) {
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
         .then(() => {
-            h("group").each((i, e) => {
+            h("group, if-edit").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
             h("[gw-pos]").each((i, e) => {
@@ -332,6 +334,10 @@ function expandAsync(cfg: ExpansionConfig) {
         if (elt.is("include")) {
             return includeAsync(ctx, elt, elt.attr("src"))
         }
+        if (elt.is("if-edit") && !cfg.appuser) {
+            elt.replaceWith("")
+            return Promise.resolve()
+        }
         return bluebird.each(elt.children().toArray(), ee => recAsync(ctx, h(ee)))
             .then(() => { })
     }
@@ -376,6 +382,25 @@ export function expandFileAsync(cfg: ExpansionConfig) {
         })
         .then(lnText => {
             cfg.langFileContent = lnText
+
+            if (!cfg.vars) cfg.vars = {}
+            let pageInfo = {
+                user: cfg.appuser || null,
+                lang: cfg.lang,
+                langFileCreated: !!cfg.langFileContent,
+                availableLangs: cfg.pageConfig.langs,
+                isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
+                path: cfg.rootFile,
+                isEditable: cfg.ref == "master",
+                ref: cfg.ref,
+            }
+            cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
+                JSON.stringify(pageInfo, null, 4) + ";\n"
+
             return expandAsync(cfg)
+                .then(r => {
+                    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) => cfg.vars[v] || "")
+                    return r
+                })
         })
 }

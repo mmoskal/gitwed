@@ -14,17 +14,17 @@ export function sendTemplate(req: express.Request, cleaned: string, vars: SMap<s
             let cfg: expander.ExpansionConfig = {
                 rootFile: cleaned,
                 ref: "master",
-                rootFileContent: str
+                rootFileContent: str,
+                appuser: req.appuser,
+                vars
             }
             expander.expandFileAsync(cfg)
                 .then(page => {
-                    let html = page.html
-                    html = html.replace(/\{\{(\w+)\}\}/g, (f, v) => vars[v] || "")
                     let res: express.Response = req._response
                     res.writeHead(200, {
                         'Content-Type': 'text/html; charset=utf8'
                     })
-                    res.end(html)
+                    res.end(page.html)
                 })
                 .then(v => v, err => {
                     logs.logError(err, req._response)
