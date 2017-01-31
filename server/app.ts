@@ -220,9 +220,14 @@ app.get(/.*/, (req, res, next) => {
 
     if (cleaned.indexOf("private") == 0)
         return next()
+    
+    cleaned = cleaned.replace(/\.html?$/i, "")
 
     let spl = gitfs.splitName(cleaned)
     let isHtml = spl.name.indexOf(".") < 0
+
+    if (spl.name == "config.json" || /\/[\._]/.test(cleaned))
+        return next()
 
     let errHandler = (e: any) => {
         winston.info("error: " + cleaned + " " + e.message)

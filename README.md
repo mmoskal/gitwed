@@ -64,12 +64,11 @@ and copy `user` field into `users` array in `private/users.json`.
 * [x] add language indication next to edit button
 * [ ] set user doing commit
 * [ ] history restore
-* [ ] logout button
 * [x] cat-file cache
 * [x] rewriting to CDN locations
 * [x] add secure=true to cookie
 * [ ] add HSTS
-* [ ] forbid GET on config.json
+* [x] forbid GET on config.json
 * [x] disable CDN rewrite in file mode
 * [ ] nicer 404
 * [ ] sort out image centering when not in edit mode
