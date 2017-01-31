@@ -89,7 +89,7 @@ app.post("/api/uploadimg", (req, res) => {
         .replace(/[^\w\-]+/g, "_")
     let ext = "." + data.format
     let buf = new Buffer(data.full, "base64")
-    let msg = "Image at " + path + " / " + basename + ext + " by " + req.appuser
+    let msg = "Image at " + path + " / " + basename + ext
 
     expander.hasWritePermAsync(req.appuser, path)
         .then(hasPerm => {
@@ -98,7 +98,7 @@ app.post("/api/uploadimg", (req, res) => {
 
             fileLocks(path, () =>
                 gitfs.refreshAsync()
-                    .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg))
+                    .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg, req.appuser))
                     .then(imgName => {
                         res.json({
                             url: "img/" + imgName
@@ -147,13 +147,13 @@ app.post("/api/update", (req, res) => {
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
                     gitfs.setTextFileAsync(cfg.langFileName, newCont,
-                        "Translate " + cfg.langFileName + " / " + id + " by " + req.appuser)
+                        "Translate " + cfg.langFileName + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
                     gitfs.setTextFileAsync(desc.filename, newCont,
-                        "Update " + desc.filename + " / " + id + " by " + req.appuser)
+                        "Update " + desc.filename + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else {
                     res.status(410).end()

@@ -214,7 +214,7 @@ export function initRoutes(app: express.Express) {
                             nickname: email.replace(/@.*/, "")
                         })
                         return gitfs.setJsonFileAsync("private/users.json", cfg,
-                            "Adding user " + email + " for the first time")
+                            "Adding user " + email + " for the first time", req.appuser)
                     })
             })
             .then(() => expander.getPageConfigAsync(page))
@@ -224,7 +224,8 @@ export function initRoutes(app: express.Express) {
                     return Promise.resolve()
                 cfg.users.push(email)
                 return gitfs.setJsonFileAsync(cfgPath, cfg,
-                    "Adding user " + email + " to " + page)
+                    "Adding user " + email + " to " + page,
+                    req.appuser)
             })
             .then(() =>
                 mail.sendAsync({

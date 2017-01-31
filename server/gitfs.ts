@@ -51,7 +51,9 @@ export function githash(buf: Buffer) {
     return h.digest("hex")
 }
 
-export function createBinFileAsync(dir: string, basename: string, ext: string, buf: Buffer, msg: string) {
+export function createBinFileAsync(dir: string, basename: string, ext: string, buf: Buffer,
+    msg: string, user: string
+) {
     let p = repoPath + dir + "/"
     tools.mkdirP(p)
     let ents = fs.readdirSync(p)
@@ -77,7 +79,7 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
     fs.writeFileSync(repoPath + fn, buf)
 
     // this will write the file again
-    return setBinFileAsync(dir + "/" + fn, buf, "")
+    return setBinFileAsync(dir + "/" + fn, buf, msg, user)
         .then(() => fn)
 }
 
@@ -153,12 +155,12 @@ export function getTextFileAsync(name: string, ref = "master"): bluebird.Thenabl
             .then(buf => buf.toString("utf8"))
 }
 
-export function setTextFileAsync(name: string, val: string, msg: string) {
-    return setBinFileAsync(name, new Buffer(val, "utf8"), msg)
+export function setTextFileAsync(name: string, val: string, msg: string, user: string) {
+    return setBinFileAsync(name, new Buffer(val, "utf8"), msg, user)
 }
 
-export function setJsonFileAsync(name: string, val: {}, msg: string) {
-    return setBinFileAsync(name, new Buffer(JSON.stringify(val, null, 4), "utf8"), msg)
+export function setJsonFileAsync(name: string, val: {}, msg: string, user: string) {
+    return setBinFileAsync(name, new Buffer(JSON.stringify(val, null, 4), "utf8"), msg, user)
 }
 
 let gitCatFile: child_process.ChildProcess
@@ -478,19 +480,25 @@ export function logAsync(path = ".") {
             .then(buf => parseLog(buf)))
 }
 
-export function setBinFileAsync(name: string, val: Buffer, msg: string) {
+export function setBinFileAsync(name: string, val: Buffer, msg: string, useremail: string) {
     return apiLockAsync("commit", () => {
-        winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}`)
+        winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`)
         let spl = splitName(name)
         tools.mkdirP(repoPath + spl.parent)
         fs.writeFileSync(repoPath + name, val)
 
         if (justDir)
             return Promise.resolve()
+        
+        let uname = useremail.replace(/@.*/, "")
 
         return Promise.resolve()
             .then(() => runGitAsync(["add", name]))
-            .then(() => runGitAsync(["commit", "-m", msg]))
+            .then(() => runGitAsync([
+                "commit",
+                "-c", "user.name=" + uname,
+                "-c", "user.email=" + useremail,
+                "-m", msg]))
             .then(() => runGitAsync(["push", "--quiet"]).then(
                 () => { },
                 // if we get an error from push, trying pulling first
