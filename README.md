@@ -55,29 +55,15 @@ and copy `user` field into `users` array in `private/users.json`.
 
 ## TODO
 
-* [x] authentication
-* [ ] per-directory rights?
-* [x] localization
-* [ ] creation of new pages
-* [x] add base file name to ids?
-* [ ] extend the big "edit" button with custom actions (like 'add section')
-* [x] add language indication next to edit button
 * [ ] set user doing commit
-* [ ] history restore
-* [x] cat-file cache
-* [x] rewriting to CDN locations
-* [x] add secure=true to cookie
-* [ ] add HSTS
-* [x] forbid GET on config.json
-* [x] disable CDN rewrite in file mode
+* [ ] creation of new pages
 * [ ] nicer 404
 * [ ] sort out image centering when not in edit mode
-* [x] add logout button (and user indication)
 * [ ] redirect to index
 * [ ] language switcher
 
+## Further down TODO
 
-### Login system
-* [x] short-lived emailed tokens
-* [ ] invite user option
-* [x] throttle email sending
+* [ ] extend the big "edit" button with custom actions (like 'add section')
+* [ ] history restore
+* [ ] add HSTS
