@@ -47,10 +47,11 @@ Users are stored in `private/users.json` file.
 * [ ] nicer 404
 * [ ] sort out image centering when not in edit mode
 * [x] redirect to index
-* [ ] language switcher
+* [x] language switcher
 
 ## Further down TODO
 
+* [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
 * [ ] add HSTS

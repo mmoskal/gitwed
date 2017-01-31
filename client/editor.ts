@@ -262,15 +262,17 @@ namespace gw {
                 root.append(msg)
             }
 
+            let currPath = document.location.pathname
             root.append(
                 `
 <p>
 Logged in as ${gitwedPageInfo.user}. 
 <a href="/gw/logout?redirect=${encodeURIComponent(location.pathname)}">Logout</a> <br>
 Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(default)" : ""} <br>
+All languages: ${gitwedPageInfo.availableLangs.map(l => 
+        `<a href="${currPath}?setlang=${l}">${l}</a>`).join(" ")}
 </p>
 `)
-            let currPath = document.location.pathname
 
             let hist = $("<button>Show page history</button>")
             hist.click(() => {
@@ -285,7 +287,7 @@ Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(defa
                             let ent = $("<div class='ct-history-entry'></div>")
                                 .append(lnk)
                                 .append(" ")
-                                .append($("<span class='ct-msg'></span>").text(e.msg))
+                                .append($("<span class='ct-msg'></span>").text(e.msg + " by " + e.author))
                             ch.push(ent)
                         }
                         $(dialog._domView).empty().append(ch)
