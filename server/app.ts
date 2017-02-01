@@ -36,6 +36,22 @@ app.use(bodyParser.urlencoded({
     extended: false
 }))
 
+app.use((req, res, next) => {
+    res.setHeader("X-XSS-Protection", "1");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (gitfs.config.proxy) {
+        let hts = "https://" + req.header("host")
+        if (hts == gitfs.config.authDomain) {
+            res.setHeader("Strict-Transport-Security", "max-age=31536000");
+        }
+
+        if (req.header("x-forwarded-protocol") == "http") {
+            res.redirect(hts + req.url)
+            return
+        }
+    }
+    next();
+});
 
 auth.initCheck(app)
 

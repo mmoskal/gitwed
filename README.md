@@ -107,10 +107,11 @@ Users are stored in `private/users.json` file.
 * [x] language switcher
 * [ ] title+meta editing
 * [x] make sure no /gw/* files are required when not editing
-* [ ] issue HTTPS redirects
+* [x] issue HTTPS redirects
 * [ ] image upload has issues?
 * [ ] push (and pull?) in background
 * [ ] add `/gw/refresh` endpoint
+* [ ] set meta content-language
 
 ### Deployment
 
@@ -124,4 +125,4 @@ Users are stored in `private/users.json` file.
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
-* [ ] add HSTS
+* [x] add HSTS
