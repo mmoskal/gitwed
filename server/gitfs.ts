@@ -85,6 +85,11 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
 
 // TODO add some in-memory cache for small files?
 export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
+    let m = /^\/?gw\/(.*)/.exec(name)
+    if (m)
+        return readAsync("gw/" + m[1])
+            .then(v => v, err => readAsync("built/gw/" + m[1]))
+
     if (justDir && ref == "master")
         return readAsync(repoPath + name)
     return refreshAsync(120)
@@ -145,14 +150,8 @@ export function refreshAsync(timeoutSeconds = 5) {
 }
 
 export function getTextFileAsync(name: string, ref = "master"): bluebird.Thenable<string> {
-    let m = /^\/?gw\/(.*)/.exec(name)
-    if (m)
-        // the expander hits this
-        return readAsync("gw/" + m[1])
-            .then(b => b.toString("utf8"))
-    else
-        return getFileAsync(name, ref)
-            .then(buf => buf.toString("utf8"))
+    return getFileAsync(name, ref)
+        .then(buf => buf.toString("utf8"))
 }
 
 export function setTextFileAsync(name: string, val: string, msg: string, user: string) {
@@ -489,7 +488,7 @@ export function setBinFileAsync(name: string, val: Buffer, msg: string, useremai
 
         if (justDir)
             return Promise.resolve()
-        
+
         let uname = useremail.replace(/@.*/, "")
 
         return Promise.resolve()
