@@ -1,4 +1,5 @@
 import * as tools from './tools'
+import * as expander from './expander'
 import * as bluebird from 'bluebird'
 import * as fs from 'fs'
 
@@ -30,15 +31,29 @@ export function rewriteCSS(url: string) {
             let dls: SMap<string> = {}
             let tokId = 0
             //   src: local('Foobar Light'), local('Foobar-Light'), url(https://example.com/foobar.woff) format('woff');
-            let css = resp.text.replace(/src:([^\n;]+)/g, (f, src: string) => {
+            let css = resp.text.replace(/src:([^};]+);?/g, (f, src: string) => {
+                if (/^\s*url\([^\)]+\.eot[^\)]*\)\s*$/.test(src))
+                    return "";
                 let numdl = 0
                 src = src.trim() + ","
                 src = src.replace(/local\([^\)]+\),\s*/g, "")
                 src = src.replace(/url\(([^\)]+)\)\s*format\(([^\)]+)\)\s*,/g,
-                    (f, url: string, fmt: string) => {
+                    (f, furl: string, fmt: string) => {
                         if (unquote(fmt) != "woff") return ""
                         let tok = "##FONTDL" + tokId++ + "##"
-                        dls[tok] = unquote(url)
+                        furl = unquote(furl)
+                        if (/^http/.test(furl)) { }
+                        else {
+                            let mm = /^(https?:\/\/[^\/]+)(.*)/.exec(url)
+                            let host = mm[1]
+                            let path = mm[2]
+                            if (/^\//.test(furl)) {
+                                furl = host + furl
+                            } else {
+                                furl = host + expander.relativePath(path, furl)
+                            }
+                        }
+                        dls[tok] = unquote(furl)
                         numdl++
                         return "url(data:application/x-font-woff;charset=utf-8;base64," + tok +
                             ") format('woff'),"
@@ -48,7 +63,7 @@ export function rewriteCSS(url: string) {
                     console.log("cannot parse " + f)
                     return f
                 }
-                return "src: " + src
+                return "src: " + src + ";"
             })
             return bluebird.map(Object.keys(dls),
                 id => getAsync(dls[id])
