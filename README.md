@@ -109,6 +109,8 @@ Users are stored in `private/users.json` file.
 * [x] make sure no /gw/* files are required when not editing
 * [ ] issue HTTPS redirects
 * [ ] image upload has issues?
+* [ ] push (and pull?) in background
+* [ ] add `/gw/refresh` endpoint
 
 ### Deployment
 
