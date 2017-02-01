@@ -49,7 +49,7 @@ Users are stored in `private/users.json` file.
 * [x] redirect to index
 * [x] language switcher
 * [ ] title+meta editing
-* [ ] make sure no /gw/* files are required when not editing
+* [x] make sure no /gw/* files are required when not editing
 
 ## Further down TODO
 
