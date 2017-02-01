@@ -87,7 +87,13 @@ Users are stored in `private/users.json` file.
 * [x] make sure no /gw/* files are required when not editing
 * [ ] issue HTTPS redirects
 
-## Further down TODO
+### Deployment
+
+* [ ] auto-restart upon crash
+* [ ] auto-restart every 2h or so
+* [ ] disable clean-repo check
+
+### Further down
 
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')

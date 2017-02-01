@@ -67,7 +67,7 @@ export interface ExpansionConfig {
     vars?: SMap<string>;
 }
 
-function relativePath(curr: string, newpath: string) {
+export function relativePath(curr: string, newpath: string) {
     if (newpath[0] == "/") return newpath
 
     let spl = gitfs.splitName(curr)
@@ -219,12 +219,19 @@ function expandAsync(cfg: ExpansionConfig) {
         let repl = (e: CheerioElement, attrName: string, mayHaveRelativeLinks = false) => {
             let ee = h(e)
             let v = ee.attr(attrName)
+            if (!v) return
             if (!canBeCdned(v, mayHaveRelativeLinks)) return
             promises.push(replUrlAsync(v).then(r => {
                 winston.debug("repl: " + v + " -> " + r)
                 ee.attr(attrName, r)
             }))
         }
+
+        // used by some plugins
+        h("[data-background]").each((idx, e) => {
+            repl(e, "data-background", true)
+        })
+
         h("img, audio, video, track").each((idx, e) => {
             repl(e, "src")
             if (e.tagName != "img")
