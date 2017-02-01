@@ -100,12 +100,11 @@ Users are stored in `private/users.json` file.
 ## TODO
 
 * [x] set user doing commit
-* [ ] creation of new pages
 * [x] nicer 404
 * [x] sort out image centering when not in edit mode
 * [x] redirect to index
 * [x] language switcher
-* [ ] title+meta editing
+* [x] title+meta editing
 * [x] make sure no /gw/* files are required when not editing
 * [x] issue HTTPS redirects
 * [ ] image upload has issues?
@@ -122,6 +121,7 @@ Users are stored in `private/users.json` file.
 
 ### Further down
 
+* [ ] creation of new pages
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
