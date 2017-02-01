@@ -301,6 +301,12 @@ if (args[0] == "-i") {
     args.shift()
     cfg.justDir = false
 }
+if (args[0] == "-cdn") {
+    args.shift()
+    if (!cfg.cdnPath) {
+        cfg.cdnPath = "/cdn"
+    }
+}
 if (args[0]) {
     cfg.repoPath = args[0]
 }

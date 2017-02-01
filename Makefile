@@ -14,3 +14,6 @@ local:
 
 watch:
 	cd client && node ../node_modules/typescript/bin/tsc --watch
+
+cdn:
+	node server -cdn ../gitwed-data
