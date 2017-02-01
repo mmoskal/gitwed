@@ -85,7 +85,8 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
 
 // TODO add some in-memory cache for small files?
 export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
-    let m = /^\/?gw\/(.*)/.exec(name)
+    name = name.replace(/^\/+/, "")
+    let m = /^gw\/(.*)/.exec(name)
     if (m)
         return readAsync("gw/" + m[1])
             .then(v => v, err => readAsync("built/gw/" + m[1]))
