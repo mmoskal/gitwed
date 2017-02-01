@@ -494,9 +494,9 @@ export function setBinFileAsync(name: string, val: Buffer, msg: string, useremai
         return Promise.resolve()
             .then(() => runGitAsync(["add", name]))
             .then(() => runGitAsync([
-                "commit",
                 "-c", "user.name=" + uname,
                 "-c", "user.email=" + useremail,
+                "commit",
                 "-m", msg]))
             .then(() => runGitAsync(["push", "--quiet"]).then(
                 () => { },
