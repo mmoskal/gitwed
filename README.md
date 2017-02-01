@@ -86,12 +86,14 @@ Users are stored in `private/users.json` file.
 * [ ] title+meta editing
 * [x] make sure no /gw/* files are required when not editing
 * [ ] issue HTTPS redirects
+* [ ] image upload has issues?
 
 ### Deployment
 
 * [ ] auto-restart upon crash
 * [ ] auto-restart every 2h or so
 * [ ] disable clean-repo check
+* [ ] log output to file
 
 ### Further down
 

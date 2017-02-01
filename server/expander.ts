@@ -209,9 +209,38 @@ function expandAsync(cfg: ExpansionConfig) {
         return true
     }
 
+    function metaRewrite() {
+        let metas: SMap<string> = {
+            title: h("#gw-meta-title").text() || h("title").text()
+        }
+        let commonMeta = ["description", "keywords", "copyright", "author"]
+        for (let m of commonMeta) {
+            metas[m] = h("#gw-meta-" + m).text() || h("meta[name='" + m + "']").attr("content") || ""
+        }
+
+        let metaMap: SMap<string> = {
+            'twitter:title': 'title',
+            'twitter:description': 'description',
+            'og:title': 'title',
+            'og:description': 'description',
+        }
+        for (let x of commonMeta)
+            metaMap[x] = x
+        for (let k of Object.keys(metaMap)) {
+            let e = h(`meta[name='${k}']`)
+            if (!e.length)
+                e = h(`meta[property='${k}']`)
+            if (!e.length) continue
+            if (!e.attr("content"))
+                e.attr("content", metas[metaMap[k]])
+        }
+    }
+
     function cdnRewriteAsync() {
         let promises: Promise<void>[] = []
         let replIdx = 0
+
+        metaRewrite()
 
         if (gitfs.config.justDir && !gitfs.config.cdnPath)
             return Promise.resolve()
@@ -222,7 +251,7 @@ function expandAsync(cfg: ExpansionConfig) {
             if (!v) return
             if (!canBeCdned(v, mayHaveRelativeLinks)) return
             promises.push(replUrlAsync(v).then(r => {
-                winston.debug("repl: " + v + " -> " + r)
+                //winston.debug("repl: " + v + " -> " + r)
                 ee.attr(attrName, r)
             }))
         }
