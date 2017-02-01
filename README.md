@@ -50,6 +50,7 @@ Users are stored in `private/users.json` file.
 * [x] language switcher
 * [ ] title+meta editing
 * [x] make sure no /gw/* files are required when not editing
+* [ ] issue HTTPS redirects
 
 ## Further down TODO
 

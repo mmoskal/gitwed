@@ -329,5 +329,6 @@ export function etagMatches(req: express.Request, etag: string) {
 
 export function allowReqCache(req: express.Request) {
     let response: express.Response = req._response
-    response.setHeader("Cache-Control", "public, max-age=604800")
+    // 6 months
+    response.setHeader("Cache-Control", "public, max-age=15552000")
 }
