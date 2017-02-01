@@ -480,6 +480,7 @@ export function logAsync(path = ".") {
 }
 
 export function setBinFileAsync(name: string, val: Buffer, msg: string, useremail: string) {
+    name = name.replace(/^\/+/, "")
     return apiLockAsync("commit", () => {
         winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`)
         let spl = splitName(name)
