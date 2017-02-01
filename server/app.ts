@@ -141,6 +141,21 @@ app.post("/api/update", (req, res) => {
                     return res.status(411).end()
                 }
 
+                if (req.body.alltranslations) {
+                    let numadded = 0
+                    for (let k of Object.keys(page.idToPos)) {
+                        let dd = page.idToPos[k]
+                        if (page.langMap[k] === undefined) {
+                            let v = page.allFiles[dd.filename].slice(dd.startIdx, dd.startIdx + dd.length)
+                            numadded++
+                            cfg.langFileContent = expander.setTranslation(cfg, k, v)
+                        }
+                    }
+                    if (numadded)
+                        fs.writeFileSync("lang.html", cfg.langFileContent)
+                    return res.end("OK")
+                }
+
                 val = "\n" + val + "\n"
                 val = val.replace(/\r/g, "")
                 val = val.replace(/(^\n+)|(\n+$)/g, "\n")

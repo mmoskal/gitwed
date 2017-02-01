@@ -187,7 +187,20 @@ namespace gw {
         if (!gitwedPageInfo.isEditable)
             return
 
+        let metasection = $("#gw-meta-section")
+        metasection.css("display", "block")
+        metasection.prepend("<div class=gw-label>meta-information (only visible to editors)</div>")
+        metasection.children().each((idx, e) => {
+            let ee = $(e)
+            let m = /gw-meta-(.*)/.exec(ee.attr("id"))
+            if (m) {
+                ee.before("<div class=gw-label>" + m[1] + ":</div>")
+            }
+        })
+
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
+
+        ContentEdit.TagNames.get().register(ContentEdit.Text, 'address', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'a', 'span', 'li');
 
         let editor: any
         ContentTools.StylePalette.add([
@@ -269,8 +282,8 @@ namespace gw {
 Logged in as ${gitwedPageInfo.user}. 
 <a href="/gw/logout?redirect=${encodeURIComponent(location.pathname)}">Logout</a> <br>
 Content language: ${gitwedPageInfo.lang} ${gitwedPageInfo.isDefaultLang ? "(default)" : ""} <br>
-All languages: ${gitwedPageInfo.availableLangs.map(l => 
-        `<a href="${currPath}?setlang=${l}">${l}</a>`).join(" ")}
+All languages: ${gitwedPageInfo.availableLangs.map(l =>
+                    `<a href="${currPath}?setlang=${l}">${l}</a>`).join(" ")}
 </p>
 `)
 

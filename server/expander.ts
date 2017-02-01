@@ -6,6 +6,14 @@ import * as winston from "winston";
 
 let htmlparser2 = require("htmlparser2")
 
+function toHTML(e: CheerioStatic | Cheerio) {
+    return e.html().replace(/&#x([0-9a-f]{1,6});/ig, (entity, match) => {
+        let code = parseInt(match, 16)
+        if (code < 0x80) return entity
+        return String.fromCodePoint(code)
+    })
+}
+
 function jsQuote(s: string) {
     return "\"" + s.replace(/[\\"\n\r\t]/g, (m) => {
         switch (m) {
@@ -104,7 +112,7 @@ export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
     if (elt) {
         h.root().append(elt)
     }
-    return h.html()
+    return toHTML(h)
 }
 
 function expandAsync(cfg: ExpansionConfig) {
@@ -118,6 +126,7 @@ function expandAsync(cfg: ExpansionConfig) {
     let idToPos: SMap<Pos> = {}
     let allFiles: SMap<string> = {}
     let trees: SMap<Promise<gitfs.TreeEntry[]>> = {}
+    let langMap: SMap<string> = {}
 
     setLocations(h.root(), filename, fileContent)
     return recAsync({ filename, subst: {}, fileContent }, h.root())
@@ -146,11 +155,10 @@ function expandAsync(cfg: ExpansionConfig) {
             })
 
             if (hLoc) {
-                let langMap: SMap<string> = {}
                 hLoc("[data-gw-id]").each((i, e) => {
                     let ee = hLoc(e)
                     let id = ee.attr("data-gw-id")
-                    langMap[id] = ee.html()
+                    langMap[id] = toHTML(ee)
                 })
                 h("[data-gw-id]").each((i, e) => {
                     let ee = h(e)
@@ -166,7 +174,8 @@ function expandAsync(cfg: ExpansionConfig) {
             return {
                 allFiles,
                 idToPos,
-                html: h.html()
+                langMap,
+                html: toHTML(h)
             }
         })
 
@@ -210,13 +219,16 @@ function expandAsync(cfg: ExpansionConfig) {
     }
 
     function metaRewrite() {
+        let clean = (s: string) => (s || "").replace(/\s+/g, " ").trim()
         let metas: SMap<string> = {
-            title: h("#gw-meta-title").text() || h("title").text()
+            title: clean(h("#gw-meta-title").text() || h("title").text())
         }
         let commonMeta = ["description", "keywords", "copyright", "author"]
         for (let m of commonMeta) {
-            metas[m] = h("#gw-meta-" + m).text() || h("meta[name='" + m + "']").attr("content") || ""
+            metas[m] = clean(h("#gw-meta-" + m).text() || h("meta[name='" + m + "']").attr("content"))
         }
+
+        h("title").text(metas["title"])
 
         let metaMap: SMap<string> = {
             'twitter:title': 'title',
