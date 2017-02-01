@@ -20,6 +20,7 @@ export interface Config {
     serviceName?: string;
     proxy?: boolean;
     cdnPath?: string;
+    production?: boolean;
 }
 
 let repoPath = ""
@@ -527,6 +528,9 @@ export function initAsync(cfg: Config) {
     config = cfg
     repoPath = cfg.repoPath.replace(/\/$/, "") + "/"
     justDir = !!cfg.justDir
+
+    if (config.production)
+        return getHeadRevAsync()
 
     return statusCleanAsync()
         .then(pullAsync)
