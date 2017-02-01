@@ -66,6 +66,28 @@ When deployed, it will be something like:
 * `<group>` - all group tags are replaced with their content (they are invisible wrappers)
 * `<if-edit>` - the tag, along with its children, is removed unless the user has edit permission
 
+### Marking elements for editing
+
+You need to add `edit` attribute. You will also need a unique (in file) identifier
+for the element. This can be specified with `id` or as argument to `edit`. Example:
+
+```
+<div class='foobar' edit=desc1>
+<p> ... </p>
+</div>
+
+<div class='barbaz' edit id=desc2>
+<h1> ... </h1>
+<p> ... </p>
+</div>
+
+<li><a href="qux" class="..." edit="link-qux">Some text</a></li>
+```
+
+In the tag marked with `edit` has at least one of the following as children:
+`p, ul, ol, h1, h2, h3, h4, h5, h6` the full HTML editor will be used.
+If it doesn't, only the text can be edited.
+
 ## Admin manual
 
 You can invite new users from the "..." menu. The invitation is only valid for one subdirectory.

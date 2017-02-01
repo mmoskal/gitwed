@@ -128,7 +128,7 @@ function expandAsync(cfg: ExpansionConfig) {
             h("[gw-pos]").each((i, e) => {
                 let ee = h(e)
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
-                let id = ee.attr("id")
+                let id = ee.attr("edit") || ee.attr("id")
                 id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "") + "-" + id
                 id = id.replace(/[^\w]+/g, "_")
                 ee.attr("data-gw-id", id)
@@ -370,8 +370,9 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         if (elt.attr("edit") != null) {
+            eltId = elt.attr("edit") || eltId
             if (!eltId) error("no id on element marked with 'edit'", ctx, elt);
-            if (elt.find("p, ul, ol").length > 0)
+            if (elt.find("p, ul, ol, h1, h2, h3, h4, h5, h6").length > 0)
                 elt.attr("data-editable", "true")
             else
                 elt.attr("data-fixture", "true")
