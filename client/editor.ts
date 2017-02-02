@@ -353,6 +353,16 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
             })
             root.append(hist)
 
+            let refresh = $("<button>Force server refresh</button>")
+            refresh.click(() => {
+                status("Refreshing...")
+                getJsonAsync("/api/refresh")
+                    .then(() => {
+                        status("Done.")
+                    })
+            })
+            root.append(refresh)
+
             let invite = $("<button>Invite someone to edit</button>")
             invite.click(() => {
                 root.empty()
