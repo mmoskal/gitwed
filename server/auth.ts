@@ -96,7 +96,19 @@ export function initRoutes(app: express.Express) {
         res.redirect(req.query["redirect"] || "/")
     })
 
+    function vhost(req: express.Request) {
+        if (routing.getVHostDir(req)) {
+            routing.sendError(req,
+                "Editing not available here",
+                "Please head to " + gitfs.config.authDomain)
+            return true
+        }
+        return false
+    }
+
     app.all("/gw/login", (req, res, next) => {
+        if (vhost(req)) return
+
         let redir: string = (req.query["redirect"] || "").slice(0, 200)
         let email: string = (req.body ? req.body["email"] || "" : "") || req.query["email"] || ""
         email = email.trim().toLowerCase()
@@ -154,6 +166,8 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/gw/auth", (req, res, next) => {
+        if (vhost(req)) return
+        
         let tok: string = req.query["tok"] || ""
         try {
             let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)

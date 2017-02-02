@@ -39,7 +39,7 @@ setInterval(() => {
     if (tm > restartMinutes * 60 * 1000) {
         // only restart when it's quiet
         if (now - lastUse > 10 * 1000) {
-            winston.info(`auto-shutdown after ${Math.round(tm/1000)}s`)
+            winston.info(`auto-shutdown after ${Math.round(tm / 1000)}s`)
             gitfs.shutdown()
         }
     }
@@ -72,10 +72,6 @@ app.use((req, res, next) => {
 });
 
 auth.initCheck(app)
-
-app.get('/', (req, res) => {
-    res.redirect("/sample/index")
-})
 
 auth.initRoutes(app)
 
@@ -157,7 +153,7 @@ app.get("/api/refresh", (req, res) => {
 app.post("/api/update", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
-    
+
     let page = req.body.page + ""
 
     if (page.endsWith("/")) page += "index"
@@ -283,7 +279,18 @@ app.get(/.*/, (req, res, next) => {
     if (/\/$/.test(cleaned))
         cleaned += "index"
 
+    if (!/^\/(common|gw)\//.test(cleaned)) {
+        cleaned = routing.getVHostDir(req) + cleaned
+    }
+
     cleaned = cleaned.slice(1)
+
+    // asking for root index?
+    // TODO change this in future?
+    if (cleaned == "index") {
+        res.redirect("/sample/")
+        return
+    }
 
     let ref = "master"
     if (/^[0-9a-f]{40}\//.test(cleaned)) {
@@ -388,6 +395,9 @@ if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
     winston.error(`cannot find repoPath (${cfg.repoPath}) in config.json or as argument`)
     process.exit(1)
 }
+
+if (!cfg.vhosts)
+    cfg.vhosts = {}
 
 let port = 3000
 

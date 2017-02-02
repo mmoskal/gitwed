@@ -102,7 +102,7 @@ Users are stored in `private/users.json` file.
 * [x] add `/api/refresh` endpoint
 * [ ] add `gw-copy-from=<ID>` attribute
 * [x] handle lack of `/index`
-* [ ] add vhost support
+* [x] add vhost support
 
 ### Deployment
 * [ ] auto-restart upon crash?

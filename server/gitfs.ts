@@ -23,6 +23,7 @@ export interface Config {
     proxy?: boolean;
     cdnPath?: string;
     production?: boolean;
+    vhosts?: SMap<string>;
 }
 
 let repoPath = ""

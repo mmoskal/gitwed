@@ -8,6 +8,14 @@ import bluebird = require('bluebird')
 import winston = require('winston')
 import logs = require('./logs')
 
+export function getVHostDir(req: express.Request) {
+    let host = (req.header("x-forwarded-host") || req.header("host") || "").toLowerCase()
+    let v = gitfs.config.vhosts
+    if (v.hasOwnProperty(host))
+        return "/" + v[host].replace(/^\/+/, "")
+    return ""
+}
+
 export function sendTemplate(req: express.Request, cleaned: string, vars: SMap<string> = {}) {
     gitfs.getTextFileAsync(cleaned, "master")
         .then(str => {
