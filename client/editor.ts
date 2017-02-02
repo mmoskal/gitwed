@@ -3,6 +3,48 @@ declare var ContentEdit: any;
 declare var gitwedPageInfo: gw.PageInfo;
 
 namespace gw {
+    function __ct_extends(child: any, parent: any) {
+        const __hasProp = {}.hasOwnProperty;
+        for (var key in parent) {
+            if (__hasProp.call(parent, key)) child[key] = parent[key];
+        }
+        function ctor() { this.constructor = child; }
+        ctor.prototype = parent.prototype;
+        child.prototype = new (ctor as any)();
+        child.__super__ = parent.prototype;
+        return child;
+    }
+
+    function mkTool(tag: string, icon: string = "") {
+        let Tool: any = function () {
+            return Tool.__super__.constructor.apply(this, arguments);
+        }
+
+        __ct_extends(Tool, ContentTools.Tools.Heading);
+
+        ContentTools.ToolShelf.stow(Tool, tag);
+
+        Tool.label = tag;
+        Tool.icon = icon || tag;
+        Tool.tagName = tag;
+
+        return Tool;
+    }
+
+    for (let i = 1; i <= 6; i++) mkTool("h" + i)
+
+    const fullTools = [
+        ['bold', 'italic', 'link', 'align-left', 'align-center', 'align-right'],
+        ['h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'paragraph', 'unordered-list', 'ordered-list',
+            'table', 'indent', 'unindent', 'line-break'],
+        ['image', 'video', 'preformatted'],
+        ['undo', 'redo', 'remove']
+    ]
+    const fixtureTools = [
+        ['undo', 'redo', 'remove']
+    ]
+
     let supportAutoSave = false
 
     export function timeAgo(tm: number) {
@@ -200,7 +242,10 @@ namespace gw {
 
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
-        ContentEdit.TagNames.get().register(ContentEdit.Text, 'address', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'a', 'span', 'li');
+        // This is for fixture editing (i.e., text-only, non-html)
+        ContentEdit.TagNames.get().register(ContentEdit.Text, 'address', 'blockquote',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'p', 'div', 'a', 'span', 'li');
 
         let editor: any
         ContentTools.StylePalette.add([
@@ -234,9 +279,8 @@ namespace gw {
                 })
         });
 
-        let FIXTURE_TOOLS = [['undo', 'redo', 'remove']];
         ContentEdit.Root.get().bind('focus', (element: any) => {
-            let tools = element.isFixed() ? FIXTURE_TOOLS : ContentTools.DEFAULT_TOOLS;
+            let tools = element.isFixed() ? fixtureTools : fullTools;
             if (editor.toolbox().tools() !== tools) {
                 return editor.toolbox().tools(tools);
             }

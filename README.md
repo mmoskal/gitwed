@@ -111,7 +111,8 @@ Users are stored in `private/users.json` file.
 * [ ] push (and pull?) in background
 * [ ] add `/gw/refresh` endpoint
 * [x] set meta content-language
-* [ ] add h3-h6 to content tools?
+* [x] add h3-h6 to content tools?
+* [ ] add `gw-copy-from=<ID>` attribute
 
 ### Deployment
 
@@ -122,6 +123,7 @@ Users are stored in `private/users.json` file.
 
 ### Further down
 
+* [ ] specify custom styles in per-page `config.json`; same for `data-background` etc
 * [ ] creation of new pages
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
