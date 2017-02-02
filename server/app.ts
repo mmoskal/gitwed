@@ -96,7 +96,10 @@ app.get("/api/logs", (req, res) => {
 
 function sanitizePath(p: string) {
     p = p + ""
-    return p.split(/\//).filter(s => !!s && s != "." && s != "..")
+    let elts = p.split(/\//).filter(s => !!s && s[0] != ".")
+    if (elts.length && p.endsWith("/"))
+        elts.push("")
+    return elts
 }
 
 app.get("/api/history", (req, res) => {
@@ -154,8 +157,12 @@ app.get("/api/refresh", (req, res) => {
 app.post("/api/update", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
+    
+    let page = req.body.page + ""
 
-    let fn = req.body.page.slice(1) + ".html"
+    if (page.endsWith("/")) page += "index"
+
+    let fn = page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)
         return res.status(402).end()
 
@@ -218,8 +225,6 @@ app.post("/api/update", (req, res) => {
 
 // support let's encrypt cert renewal (when hidden behind apache)
 app.use("/.well-known", express.static("/var/www/html/.well-known"))
-//app.use("/gw", express.static("node_modules/ContentTools/build"))
-//app.use("/", express.static("html"))
 
 app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
     let sha = req.params[1]
@@ -270,10 +275,13 @@ app.get(/.*/, (req, res, next) => {
         addLang(headerLang)
     }
 
-    let cleaned = req.path.replace(/\/+$/, "")
+    let cleaned = req.path.replace(/\/index(\.html?)?$/, "/")
     if (cleaned != req.path) {
         return res.redirect(cleaned + req.url.slice(req.path.length + 1))
     }
+
+    if (/\/$/.test(cleaned))
+        cleaned += "index"
 
     cleaned = cleaned.slice(1)
 
@@ -333,7 +341,7 @@ app.get(/.*/, (req, res, next) => {
         }, err => {
             gitfs.getTextFileAsync(orig + "/index.html")
                 .then(() => {
-                    res.redirect(orig + "/index")
+                    res.redirect(orig + "/")
                 }, _ => errHandler(err))
         })
 })

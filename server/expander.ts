@@ -478,18 +478,22 @@ export function expandFileAsync(cfg: ExpansionConfig) {
         .then(() => getPageConfigAsync(cfg.rootFile))
         .then(pcfg => {
             cfg.pageConfig = pcfg
-            if (!cfg.pageConfig.langs || !cfg.pageConfig.langs.length)
-                cfg.pageConfig.langs = ["en"]
+            let plangs = cfg.pageConfig.langs
+            if (!plangs || !plangs.length)
+                cfg.pageConfig.langs = plangs = ["en"]
             if (cfg.langs) {
                 for (let l of cfg.langs) {
-                    if (cfg.pageConfig.langs.indexOf(l) >= 0) {
+                    if (plangs.indexOf(l) >= 0) {
                         cfg.lang = l
                         break
                     }
                 }
             }
-            if (!cfg.lang) cfg.lang = cfg.pageConfig.langs[0]
-            if (cfg.lang != cfg.pageConfig.langs[0]) {
+            if (!cfg.lang) {
+                // if no match, default to en (if available), not first langauge in the list
+                cfg.lang = plangs.indexOf("en") >= 0 ? "en" : plangs[0]
+            }
+            if (cfg.lang != plangs[0]) {
                 cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
                 return gitfs.getTextFileAsync(cfg.langFileName, cfg.ref)
                     .then(v => v, e => "")

@@ -101,7 +101,7 @@ Users are stored in `private/users.json` file.
 * [x] push (and pull?) in background
 * [x] add `/api/refresh` endpoint
 * [ ] add `gw-copy-from=<ID>` attribute
-* [ ] handle lack of `/index`
+* [x] handle lack of `/index`
 * [ ] add vhost support
 
 ### Deployment
@@ -116,3 +116,5 @@ Users are stored in `private/users.json` file.
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
+* [ ] add cache of expanded pages (based on HEAD rev)
+* [ ] extend /api/logs with file system access
