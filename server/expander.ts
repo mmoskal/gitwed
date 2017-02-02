@@ -96,6 +96,29 @@ let cheerioOptions: any = {
     withStartIndices: true
 }
 
+export function cleanHtmlFragment(frag: string) {
+    frag = frag.replace(/\r/g, "")
+    frag = frag.replace(/(^\n*)|(\n*$)/g, "\n")
+    let h = cheerio.load(frag, cheerioOptions)
+
+    h("*").each((idx, ee) => {
+        let e = h(ee)
+        let attrs: SMap<string> = ee.attribs as any
+        for (let k of Object.keys(ee.attribs)) {
+            let m = /^data-gw-orig-(.*)/.exec(k)
+            if (m) {
+                let v = attrs[k]
+                if (v) {
+                    attrs[m[1]] = v
+                    delete attrs[k]
+                }
+            }
+        }
+    })
+
+    return toHTML(h)
+}
+
 export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
     let cont = cfg.langFileContent || ""
     if (cont) cont = cont.replace(/\n*$/, "\n\n")
@@ -264,7 +287,10 @@ function expandAsync(cfg: ExpansionConfig) {
             if (!canBeCdned(v, mayHaveRelativeLinks)) return
             promises.push(replUrlAsync(v).then(r => {
                 //winston.debug("repl: " + v + " -> " + r)
-                ee.attr(attrName, r)
+                if (r != v) {
+                    ee.attr(attrName, r)
+                    ee.attr("data-gw-orig-" + attrName, v)
+                }
             }))
         }
 

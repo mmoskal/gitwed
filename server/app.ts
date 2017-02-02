@@ -172,9 +172,7 @@ app.post("/api/update", (req, res) => {
                     return res.end("OK")
                 }
 
-                val = "\n" + val + "\n"
-                val = val.replace(/\r/g, "")
-                val = val.replace(/(^\n+)|(\n+$)/g, "\n")
+                val = expander.cleanHtmlFragment(val)
 
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
