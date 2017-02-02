@@ -98,34 +98,19 @@ You can always append `&redirect=/foo/bar` to an authentication link.
 Users are stored in `private/users.json` file. 
 
 ## TODO
-
-* [x] set user doing commit
-* [x] nicer 404
-* [x] sort out image centering when not in edit mode
-* [x] redirect to index
-* [x] language switcher
-* [x] title+meta editing
-* [x] make sure no /gw/* files are required when not editing
-* [x] issue HTTPS redirects
-* [x] image upload has issues?
 * [ ] push (and pull?) in background
 * [ ] add `/gw/refresh` endpoint
-* [x] set meta content-language
-* [x] add h3-h6 to content tools?
 * [ ] add `gw-copy-from=<ID>` attribute
 
 ### Deployment
-
 * [ ] auto-restart upon crash
 * [ ] auto-restart every 2h or so
 * [ ] disable clean-repo check
 * [ ] log output to file
 
 ### Further down
-
 * [ ] specify custom styles in per-page `config.json`; same for `data-background` etc
 * [ ] creation of new pages
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
-* [x] add HSTS
