@@ -116,5 +116,5 @@ Users are stored in `private/users.json` file.
 * [ ] add lang from web?
 * [ ] extend the big "edit" button with custom actions (like 'add section')
 * [ ] history restore
-* [ ] add cache of expanded pages (based on HEAD rev)
+* [x] add cache of expanded pages (based on HEAD rev)
 * [ ] extend /api/logs with file system access

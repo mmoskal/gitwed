@@ -52,6 +52,40 @@ let pushNeeded = 0
 let lastRequestTime = 0
 let lastSyncTime = 0
 
+export class StringCache {
+    cache: SMap<string> = {}
+    size = 0
+    get(key: string) {
+        if (!key) return null
+        if (this.cache.hasOwnProperty(key))
+            return this.cache[key]
+        return null
+    }
+
+    set(key: string, v: string) {
+        if (!key) return
+        delete this.cache[key]
+        let sz = 100 + v.length * 2
+        if (!v || sz > maxCacheEltSize) return
+        if (this.size + sz > maxCacheSize) {
+            this.flush()
+        }
+        this.size += sz
+        this.cache[key] = v
+    }
+
+    flush() {
+        this.size = 0
+        this.cache = {}
+    }
+}
+
+export const stringCache = new StringCache()
+
+function flushCaches() {
+    stringCache.flush()
+}
+
 export function pokeAsync(force = false) {
     lastRequestTime = Date.now()
     if (force) {
@@ -174,6 +208,7 @@ function getHeadRevAsync() {
         .then(() => runGitAsync(["rev-parse", "HEAD"]))
         .then(buf => {
             rootId = buf.trim()
+            flushCaches()
             winston.debug(`HEAD now at ${rootId}`)
         })
 }

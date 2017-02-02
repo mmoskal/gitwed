@@ -256,7 +256,7 @@ app.get(/.*/, (req, res, next) => {
         s = s.toLowerCase()
         let m = /^([a-z]+)(-[a-z]+)?/.exec(s)
         if (m) {
-            let full = m[1] + m[2]
+            let full = m[0]
             if (langs.indexOf(full) >= 0) return
             langs.push(full)
             if (m[1] != full)
@@ -328,6 +328,19 @@ app.get(/.*/, (req, res, next) => {
 
     let orig = cleaned
     cleaned += ".html"
+
+    let cacheKey = ref + ":" + cleaned + ":" + langs.join(",")
+    if (req.appuser || gitfs.config.justDir) cacheKey = null
+
+    let cached = gitfs.stringCache.get(cacheKey)
+    if (cached != null) {
+        winston.debug(`cache hit at ${cacheKey}`)
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf8'
+        })
+        return res.end(cached)
+    }
+
     gitfs.getTextFileAsync(cleaned, ref)
         .then(str => {
             let cfg: expander.ExpansionConfig = {
@@ -339,6 +352,7 @@ app.get(/.*/, (req, res, next) => {
             }
             expander.expandFileAsync(cfg)
                 .then(page => {
+                    gitfs.stringCache.set(cacheKey, page.html)
                     res.writeHead(200, {
                         'Content-Type': 'text/html; charset=utf8'
                     })
