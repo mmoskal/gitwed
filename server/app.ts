@@ -16,6 +16,11 @@ import routing = require('./routing')
 bluebird.longStackTraces();
 logs.init()
 
+const restartMinutes = 120
+
+let startTime = Date.now()
+let lastUse = startTime
+
 var app = express();
 var bodyParser = require('body-parser')
 
@@ -24,8 +29,21 @@ let fileLocks = tools.promiseQueue()
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
     req._response = res;
+    lastUse = Date.now()
     next();
 });
+
+setInterval(() => {
+    let now = Date.now()
+    let tm = now - startTime
+    if (tm > restartMinutes * 60 * 1000) {
+        // only restart when it's quiet
+        if (now - lastUse > 10 * 1000) {
+            winston.info(`auto-shutdown after ${Math.round(tm/1000)}s`)
+            gitfs.shutdown()
+        }
+    }
+}, 60 * 1000)
 
 app.use(require('cookie-parser')());
 app.use(require("compression")())

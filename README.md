@@ -105,10 +105,10 @@ Users are stored in `private/users.json` file.
 * [ ] add vhost support
 
 ### Deployment
-* [ ] auto-restart upon crash
-* [ ] auto-restart every 2h or so
-* [ ] disable clean-repo check
-* [ ] log output to file
+* [ ] auto-restart upon crash?
+* [x] auto-restart every 2h or so
+* [x] disable clean-repo check
+* [x] log output to file
 
 ### Further down
 * [ ] specify custom styles in per-page `config.json`; same for `data-background` etc
