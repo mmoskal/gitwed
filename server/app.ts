@@ -371,6 +371,10 @@ if (cfg.justDir) {
     winston.info(`using git push/pull`)
 }
 
+process.on('SIGINT', () => {
+    gitfs.shutdown()
+});
+
 gitfs.initAsync(cfg)
     .then(() => {
         if (cfg.justDir || cfg.proxy) {

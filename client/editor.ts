@@ -359,6 +359,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 getJsonAsync("/api/refresh")
                     .then(() => {
                         status("Done.")
+                        window.location.reload()
                     })
             })
             root.append(refresh)

@@ -219,6 +219,22 @@ function maybeGcGitCatFile() {
     gitCatFileBuf.drain()
 }
 
+function gcGitCatFile() {
+    lastUsage = 1
+    maybeGcGitCatFile()
+}
+
+export function shutdown() {
+    winston.info("shut down commanced")
+    gcGitCatFile()
+    apiLockAsync("commit", () => {
+        gcGitCatFile()
+        winston.info("shutting down")
+        process.exit(0)
+        return Promise.resolve()
+    })
+}
+
 function startGitCatFile() {
     if (!lastUsage) {
         setInterval(maybeGcGitCatFile, 1000)

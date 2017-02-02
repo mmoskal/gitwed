@@ -21,12 +21,39 @@ export function init() {
     });
 
     winston.remove(winston.transports.Console)
-    winston.add(winston.transports.Console, <any>{
+    winston.add(winston.transports.Console, {
         prettyPrint: true,
         colorize: true,
         silent: false,
         timestamp: false
     });
+
+    tools.mkdirP("logs")
+
+    let opts: winston.DailyRotateFileTransportOptions = {
+        maxsize: 1024 * 1024,
+        maxFiles: 20,
+        timestamp: true,
+        colorize: false,
+        silent: false,
+        prettyPrint: false,
+        level: "info",
+        json: false,
+        filename: "logs/info.log"
+    }
+    winston.add(winston.transports.File, opts)
+
+    opts = tools.clone(opts)
+    opts.level = "debug"
+    opts.filename = "logs/debug.log"
+    opts.name = "file-debug"
+    winston.add(winston.transports.File, opts)
+
+    opts = tools.clone(opts)
+    opts.level = "warn"
+    opts.filename = "logs/warn.log"
+    opts.name = "file-warn"
+    winston.add(winston.transports.File, opts)
 
     winston.add(MemLogger as any, {})
 }
