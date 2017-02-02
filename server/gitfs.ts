@@ -10,7 +10,7 @@ import winston = require('winston');
 
 const maxCacheSize = 32 * 1024 * 1024
 const maxCacheEltSize = 256 * 1024
-const gitRefreshTimeoutSeconds = 20
+const gitRefreshTimeoutSeconds = 120
 
 export interface Config {
     jwtSecret: string;
