@@ -269,6 +269,8 @@ function expandAsync(cfg: ExpansionConfig) {
             if (!e.attr("content"))
                 e.attr("content", metas[metaMap[k]])
         }
+
+        h("meta[http-equiv='Content-Language']").attr("content", cfg.lang)
     }
 
     function cdnRewriteAsync() {

@@ -110,7 +110,7 @@ Users are stored in `private/users.json` file.
 * [x] image upload has issues?
 * [ ] push (and pull?) in background
 * [ ] add `/gw/refresh` endpoint
-* [ ] set meta content-language
+* [x] set meta content-language
 * [ ] add h3-h6 to content tools?
 
 ### Deployment
