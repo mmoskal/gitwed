@@ -98,9 +98,11 @@ You can always append `&redirect=/foo/bar` to an authentication link.
 Users are stored in `private/users.json` file. 
 
 ## TODO
-* [ ] push (and pull?) in background
-* [ ] add `/gw/refresh` endpoint
+* [x] push (and pull?) in background
+* [x] add `/api/refresh` endpoint
 * [ ] add `gw-copy-from=<ID>` attribute
+* [ ] handle lack of `/index`
+* [ ] add vhost support
 
 ### Deployment
 * [ ] auto-restart upon crash

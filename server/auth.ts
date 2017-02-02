@@ -207,7 +207,7 @@ export function initRoutes(app: express.Express) {
             "&redirect=" + encodeURIComponent(page)
 
         expander.hasWritePermAsync(req.appuser, page)
-            .then(() => gitfs.refreshAsync())
+            .then(() => gitfs.pokeAsync(true))
             .then(() => lookupUserAsync(email))
             .then(u => {
                 if (u) return Promise.resolve()

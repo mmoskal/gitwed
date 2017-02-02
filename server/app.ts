@@ -114,8 +114,7 @@ app.post("/api/uploadimg", (req, res) => {
                 return res.status(403).end()
 
             fileLocks(path, () =>
-                gitfs.refreshAsync()
-                    .then(() => gitfs.createBinFileAsync(path, basename, ext, buf, msg, req.appuser))
+                gitfs.createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
                     .then(imgName => {
                         res.json({
                             url: "img/" + imgName
@@ -123,6 +122,15 @@ app.post("/api/uploadimg", (req, res) => {
                     }))
         })
 
+})
+
+app.get("/api/refresh", (req, res) => {
+    if (!req.appuser)
+        return res.status(403).end()
+    gitfs.pokeAsync(true)
+        .then(() => {
+            res.json({})
+        })
 })
 
 app.post("/api/update", (req, res) => {
@@ -142,8 +150,7 @@ app.post("/api/update", (req, res) => {
     }
 
     fileLocks(fn, () =>
-        gitfs.refreshAsync()
-            .then(() => expander.expandFileAsync(cfg))
+        expander.expandFileAsync(cfg)
             .then(page => {
                 if (!cfg.hasWritePerm)
                     return res.status(402).end()
@@ -188,7 +195,7 @@ app.post("/api/update", (req, res) => {
                 } else {
                     res.status(410).end()
                 }
-            }))
+            }) as Promise<void>)
 })
 
 // support let's encrypt cert renewal (when hidden behind apache)
@@ -221,6 +228,8 @@ app.get(/.*/, (req, res, next) => {
         res.cookie("GWLANG", req.query['setlang'] || "")
         return res.redirect(req.path)
     }
+
+    gitfs.pokeAsync() // refresh in background if needed
 
     let langs: string[] = []
     let addLang = (s: string) => {

@@ -2,6 +2,7 @@ import fs = require("fs")
 import path = require("path")
 import crypto = require("crypto")
 import tools = require("./tools")
+import logs = require("./logs")
 import * as child_process from "child_process";
 import * as bluebird from "bluebird";
 import express = require('express');
@@ -9,6 +10,7 @@ import winston = require('winston');
 
 const maxCacheSize = 32 * 1024 * 1024
 const maxCacheEltSize = 256 * 1024
+const gitRefreshTimeoutSeconds = 20
 
 export interface Config {
     jwtSecret: string;
@@ -28,7 +30,6 @@ let justDir = false
 
 // maps directory name to its listing
 let apiLockAsync = tools.promiseQueue()
-let rootIdTime: number = 0
 let rootId = ""
 let gitCacheSize = 0
 let gitObjCache: SMap<GitObject> = {}
@@ -44,6 +45,50 @@ function join(a: string, b: string) {
 let readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFile) as any
 let writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 let readdirAsync = bluebird.promisify(fs.readdir)
+
+let syncRunning = false
+let pushNeeded = 0
+let lastRequestTime = 0
+let lastSyncTime = 0
+
+export function pokeAsync(force = false) {
+    lastRequestTime = Date.now()
+    if (force) {
+        lastSyncTime = 0
+    }
+    return maybeSyncAsync()
+}
+
+function maybeSyncAsync() {
+    if (syncRunning) return Promise.resolve()
+    let now = Date.now()
+    if (pushNeeded || now - lastSyncTime > gitRefreshTimeoutSeconds * 1000) {
+        lastSyncTime = now
+        syncRunning = true
+        return apiLockAsync("commit", () =>
+            pullAsync()
+                .then(() => {
+                    if (pushNeeded) {
+                        let v = pushNeeded
+                        winston.info("pushing...")
+                        return runGitAsync(["push", "--quiet"])
+                            .then(() => {
+                                pushNeeded -= v
+                                return getHeadRevAsync()
+                            })
+                    } else {
+                        return Promise.resolve()
+                    }
+                })
+                .then(() => {
+                    syncRunning = false
+                }, err => {
+                    syncRunning = false
+                    logs.logError(err)
+                }))
+    }
+    return Promise.resolve()
+}
 
 export function githash(buf: Buffer) {
     let h = crypto.createHash("sha1")
@@ -94,8 +139,7 @@ export function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
 
     if (justDir && ref == "master")
         return readAsync(repoPath + name)
-    return refreshAsync(120)
-        .then(() => getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name))
+    return getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name)
         .then(obj => {
             if (obj.type == "blob") {
                 return obj.data
@@ -129,7 +173,6 @@ function getHeadRevAsync() {
         .then(() => runGitAsync(["rev-parse", "HEAD"]))
         .then(buf => {
             rootId = buf.trim()
-            rootIdTime = Date.now()
             winston.debug(`HEAD now at ${rootId}`)
         })
 }
@@ -137,18 +180,16 @@ function getHeadRevAsync() {
 function pullAsync() {
     if (justDir)
         return getHeadRevAsync()
+    let id = rootId
     return Promise.resolve()
         .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit", "--quiet"]))
         .then(getHeadRevAsync)
-}
-
-export function refreshAsync(timeoutSeconds = 5) {
-    return apiLockAsync("commit", () => {
-        if (Date.now() - rootIdTime >= timeoutSeconds * 1000)
-            return pullAsync()
-        else
-            return Promise.resolve()
-    })
+        .then(() => {
+            if (id == rootId)
+                winston.info(`empty pull at ${rootId}`)
+            else
+                winston.info(`git pull: ${id} -> ${rootId}`)
+        })
 }
 
 export function getTextFileAsync(name: string, ref = "master"): bluebird.Thenable<string> {
@@ -501,13 +542,12 @@ export function setBinFileAsync(name: string, val: Buffer, msg: string, useremai
                 "-c", "user.email=" + useremail,
                 "commit",
                 "-m", msg]))
-            .then(() => runGitAsync(["push", "--quiet"]).then(
-                () => { },
-                // if we get an error from push, trying pulling first
-                e =>
-                    pullAsync()
-                        .then(() => runGitAsync(["push"]))))
             .then(getHeadRevAsync)
+            .then(() => {
+                pushNeeded++
+                // run in background
+                maybeSyncAsync()
+            })
     })
 }
 
@@ -531,6 +571,11 @@ export function initAsync(cfg: Config) {
 
     if (config.production)
         return getHeadRevAsync()
+
+    if (!justDir)
+        setInterval(() => {
+            maybeSyncAsync()
+        }, 15 * 60 * 1000)
 
     return statusCleanAsync()
         .then(pullAsync)
