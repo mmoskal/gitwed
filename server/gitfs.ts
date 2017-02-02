@@ -55,13 +55,13 @@ export function githash(buf: Buffer) {
 export function createBinFileAsync(dir: string, basename: string, ext: string, buf: Buffer,
     msg: string, user: string
 ) {
-    let p = repoPath + dir + "/"
-    tools.mkdirP(p)
-    let ents = fs.readdirSync(p)
+    let fspath = repoPath + dir + "/"
+    tools.mkdirP(fspath)
+    let ents = fs.readdirSync(fspath)
     for (let bn of ents) {
-        let st = fs.statSync(p + bn)
+        let st = fs.statSync(fspath + bn)
         if (st.size == buf.length) {
-            let buf0 = fs.readFileSync(p + bn)
+            let buf0 = fs.readFileSync(fspath + bn)
             if (buf0.equals(buf)) {
                 return Promise.resolve(dir + "/" + bn)
             }
@@ -77,7 +77,7 @@ export function createBinFileAsync(dir: string, basename: string, ext: string, b
     }
 
     // write it, so we get a lock on the name
-    fs.writeFileSync(repoPath + fn, buf)
+    fs.writeFileSync(fspath + fn, buf)
 
     // this will write the file again
     return setBinFileAsync(dir + "/" + fn, buf, msg, user)

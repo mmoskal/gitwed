@@ -107,10 +107,11 @@ Users are stored in `private/users.json` file.
 * [x] title+meta editing
 * [x] make sure no /gw/* files are required when not editing
 * [x] issue HTTPS redirects
-* [ ] image upload has issues?
+* [x] image upload has issues?
 * [ ] push (and pull?) in background
 * [ ] add `/gw/refresh` endpoint
 * [ ] set meta content-language
+* [ ] add h3-h6 to content tools?
 
 ### Deployment
 
