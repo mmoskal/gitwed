@@ -264,7 +264,7 @@ namespace gw {
             (Promise as any).each(Object.keys(regions), (id: string) =>
                 postJsonAsync("/api/update", {
                     page: document.location.pathname,
-                    lang: gitwedPageInfo.isDefaultLang ? null : gitwedPageInfo.lang,
+                    lang: gitwedPageInfo.lang,
                     id: id,
                     value: regions[id]
                 }))
