@@ -7,13 +7,13 @@ build:
 	cd client && node ../node_modules/typescript/bin/tsc
 
 remote:
-	node server -i ../gitwed-data
+	node gitwed -i ../gitwed-data
 
 local:
-	node server ../gitwed-data
+	node gitwed ../gitwed-data
 
 watch:
 	cd client && node ../node_modules/typescript/bin/tsc --watch
 
 cdn: build
-	node server -cdn ../gitwed-data
+	node gitwed -cdn ../gitwed-data

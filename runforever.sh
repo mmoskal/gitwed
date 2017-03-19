@@ -1,4 +1,4 @@
 #!/bin/sh
 while : ; do
-  node server -i ../gitwed-data
+  node gitwed -i ../gitwed-data
 done
