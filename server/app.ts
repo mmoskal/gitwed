@@ -298,7 +298,7 @@ app.get(/.*/, (req, res, next) => {
         cleaned = cleaned.slice(41)
     }
 
-    if (cleaned.indexOf("private") == 0)
+    if (/^(private|logs\/)/.test(cleaned))
         return next()
 
     cleaned = cleaned.replace(/\.html?$/i, "")
@@ -392,8 +392,18 @@ if (args[0] == "-cdn") {
         cfg.cdnPath = "/cdn"
     }
 }
-if (args[0]) {
+if (args[0] && fs.existsSync(args[0])) {
     cfg.repoPath = args[0]
+    args.shift()
+}
+
+if (!cfg.repoPath)
+    cfg.repoPath = "."
+
+if (args[0]) {
+    winston.error("parameter not understood: " + args[0])
+    console.error(`Usage: gitwed [-i] [-cdn] [DIRECTORY]`)
+    process.exit(1)
 }
 
 if (!cfg.authDomain)
