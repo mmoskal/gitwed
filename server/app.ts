@@ -441,10 +441,21 @@ function setupCerts() {
     let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
     let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
 
+    let approveDomains = (opts: any, certs: any, cb: any) => {
+        if (opts.domains.every((domain: string) => -1 !== domains.indexOf(domain))) {
+            opts.email = cfg.certEmail;
+            opts.agreeTos = true;
+            return cb(null, { options: opts, certs: certs });
+        }
+        winston.error("unapproved domains: " + opts.domains.join(", "))
+        cb(new Error("unapproved domain"));
+    };
+
     // returns an instance of node-greenlock with additional helper methods
     let lex = require('greenlock-express').create({
         // set to 'staging'
-        server: 'https://acme-v01.api.letsencrypt.org/directory',
+        //server: 'https://acme-v01.api.letsencrypt.org/directory',
+        server: 'staging',
 
         // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
         // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
@@ -455,7 +466,7 @@ function setupCerts() {
         email: cfg.certEmail,
         agreeTos: true,
         agreeToTerms: true,
-        approveDomains: domains,
+        approveDomains: approveDomains,
         debug: true,
     });
 
