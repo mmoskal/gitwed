@@ -3,6 +3,8 @@ global.Promise = require("bluebird")
 import express = require('express');
 import mime = require('mime');
 import fs = require('fs');
+import http = require('http');
+import https = require('https');
 import crypto = require("crypto")
 import expander = require('./expander')
 import gitfs = require('./gitfs')
@@ -435,13 +437,50 @@ process.on('SIGINT', () => {
     gitfs.shutdown()
 });
 
+function setupCerts() {
+    let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
+    let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
+
+    // returns an instance of node-greenlock with additional helper methods
+    let lex = require('greenlock-express').create({
+        // set to https://acme-v01.api.letsencrypt.org/directory in production
+        server: 'staging',
+
+        // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
+        // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
+
+        // You probably wouldn't need to replace the default sni handler
+        // See https://git.daplie.com/Daplie/le-sni-auto if you think you do
+        //, sni: require('le-sni-auto').create({})
+        email: cfg.certEmail,
+        agreeToTerms: true,
+        approveDomains: domains,
+        debug: true,
+    });
+
+    http.createServer(lex.middleware(require('redirect-https')()))
+        .listen(80, function () {
+            winston.info("Listening for ACME http-01 challenges on: " + this.address());
+        });
+
+    https.createServer(lex.httpsOptions, lex.middleware(app))
+        .listen(443, function () {
+            winston.info("Listening for ACME tls-sni-01 challenges and serve app on: " + this.address());
+        });
+}
+
 gitfs.initAsync(cfg)
     .then(() => {
         if (cfg.justDir || cfg.proxy) {
             winston.info(`listen on http://localhost:${port}`)
             app.listen(port, "localhost")
         } else {
-            winston.info(`listen on http://*:${port}`)
-            app.listen(port)
+            if (cfg.production) {
+                winston.info(`setup certs`)
+                setupCerts()
+            } else {
+                winston.info(`listen on http://*:${port}`)
+                app.listen(port)
+            }
         }
     })

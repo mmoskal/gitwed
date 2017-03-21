@@ -24,6 +24,7 @@ export interface Config {
     cdnPath?: string;
     production?: boolean;
     vhosts?: SMap<string>;
+    certEmail?: string;
 }
 
 let repoPath = ""
