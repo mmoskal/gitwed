@@ -473,7 +473,7 @@ function setupCerts() {
         email: cfg.certEmail,
         agreeTos: true,
         agreeToTerms: true,
-        approveDomains: approveDomains,
+        approveDomains: domains,
         debug: true,
     });
 
