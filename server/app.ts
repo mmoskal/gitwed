@@ -441,15 +441,22 @@ function setupCerts() {
     let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
     let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
 
-    let approveDomains = (opts: any, certs: any, cb: any) => {
-        if (opts.domains.every((domain: string) => -1 !== domains.indexOf(domain))) {
-            opts.email = cfg.certEmail;
-            opts.agreeTos = true;
-            return cb(null, { options: opts, certs: certs });
+    let ledir = process.env["HOME"] + "/letsencrypt/etc/"
+    let confPath = ledir + "renewal/" + mainDomain + ".conf"
+    let keyOK = false
+    if (fs.existsSync(confPath)) {
+        let s = fs.readFileSync(confPath, "utf8")
+        let m = /^domains\s*=\s*(.*)/m.exec(s)
+        if (m && m[1].replace(/\s+/g, "") == domains.join(",")) {
+            keyOK = true
+            winston.info("certificate OK")
         }
-        winston.error("unapproved domains: " + opts.domains.join(", "))
-        cb(new Error("unapproved domain"));
-    };
+    }
+    let keyPath = ledir + "live/" + mainDomain + "/privkey.pem"
+    if (!keyOK && fs.existsSync(keyPath)) {
+        winston.warn("removing outdated cert: " + keyPath)
+        fs.unlinkSync(keyPath)
+    }
 
     // returns an instance of node-greenlock with additional helper methods
     let lex = require('greenlock-express').create({
