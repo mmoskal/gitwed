@@ -443,8 +443,8 @@ function setupCerts() {
 
     // returns an instance of node-greenlock with additional helper methods
     let lex = require('greenlock-express').create({
-        // set to https://acme-v01.api.letsencrypt.org/directory in production
-        server: 'staging',
+        // set to 'staging'
+        server: 'https://acme-v01.api.letsencrypt.org/directory',
 
         // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
         // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
@@ -453,6 +453,7 @@ function setupCerts() {
         // See https://git.daplie.com/Daplie/le-sni-auto if you think you do
         //, sni: require('le-sni-auto').create({})
         email: cfg.certEmail,
+        agreeTos: true,
         agreeToTerms: true,
         approveDomains: domains,
         debug: true,
