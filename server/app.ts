@@ -289,7 +289,7 @@ app.get(/.*/, (req, res, next) => {
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = "/" + cleaned.slice(0, cleaned.length - 5)
-        return res.redirect("/gw/login?redirect=" + encodeURIComponent(redirpath))
+        return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent(redirpath))
     }
 
     // asking for root index?
