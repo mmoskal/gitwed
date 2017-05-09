@@ -23,7 +23,6 @@
     "compression": "^1.6.2",
     "cookie-parser": "^1.4.3",
     "express": "^4.14.0",
-    "gitlab": "^1.7.1",
     "greenlock-express": "^2.0.9",
     "htmlparser2": "^3.9.2",
     "jwt-simple": "^0.5.1",
