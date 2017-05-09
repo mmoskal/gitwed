@@ -4,16 +4,15 @@ Provide a git-backed WYSIWG website editing experience.
 
 ## Running locally
 
-* checkout https://gitlab.dwbn.org/mmoskal/gitwed into `somewhere/gitwed`
-* checkout https://gitlab.dwbn.org/mmoskal/gitwed-data into `somewhere/gitwed-data`
-* go to `somewhere/gitwed`, run:
+* checkout https://gitlab.dwbn.org/mmoskal/gitwed-data
+* go there and run
 ```
 npm install
-make
+npm start
 ```
-* this will run a server on http://localhost:3000, serving from `somewhere/gitwed-data`
-* if you modify files via web interface, they will be modified in `somewhere/gitwed-data`
-* if you modify files in `somewhere/gitwed-data`, the changes should be visible at http://localhost:3000
+* this will run a server on http://localhost:3000, serving the current directory
+* if you modify files via web interface, they will be modified in the current directory
+* if you modify files in the current directory, the changes should be visible at http://localhost:3000
 * there is no need to worry about user accounts unless you add `jwtSecret` to `config.json` - everyone connecting will be treated as an admin
 * in fact, there is no need to worry about `config.json` at all
 
@@ -47,7 +46,7 @@ all your files are checked in (but not necessarily pushed) in `gitwed-data` and
 then run `make cdn`. The URLs will be rewritten to paths like
 `/cdn/img_3834.jpg-b6d3e026697ae54d8749c13167b44239e1409c9b.jpg`.
 When deployed, it will be something like:
-`https://dwb.azureedge.net/img_3834.jpg-b6d3e026697ae54d8749c13167b44239e1409c9b.jpg`.
+`https://dwbe.azureedge.net/img_3834.jpg-b6d3e026697ae54d8749c13167b44239e1409c9b.jpg`.
 
 
 ## Macro language
@@ -71,7 +70,7 @@ When deployed, it will be something like:
 You need to add `edit` attribute. You will also need a unique (in file) identifier
 for the element. This can be specified with `id` or as argument to `edit`. Example:
 
-```
+```html
 <div class='foobar' edit=desc1>
 <p> ... </p>
 </div>
