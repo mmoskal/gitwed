@@ -243,9 +243,11 @@ namespace gw {
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
         // This is for fixture editing (i.e., text-only, non-html)
-        ContentEdit.TagNames.get().register(ContentEdit.Text, 'address', 'blockquote',
+        ContentEdit.TagNames.get().register(ContentEdit.Text, 
+            'address', 'blockquote',
             'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-            'p', 'div', 'a', 'span', 'li');
+            'p', 'div', 'a', 'span', 'li', 
+            'label', 'footer', 'section');
 
         let editor: any
         ContentTools.StylePalette.add([
