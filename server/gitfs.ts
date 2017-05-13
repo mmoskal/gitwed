@@ -65,7 +65,7 @@ export interface GitFs {
     logAsync: (path?: string) => Promise<LogEntry[]>;
 
     getFileAsync: (name: string, ref?: string) => Promise<Buffer>;
-    getTextFileAsync: (name: string, ref?: string) => bluebird.Thenable<string>;
+    getTextFileAsync: (name: string, ref?: string) => Promise<string>;
     getTreeAsync(path: string, ref: string): Promise<TreeEntry[]>;
 
     setTextFileAsync: (name: string, val: string, msg: string, user: string) => Promise<void>;
@@ -151,7 +151,7 @@ export function shutdown() {
         })
 }
 
-export function mkGitFsAsync(repoPath: string): Promise<GitFs> {
+export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
     let gitCatFile: child_process.ChildProcess
     let lastUsage = 0
     let gitCatFileBuf = new tools.PromiseBuffer<Buffer>()
@@ -181,23 +181,23 @@ export function mkGitFsAsync(repoPath: string): Promise<GitFs> {
 
     shutdownQueue.push(shutdownAsync)
 
-    if (config.production)
-        return getHeadRevAsync().then(() => iface)
+    if (config.production) {
+        await getHeadRevAsync()
+        return iface
+    }
 
     if (!justDir)
         setInterval(() => {
             maybeSyncAsync()
         }, 15 * 60 * 1000)
+    
+    await statusCleanAsync()
+    await pullAsync()
+    return iface
 
-    return statusCleanAsync()
-        .then(pullAsync)
-        .then(() => iface)
-
-
-
-    function getTextFileAsync(name: string, ref = "master"): bluebird.Thenable<string> {
-        return getFileAsync(name, ref)
-            .then(buf => buf.toString("utf8"))
+    async function getTextFileAsync(name: string, ref = "master"): Promise<string> {
+        let buf = await getFileAsync(name, ref)
+        return buf.toString("utf8")
     }
 
     function setTextFileAsync(name: string, val: string, msg: string, user: string) {
