@@ -5,6 +5,7 @@ import fs = require("fs")
 import gitfs = require('./gitfs')
 import mail = require('./mail')
 import tools = require('./tools')
+import auth = require('./auth')
 import routing = require('./routing')
 import expander = require('./expander')
 import bluebird = require('bluebird')
@@ -12,13 +13,14 @@ import winston = require('winston')
 
 export interface EventIndexEntry {
     id: number;
-    startTime: string;
-    endTime: string;
+    startDate: string; // "2016-01-05"
+    endDate: string;
     title: string;
-    location: string;
+    location: string; // "wroclaw"
 }
 
 export interface EventBase extends EventIndexEntry {
+    startTime: string; // "20:00"
     description: string;
 }
 
@@ -36,8 +38,8 @@ const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.p
 function forIndex(js: EventBase): EventIndexEntry {
     return {
         id: js.id,
-        startTime: js.startTime,
-        endTime: js.endTime,
+        startDate: js.startDate,
+        endDate: js.endDate,
         title: js.title,
         location: js.location
     }
@@ -97,6 +99,46 @@ function loadOrCreateIndex() {
     }
 }
 
+function formatDate(d: Date) {
+    return d.toISOString().slice(0, 10)
+}
+
+function validDate(d: string) {
+    return d == null || d == "" || /^2\d\d\d-\d\d-\d\d$/.test(d)
+}
+
+function validTime(d: string) {
+    return d == null || d == "" || /^\d\d:\d\d$/.test(d)
+}
+
+function applyChanges(curr: EventBase, delta: EventBase) {
+    if (curr.location && delta.location != curr.location)
+        return "cannot change event location"
+    if (!validDate(delta.startDate))
+        return "invalid start date"
+    if (!validDate(delta.endDate))
+        return "invalid end date"
+    if (!validTime(delta.startTime))
+        return "invalid start time"
+    if ((delta.title || "").length > 200)
+        return "title too long"
+    if ((delta.description || "").length > 4000)
+        return "description too long"
+
+    for (let k of [
+        "location",
+        "startDate",
+        "endDate",
+        "title",
+        "description",
+        "startTime",
+    ]) {
+        if (delta.hasOwnProperty(k))
+            (curr as any)[k] = (delta as any)[k]
+    }
+    return ""
+}
+
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)
         return
@@ -114,11 +156,59 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/api/events", (req, res, next) => {
+        let startDate = req.query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
+        let stopDate = req.query["stop"] || "9999-99-99"
+        let loc = req.query["location"] || null
+        let ev = index.events.filter(e => {
+            let end = e.endDate || e.startDate
+            if (end < startDate)
+                return false
+            if (e.startDate > stopDate)
+                return false
+            if (loc && e.location != loc)
+                return false
+            return true
+        })
+        let totalCount = ev.length
+        let skip = parseInt(req.query["skip"]) || 0
+        if (skip)
+            ev = ev.slice(skip)
+        let count = Math.abs(parseInt(req.query["count"]) || 20)
+        if (count > 100) count = 100
+        if (ev.length > count) ev = ev.slice(0, count)
+        res.json({
+            totalCount,
+            count,
+            skip,
+            events: ev,
+        })
     })
 
-    app.post("/api/events", (req, res, next) => {
-    })
+    app.post("/api/events", async (req, res, next) => {
+        if (!req.appuser)
+            return res.status(403).end()
 
-    app.post("/api/events/:id", (req, res, next) => {
+        if (!await auth.hasWritePermAsync(req.appuser, []))
+            return res.status(402).end()
+
+        let delta = req.body as EventBase
+        let currElt = { id: index.nextId } as EventBase
+        let isFresh = true
+        if (typeof delta.id == "number") {
+            currElt = await readEventAsync(delta.id)
+            if (!currElt)
+                return res.status(404).end()
+            isFresh = false
+        }
+
+        let err = applyChanges(currElt, delta)
+        if (err) {
+            res.status(412).json({ error: err })
+        } else {
+            if (isFresh)
+                index.nextId++
+            await saveEventAsync(currElt, req.appuser)
+            res.json(currElt)
+        }
     })
 }
