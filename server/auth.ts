@@ -25,14 +25,14 @@ interface UserConfig {
     users: User[];
 }
 
-function nosec() {
+function noSecurity() {
     return !gitfs.config.jwtSecret && gitfs.config.repoPath
 }
 
 export function initCheck(app: express.Express) {
     app.use((req, res, next) => {
         // when running on localhost without secret make everyone an admin
-        if (nosec()) {
+        if (noSecurity()) {
             req.appuser = "admin"
             next()
             return
@@ -260,7 +260,7 @@ export function initRoutes(app: express.Express) {
 export function hasWritePermAsync(appuser: string, localUsers: string[]) {
     if (!appuser) return Promise.resolve(false)
     appuser = normalizeEmail(appuser)
-    if (nosec() && appuser == "admin")
+    if (noSecurity() && appuser == "admin")
         return Promise.resolve(true)
     return lookupUserAsync(appuser)
         .then(u => {
