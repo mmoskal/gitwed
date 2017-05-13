@@ -140,6 +140,85 @@ export function splitName(fullname: string) {
     return { parent, name }
 }
 
+function parseTree(buf: Buffer) {
+    let entries: TreeEntry[] = []
+    let ptr = 0
+    while (ptr < buf.length) {
+        let start = ptr
+        while (48 <= buf[ptr] && buf[ptr] <= 55)
+            ptr++
+        if (buf[ptr] != 32)
+            throw new Error("bad tree format")
+        let mode = buf.slice(start, ptr).toString("utf8")
+        ptr++
+        start = ptr
+        while (buf[ptr])
+            ptr++
+        if (buf[ptr] != 0)
+            throw new Error("bad tree format 2")
+        let name = buf.slice(start, ptr).toString("utf8")
+        ptr++
+        let sha = buf.slice(ptr, ptr + 20).toString("hex")
+        ptr += 20
+        if (ptr > buf.length)
+            throw new Error("bad tree format 3")
+        entries.push({ mode, name, sha })
+    }
+    return entries
+}
+
+function parseCommit(buf: Buffer): Commit {
+    let cmt = buf.toString("utf8")
+    let mtree = /^tree (\S+)/m.exec(cmt)
+    let mpar = /^parent (.+)/m.exec(cmt)
+    let mauthor = /^author (.+) (\d+) ([+\-]\d{4})$/m.exec(cmt)
+    let midx = cmt.indexOf("\n\n")
+    return {
+        tree: mtree[1],
+        parents: mpar[1].split(/\s+/),
+        author: mauthor[1],
+        date: parseInt(mauthor[2]),
+        msg: cmt.slice(midx + 2)
+    }
+}
+
+
+function parseLog(fulllog: string) {
+    let entries: LogEntry[] = []
+    let currEntry: LogEntry
+    let newEntry = () => {
+        if (currEntry) entries.push(currEntry)
+        currEntry = {
+            id: "",
+            author: "",
+            date: 0,
+            files: [],
+            msg: "",
+        }
+    }
+    for (let l of fulllog.split("\n")) {
+        let m = /^commit (\S+)/.exec(l)
+        if (m) {
+            newEntry()
+            currEntry.id = m[1]
+        } else if (l.slice(0, 4) == "    ") {
+            currEntry.msg += l.slice(4) + "\n"
+        } else {
+            m = /^([A-Za-z]+):\s*(.*)/.exec(l)
+            if (m && m[1] == "Author")
+                currEntry.author = m[2]
+            else if (m && m[1] == "AuthorDate")
+                currEntry.date = Math.round(new Date(m[2]).getTime() / 1000)
+            else {
+                m = /^[A-Z]\t(.*)/.exec(l)
+                if (m) currEntry.files.push(m[1])
+            }
+        }
+    }
+    newEntry()
+    return entries
+}
+
 let shutdownQueue: (() => Promise<void>)[] = []
 
 export function shutdown() {
@@ -190,7 +269,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         setInterval(() => {
             maybeSyncAsync()
         }, 15 * 60 * 1000)
-    
+
     await statusCleanAsync()
     await pullAsync()
     return iface
@@ -381,83 +460,6 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         }
     }
 
-    function parseLog(fulllog: string) {
-        let entries: LogEntry[] = []
-        let currEntry: LogEntry
-        let newEntry = () => {
-            if (currEntry) entries.push(currEntry)
-            currEntry = {
-                id: "",
-                author: "",
-                date: 0,
-                files: [],
-                msg: "",
-            }
-        }
-        for (let l of fulllog.split("\n")) {
-            let m = /^commit (\S+)/.exec(l)
-            if (m) {
-                newEntry()
-                currEntry.id = m[1]
-            } else if (l.slice(0, 4) == "    ") {
-                currEntry.msg += l.slice(4) + "\n"
-            } else {
-                m = /^([A-Za-z]+):\s*(.*)/.exec(l)
-                if (m && m[1] == "Author")
-                    currEntry.author = m[2]
-                else if (m && m[1] == "AuthorDate")
-                    currEntry.date = Math.round(new Date(m[2]).getTime() / 1000)
-                else {
-                    m = /^[A-Z]\t(.*)/.exec(l)
-                    if (m) currEntry.files.push(m[1])
-                }
-            }
-        }
-        newEntry()
-        return entries
-    }
-
-    function parseTree(buf: Buffer) {
-        let entries: TreeEntry[] = []
-        let ptr = 0
-        while (ptr < buf.length) {
-            let start = ptr
-            while (48 <= buf[ptr] && buf[ptr] <= 55)
-                ptr++
-            if (buf[ptr] != 32)
-                throw new Error("bad tree format")
-            let mode = buf.slice(start, ptr).toString("utf8")
-            ptr++
-            start = ptr
-            while (buf[ptr])
-                ptr++
-            if (buf[ptr] != 0)
-                throw new Error("bad tree format 2")
-            let name = buf.slice(start, ptr).toString("utf8")
-            ptr++
-            let sha = buf.slice(ptr, ptr + 20).toString("hex")
-            ptr += 20
-            if (ptr > buf.length)
-                throw new Error("bad tree format 3")
-            entries.push({ mode, name, sha })
-        }
-        return entries
-    }
-
-    function parseCommit(buf: Buffer): Commit {
-        let cmt = buf.toString("utf8")
-        let mtree = /^tree (\S+)/m.exec(cmt)
-        let mpar = /^parent (.+)/m.exec(cmt)
-        let mauthor = /^author (.+) (\d+) ([+\-]\d{4})$/m.exec(cmt)
-        let midx = cmt.indexOf("\n\n")
-        return {
-            tree: mtree[1],
-            parents: mpar[1].split(/\s+/),
-            author: mauthor[1],
-            date: parseInt(mauthor[2]),
-            msg: cmt.slice(midx + 2)
-        }
-    }
 
     function getGitObjectAsync(id: string) {
         if (!id || /[\r\n]/.test(id))
