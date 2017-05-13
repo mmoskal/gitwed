@@ -16,6 +16,7 @@ export interface Config {
     jwtSecret: string;
     justDir?: boolean;
     repoPath?: string;
+    eventsRepoPath?: string;
     mailgunApiKey?: string;
     mailgunDomain?: string;
     authDomain?: string;
@@ -75,6 +76,7 @@ export interface GitFs {
 }
 
 export let main: GitFs;
+export let events: GitFs;
 
 function join(a: string, b: string) {
     return a.replace(/\/+$/, "") + "/" + b.replace(/^\/+/, "")
@@ -387,7 +389,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
             return readAsync("gw/" + m[1])
                 .then(v => v, err => readAsync("built/gw/" + m[1]))
 
-        if (justDir && ref == "master")
+        if (ref == "master")
             return readAsync(repoPath + name)
         return getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name)
             .then(obj => {
@@ -632,30 +634,28 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
     // export 
     function setBinFileAsync(name: string, val: Buffer, msg: string, useremail: string) {
         name = name.replace(/^\/+/, "")
-        return apiLockAsync("commit", () => {
+        return apiLockAsync("commit", async () => {
             winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`)
             let spl = splitName(name)
             tools.mkdirP(repoPath + spl.parent)
-            fs.writeFileSync(repoPath + name, val)
+            await writeAsync(repoPath + name, val)
 
             if (justDir)
-                return Promise.resolve()
+                return
 
             let uname = useremail.replace(/@.*/, "")
 
-            return Promise.resolve()
-                .then(() => runGitAsync(["add", name]))
-                .then(() => runGitAsync([
-                    "-c", "user.name=" + uname,
-                    "-c", "user.email=" + useremail,
-                    "commit",
-                    "-m", msg]))
-                .then(getHeadRevAsync)
-                .then(() => {
-                    pushNeeded++
-                    // run in background
-                    maybeSyncAsync()
-                })
+            await runGitAsync(["add", name])
+            await runGitAsync([
+                "-c", "user.name=" + uname,
+                "-c", "user.email=" + useremail,
+                "commit",
+                "-m", msg])
+            await getHeadRevAsync()
+
+            pushNeeded++
+            // run in background
+            maybeSyncAsync()
         })
     }
 
@@ -674,10 +674,9 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
 
 }
 
-export function initAsync(cfg: Config) {
+export async function initAsync(cfg: Config) {
     config = cfg
-    return mkGitFsAsync(cfg.repoPath)
-        .then(v => {
-            main = v
-        })
+    main = await mkGitFsAsync(cfg.repoPath)
+    if (cfg.eventsRepoPath)
+        events = await mkGitFsAsync(cfg.eventsRepoPath)
 }

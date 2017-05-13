@@ -11,6 +11,7 @@ import gitfs = require('./gitfs')
 import tools = require('./tools')
 import bluebird = require('bluebird')
 import auth = require('./auth')
+import events = require('./events')
 import winston = require('winston')
 import logs = require('./logs')
 import routing = require('./routing')
@@ -495,6 +496,7 @@ function setupCerts() {
 
 gitfs.initAsync(cfg)
     .then(() => {
+        events.initRoutes(app)
         if (cfg.justDir || cfg.proxy) {
             winston.info(`listen on http://localhost:${port}`)
             app.listen(port, "localhost")
