@@ -46,7 +46,7 @@ export interface HttpResponse {
     json?: any;
 }
 
-export function requestAsync(options: HttpRequestOptions): Promise<HttpResponse> {
+export async function requestAsync(options: HttpRequestOptions): Promise<HttpResponse> {
     if (options.query) {
         let q = querystring.stringify(options.query)
         if (options.url.indexOf("?") >= 0)
@@ -54,18 +54,16 @@ export function requestAsync(options: HttpRequestOptions): Promise<HttpResponse>
         else
             options.url += "?" + q
     }
-    return httpRequestCoreAsync(options)
-        .then(resp => {
-            if (resp.statusCode != 200 && !options.allowHttpErrors) {
-                let msg = `Bad HTTP status code: ${resp.statusCode} at ${options.url}; message: ${(resp.text || "").slice(0, 500)}`
-                let err: any = new Error(msg)
-                err.statusCode = resp.statusCode
-                return Promise.reject(err)
-            }
-            if (resp.text && /application\/json/.test(resp.headers["content-type"]))
-                resp.json = JSON.parse(resp.text)
-            return resp
-        })
+    let resp = await httpRequestCoreAsync(options)
+    if (resp.statusCode != 200 && !options.allowHttpErrors) {
+        let msg = `Bad HTTP status code: ${resp.statusCode} at ${options.url}; message: ${(resp.text || "").slice(0, 500)}`
+        let err: any = new Error(msg)
+        err.statusCode = resp.statusCode
+        throw err
+    }
+    if (resp.text && /application\/json/.test(resp.headers["content-type"]))
+        resp.json = JSON.parse(resp.text)
+    return resp
 }
 
 function httpRequestCoreAsync(options: HttpRequestOptions): Promise<HttpResponse> {
