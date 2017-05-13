@@ -10,6 +10,9 @@ import * as bluebird from 'bluebird';
 import * as crypto from "crypto";
 import express = require('express');
 
+const maxCacheSize = 32 * 1024 * 1024
+const maxCacheEltSize = 256 * 1024
+
 export function readResAsync(g: events.EventEmitter) {
     return new Promise<Buffer>((resolve, reject) => {
         let bufs: Buffer[] = []
@@ -332,3 +335,41 @@ export function allowReqCache(req: express.Request) {
     // 2 years
     response.setHeader("Cache-Control", "public, max-age=63072000")
 }
+
+export class Cache<T> {
+    cache: SMap<T> = {}
+    size = 0
+    get(key: string) {
+        if (!key) return null
+        if (this.cache.hasOwnProperty(key))
+            return this.cache[key]
+        return null
+    }
+
+    set(key: string, v: T, sz: number) {
+        if (!key) return
+        delete this.cache[key]
+        if (!v || sz > maxCacheEltSize) return
+        if (this.size + sz > maxCacheSize) {
+            this.flush()
+        }
+        this.size += sz
+        this.cache[key] = v
+    }
+
+    flush() {
+        this.size = 0
+        this.cache = {}
+    }
+}
+
+
+export class StringCache extends Cache<string> {
+    set(key: string, v: string, sz?: number) {
+        if (!sz) sz = 100 + v.length * 2
+        super.set(key, v, sz)
+    }
+}
+
+
+

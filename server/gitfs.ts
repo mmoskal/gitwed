@@ -73,6 +73,7 @@ export interface GitFs {
     setJsonFileAsync: (name: string, val: {}, msg: string, user: string) => Promise<void>;
     setBinFileAsync: (name: string, val: Buffer, msg: string, useremail: string) => Promise<void>;
     createBinFileAsync: (dir: string, basename: string, ext: string, buf: Buffer, msg: string, user: string) => Promise<string>;
+    onUpdate: (v: () => void) => void;
 }
 
 export let main: GitFs;
@@ -86,42 +87,12 @@ const readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFil
 const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 const readdirAsync = bluebird.promisify(fs.readdir)
 
-export class StringCache {
-    cache: SMap<string> = {}
-    size = 0
-    get(key: string) {
-        if (!key) return null
-        if (this.cache.hasOwnProperty(key))
-            return this.cache[key]
-        return null
-    }
-
-    set(key: string, v: string) {
-        if (!key) return
-        delete this.cache[key]
-        let sz = 100 + v.length * 2
-        if (!v || sz > maxCacheEltSize) return
-        if (this.size + sz > maxCacheSize) {
-            this.flush()
-        }
-        this.size += sz
-        this.cache[key] = v
-    }
-
-    flush() {
-        this.size = 0
-        this.cache = {}
-    }
-}
-
 export function githash(buf: Buffer) {
     let h = crypto.createHash("sha1")
     h.update("blob " + buf.length + "\u0000")
     h.update(buf)
     return h.digest("hex")
 }
-
-export const stringCache = new StringCache()
 
 export function splitName(fullname: string) {
     let m = /(.*)\/([^\/]+)/.exec(fullname)
@@ -239,16 +210,16 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
     let justDir = !!config.justDir
     let apiLockAsync = tools.promiseQueue()
     let rootId = ""
-    let gitCacheSize = 0
-    let gitObjCache: SMap<GitObject> = {}
+    let gitCache = new tools.Cache<GitObject>()
     let syncRunning = false
     let pushNeeded = 0
     let lastRequestTime = 0
     let lastSyncTime = 0
+    let onUpdate: (() => void)[] = []
 
     repoPath = repoPath.replace(/\/$/, "") + "/"
 
-    let iface = {
+    let iface: GitFs = {
         pokeAsync,
         getFileAsync,
         getTextFileAsync,
@@ -258,6 +229,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         setBinFileAsync,
         createBinFileAsync,
         logAsync,
+        onUpdate: f => onUpdate.push(f)
     }
 
     shutdownQueue.push(shutdownAsync)
@@ -312,10 +284,6 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         })
     }
 
-
-    function flushCaches() {
-        stringCache.flush()
-    }
 
     function maybeSyncAsync() {
         if (syncRunning) return Promise.resolve()
@@ -406,7 +374,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
             .then(() => runGitAsync(["rev-parse", "HEAD"]))
             .then(buf => {
                 rootId = buf.trim()
-                flushCaches()
+                onUpdate.forEach(f => f())
                 winston.debug(`HEAD now at ${rootId}`)
             })
     }
@@ -467,13 +435,13 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         if (!id || /[\r\n]/.test(id))
             throw new Error("bad id: " + id)
 
-        let cached = gitObjCache[id]
+        let cached = gitCache.get(id)
         if (cached)
             return Promise.resolve(cached)
 
         return apiLockAsync("cat-file", () => {
             // check again, maybe the object has been cached while we were waiting
-            cached = gitObjCache[id]
+            cached = gitCache.get(id)
             if (cached)
                 return Promise.resolve(cached)
 
@@ -559,14 +527,8 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
 
                 // check if this is an object in a specific revision, not say on 'master'
                 // and if it's small enough to warant caching
-                if (/^[0-9a-f]{40}/.test(id) && obj.memsize <= maxCacheEltSize) {
-                    gitCacheSize += obj.memsize
-                    // this is quite dumm, but simple and works
-                    if (gitCacheSize > maxCacheSize) {
-                        gitCacheSize = obj.memsize
-                        gitObjCache = {}
-                    }
-                    gitObjCache[id] = obj
+                if (/^[0-9a-f]{40}/.test(id)) {
+                    gitCache.set(id, obj, obj.memsize)
                 }
 
                 return obj

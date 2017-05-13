@@ -21,13 +21,14 @@ logs.init()
 
 const restartMinutes = 120
 
-let startTime = Date.now()
+const startTime = Date.now()
 let lastUse = startTime
 
-var app = express();
-var bodyParser = require('body-parser')
+const app = express();
+const bodyParser = require('body-parser')
+const pageCache = new tools.StringCache()
 
-let fileLocks = tools.promiseQueue()
+const fileLocks = tools.promiseQueue()
 
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
@@ -340,7 +341,7 @@ app.get(/.*/, (req, res, next) => {
     let cacheKey = ref + ":" + cleaned + ":" + langs.join(",")
     if (req.appuser || gitfs.config.justDir) cacheKey = null
 
-    let cached = gitfs.stringCache.get(cacheKey)
+    let cached = pageCache.get(cacheKey)
     if (cached != null) {
         winston.debug(`cache hit at ${cacheKey}`)
         res.writeHead(200, {
@@ -360,7 +361,7 @@ app.get(/.*/, (req, res, next) => {
             }
             expander.expandFileAsync(cfg)
                 .then(page => {
-                    gitfs.stringCache.set(cacheKey, page.html)
+                    pageCache.set(cacheKey, page.html)
                     res.writeHead(200, {
                         'Content-Type': 'text/html; charset=utf8'
                     })
@@ -496,6 +497,7 @@ function setupCerts() {
 
 gitfs.initAsync(cfg)
     .then(() => {
+        gitfs.main.onUpdate(() => pageCache.flush())
         events.initRoutes(app)
         if (cfg.justDir || cfg.proxy) {
             winston.info(`listen on http://localhost:${port}`)
