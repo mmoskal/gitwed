@@ -16,17 +16,28 @@ export interface EventIndexEntry {
     startDate: string; // "2016-01-05"
     endDate: string;
     title: string;
-    location: string; // "wroclaw"
+    center: string; // "wroclaw"
 }
 
-export interface EventBase extends EventIndexEntry {
+export interface Address {
+    name: string;
+    address: string; // multi-line
+}
+
+// address is optional - can be taken from center
+export interface FullEvent extends EventIndexEntry, Address {
     startTime: string; // "20:00"
     description: string;
+    isAtCenter?: boolean;
 }
 
 export interface EventIndex {
     events: EventIndexEntry[];
     nextId: number;
+}
+
+export interface Center extends Address {
+    id: string;
 }
 
 let index: EventIndex
@@ -35,13 +46,13 @@ let eventsCache: SMap<string> = {}
 
 const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 
-function forIndex(js: EventBase): EventIndexEntry {
+function forIndex(js: FullEvent): EventIndexEntry {
     return {
         id: js.id,
         startDate: js.startDate,
         endDate: js.endDate,
         title: js.title,
-        location: js.location
+        center: js.center
     }
 }
 
@@ -50,7 +61,7 @@ function eventFn(id: number) {
 }
 
 // TODO lock?
-async function saveEventAsync(e: EventBase, user: string) {
+async function saveEventAsync(e: FullEvent, user: string) {
     eventsCache[e.id + ""] = JSON.stringify(e)
 
     let idx = index.events.findIndex(x => x.id == e.id)
@@ -61,7 +72,7 @@ async function saveEventAsync(e: EventBase, user: string) {
     await gitfs.events.setJsonFileAsync("current/" + eventFn(e.id), e, "Update " + e.title, user)
 }
 
-async function readEventAsync(id: number): Promise<EventBase> {
+async function readEventAsync(id: number): Promise<FullEvent> {
     if (!index.events.some(e => e.id == id))
         return null
     let curr = eventsCache[id + ""]
@@ -86,7 +97,7 @@ function loadOrCreateIndex() {
     }
     for (let fn of fs.readdirSync(currEventsPath)) {
         if (/^\d+\.json$/.test(fn)) {
-            let js: EventBase = readJson(fn)
+            let js: FullEvent = readJson(fn)
             index.nextId = Math.max(index.nextId, js.id || 0)
             index.events.push(forIndex(js))
         }
@@ -111,9 +122,9 @@ function validTime(d: string) {
     return d == null || d == "" || /^\d\d:\d\d$/.test(d)
 }
 
-function applyChanges(curr: EventBase, delta: EventBase) {
-    if (curr.location && delta.location != curr.location)
-        return "cannot change event location"
+function applyChanges(curr: FullEvent, delta: FullEvent) {
+    if (curr.center && delta.center != curr.center)
+        return "cannot change event center"
     if (!validDate(delta.startDate))
         return "invalid start date"
     if (!validDate(delta.endDate))
@@ -126,7 +137,7 @@ function applyChanges(curr: EventBase, delta: EventBase) {
         return "description too long"
 
     for (let k of [
-        "location",
+        "center",
         "startDate",
         "endDate",
         "title",
@@ -165,7 +176,7 @@ export function initRoutes(app: express.Express) {
                 return false
             if (e.startDate > stopDate)
                 return false
-            if (loc && e.location != loc)
+            if (loc && e.center != loc)
                 return false
             return true
         })
@@ -191,8 +202,8 @@ export function initRoutes(app: express.Express) {
         if (!await auth.hasWritePermAsync(req.appuser, []))
             return res.status(402).end()
 
-        let delta = req.body as EventBase
-        let currElt = { id: index.nextId } as EventBase
+        let delta = req.body as FullEvent
+        let currElt = { id: index.nextId } as FullEvent
         let isFresh = true
         if (typeof delta.id == "number") {
             currElt = await readEventAsync(delta.id)

@@ -8,8 +8,6 @@ import * as bluebird from "bluebird";
 import express = require('express');
 import winston = require('winston');
 
-const maxCacheSize = 32 * 1024 * 1024
-const maxCacheEltSize = 256 * 1024
 const gitRefreshTimeoutSeconds = 120
 
 export interface Config {
