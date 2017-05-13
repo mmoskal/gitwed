@@ -105,7 +105,7 @@ app.get("/api/history", (req, res) => {
         tools.throwError(402)
     let p = sanitizePath(req.query["path"] || "/").join("/")
 
-    gitfs.logAsync(p || ".")
+    gitfs.main.logAsync(p || ".")
         .then(j => res.json(j))
 })
 
@@ -133,7 +133,7 @@ app.post("/api/uploadimg", (req, res) => {
                 return res.status(403).end()
 
             fileLocks(path, () =>
-                gitfs.createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
+                gitfs.main.createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
                     .then(imgName => {
                         res.json({
                             url: "img/" + imgName
@@ -146,7 +146,7 @@ app.post("/api/uploadimg", (req, res) => {
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
-    gitfs.pokeAsync(true)
+    gitfs.main.pokeAsync(true)
         .then(() => {
             res.json({})
         })
@@ -206,13 +206,13 @@ app.post("/api/update", (req, res) => {
 
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
-                    gitfs.setTextFileAsync(cfg.langFileName, newCont,
+                    gitfs.main.setTextFileAsync(cfg.langFileName, newCont,
                         "Translate " + cfg.langFileName + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
-                    gitfs.setTextFileAsync(desc.filename, newCont,
+                    gitfs.main.setTextFileAsync(desc.filename, newCont,
                         "Update " + desc.filename + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else {
@@ -231,7 +231,7 @@ app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
     if (tools.etagMatches(req, sha + "-0"))
         return
     tools.allowReqCache(req)
-    gitfs.getFileAsync(sha, "SHA")
+    gitfs.main.getFileAsync(sha, "SHA")
         .then(buf => {
             res.writeHead(200, {
                 'Content-Type': mime.lookup(filename),
@@ -250,7 +250,7 @@ app.get(/.*/, (req, res, next) => {
         return res.redirect(req.path)
     }
 
-    gitfs.pokeAsync() // refresh in background if needed
+    gitfs.main.pokeAsync() // refresh in background if needed
 
     let langs: string[] = []
     let addLang = (s: string) => {
@@ -322,7 +322,7 @@ app.get(/.*/, (req, res, next) => {
     }
 
     if (!isHtml) {
-        gitfs.getFileAsync(cleaned, ref)
+        gitfs.main.getFileAsync(cleaned, ref)
             .then(buf => {
                 res.writeHead(200, {
                     'Content-Type': mime.lookup(cleaned),
@@ -348,7 +348,7 @@ app.get(/.*/, (req, res, next) => {
         return res.end(cached)
     }
 
-    gitfs.getTextFileAsync(cleaned, ref)
+    gitfs.main.getTextFileAsync(cleaned, ref)
         .then(str => {
             let cfg: expander.ExpansionConfig = {
                 rootFile: cleaned,
@@ -367,7 +367,7 @@ app.get(/.*/, (req, res, next) => {
                 })
                 .then(v => v, next)
         }, err => {
-            gitfs.getTextFileAsync(orig + "/index.html")
+            gitfs.main.getTextFileAsync(orig + "/index.html")
                 .then(() => {
                     res.redirect(orig + "/")
                 }, _ => errHandler(err))

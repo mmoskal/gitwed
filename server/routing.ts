@@ -17,7 +17,7 @@ export function getVHostDir(req: express.Request) {
 }
 
 export function sendTemplate(req: express.Request, cleaned: string, vars: SMap<string> = {}) {
-    gitfs.getTextFileAsync(cleaned, "master")
+    gitfs.main.getTextFileAsync(cleaned, "master")
         .then(str => {
             let cfg: expander.ExpansionConfig = {
                 rootFile: cleaned,

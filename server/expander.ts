@@ -206,7 +206,7 @@ function expandAsync(cfg: ExpansionConfig) {
         if (trees[path])
             return trees[path]
         return (trees[path] =
-            gitfs.getTreeAsync(path, cfg.ref)
+            gitfs.main.getTreeAsync(path, cfg.ref)
                 .then(ents => {
                     if (!ents)
                         winston.debug("no such tree: " + path + " in " + cfg.ref)
@@ -383,7 +383,7 @@ function expandAsync(cfg: ExpansionConfig) {
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         filename = relativePath(ctx.filename, filename)
-        return gitfs.getTextFileAsync(filename, cfg.ref)
+        return gitfs.main.getTextFileAsync(filename, cfg.ref)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -439,7 +439,7 @@ function expandAsync(cfg: ExpansionConfig) {
 function fillContentAsync(cfg: ExpansionConfig) {
     if (cfg.rootFileContent != null)
         return Promise.resolve()
-    return gitfs.getTextFileAsync(cfg.rootFile, cfg.ref)
+    return gitfs.main.getTextFileAsync(cfg.rootFile, cfg.ref)
         .then(s => {
             cfg.rootFileContent = s
         })
@@ -458,7 +458,7 @@ export function getPageConfigAsync(page: string) {
         return Promise.resolve({} as PageConfig)
     // config always takes from master
     return Promise.resolve()
-        .then(() => gitfs.getTextFileAsync(path)
+        .then(() => gitfs.main.getTextFileAsync(path)
             .then(v => v, e => {
                 winston.info(path + ": " + e.message)
                 return ""
@@ -495,7 +495,7 @@ export function expandFileAsync(cfg: ExpansionConfig) {
             }
             if (cfg.lang != plangs[0]) {
                 cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-                return gitfs.getTextFileAsync(cfg.langFileName, cfg.ref)
+                return gitfs.main.getTextFileAsync(cfg.langFileName, cfg.ref)
                     .then(v => v, e => "")
             } else
                 return null

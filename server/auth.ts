@@ -221,7 +221,7 @@ export function initRoutes(app: express.Express) {
             "&redirect=" + encodeURIComponent(page)
 
         expander.hasWritePermAsync(req.appuser, page)
-            .then(() => gitfs.pokeAsync(true))
+            .then(() => gitfs.main.pokeAsync(true))
             .then(() => lookupUserAsync(email))
             .then(u => {
                 if (u) return Promise.resolve()
@@ -231,7 +231,7 @@ export function initRoutes(app: express.Express) {
                             email: email,
                             nickname: email.replace(/@.*/, "")
                         })
-                        return gitfs.setJsonFileAsync("private/users.json", cfg,
+                        return gitfs.main.setJsonFileAsync("private/users.json", cfg,
                             "Adding user " + email + " for the first time", req.appuser)
                     })
             })
@@ -241,7 +241,7 @@ export function initRoutes(app: express.Express) {
                 if (cfg.users.indexOf(email) >= 0)
                     return Promise.resolve()
                 cfg.users.push(email)
-                return gitfs.setJsonFileAsync(cfgPath, cfg,
+                return gitfs.main.setJsonFileAsync(cfgPath, cfg,
                     "Adding user " + email + " to " + page,
                     req.appuser)
             })
@@ -277,7 +277,7 @@ export function hasWritePermAsync(appuser: string, localUsers: string[]) {
 }
 
 function getUserConfigAsync() {
-    return gitfs.getTextFileAsync("private/users.json")
+    return gitfs.main.getTextFileAsync("private/users.json")
         .then(t => {
             return JSON.parse(t) as UserConfig
         })
