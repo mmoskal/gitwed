@@ -72,6 +72,12 @@ app.use((req, res, next) => {
             return
         }
     }
+
+    // refresh in background if needed
+    gitfs.main.pokeAsync()
+    if (gitfs.events)
+        gitfs.events.pokeAsync()
+
     next();
 });
 
@@ -246,34 +252,8 @@ app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
         })
 })
 
-app.get(/.*/, (req, res, next) => {
-    if (req.query["setlang"] != null) {
-        res.cookie("GWLANG", req.query['setlang'] || "")
-        return res.redirect(req.path)
-    }
-
-    gitfs.main.pokeAsync() // refresh in background if needed
-
-    let langs: string[] = []
-    let addLang = (s: string) => {
-        if (!s) return
-        s = s.toLowerCase()
-        let m = /^([a-z]+)(-[a-z]+)?/.exec(s)
-        if (m) {
-            let full = m[0]
-            if (langs.indexOf(full) >= 0) return
-            langs.push(full)
-            if (m[1] != full)
-                langs.push(m[1])
-        }
-    }
-
-    addLang(req.query["lang"])
-    addLang(req.cookies['GWLANG'])
-    for (let s of (req.header("Accept-Language") || "").split(",")) {
-        let headerLang = (/^\s*([A-Za-z\-]+)/.exec(s) || [])[1];
-        addLang(headerLang)
-    }
+async function genericGet(req: express.Request, res: express.Response, next: () => void) {
+    if (!tools.reqSetup(req)) return
 
     let cleaned = req.path.replace(/\/index(\.html?)?$/, "/")
     if (cleaned != req.path) {
@@ -338,7 +318,7 @@ app.get(/.*/, (req, res, next) => {
     let orig = cleaned
     cleaned += ".html"
 
-    let cacheKey = ref + ":" + cleaned + ":" + langs.join(",")
+    let cacheKey = ref + ":" + cleaned + ":" + req.langs.join(",")
     if (req.appuser || gitfs.config.justDir) cacheKey = null
 
     let cached = pageCache.get(cacheKey)
@@ -356,7 +336,7 @@ app.get(/.*/, (req, res, next) => {
                 rootFile: cleaned,
                 ref,
                 rootFileContent: str,
-                langs,
+                langs: req.langs,
                 appuser: req.appuser
             }
             expander.expandFileAsync(cfg)
@@ -374,17 +354,21 @@ app.get(/.*/, (req, res, next) => {
                     res.redirect(orig + "/")
                 }, _ => errHandler(err))
         })
-})
+}
 
-app.use((req, res) => {
-    res.status(404)
-    routing.sendError(req, "Page not found",
-        "Whoops! We couldn't find the page your were looking for.")
-})
+function setupFinalRoutes() {
+    app.get(/.*/, genericGet)
 
-app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    logs.logError(error, req)
-})
+    app.use((req, res) => {
+        res.status(404)
+        routing.sendError(req, "Page not found",
+            "Whoops! We couldn't find the page your were looking for.")
+    })
+
+    app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        logs.logError(error, req)
+    })
+}
 
 let cfg: gitfs.Config = {} as any
 if (fs.existsSync("config.json"))
@@ -499,6 +483,8 @@ gitfs.initAsync(cfg)
     .then(() => {
         gitfs.main.onUpdate(() => pageCache.flush())
         events.initRoutes(app)
+        setupFinalRoutes()
+
         if (cfg.justDir || cfg.proxy) {
             winston.info(`listen on http://localhost:${port}`)
             app.listen(port, "localhost")

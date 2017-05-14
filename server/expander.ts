@@ -73,6 +73,7 @@ export interface ExpansionConfig {
     pageConfig?: PageConfig;
     hasWritePerm?: boolean;
     vars?: SMap<string>;
+    contentOverride?: SMap<string>;
 }
 
 export function relativePath(curr: string, newpath: string) {
@@ -412,6 +413,9 @@ function expandAsync(cfg: ExpansionConfig) {
         if (elt.attr("edit") != null) {
             eltId = elt.attr("edit") || eltId
             if (!eltId) error("no id on element marked with 'edit'", ctx, elt);
+            if (cfg.contentOverride && cfg.contentOverride[eltId]) {
+                elt.html(cfg.contentOverride[eltId])
+            }
             if (elt.find("p, ul, ol, h1, h2, h3, h4, h5, h6").length > 0)
                 elt.attr("data-editable", "true")
             else

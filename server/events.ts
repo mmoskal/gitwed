@@ -181,11 +181,101 @@ async function getCenterAsync(id: string) {
     return tools.lookup(centers, id)
 }
 
+
+function queryEvents(query: SMap<string>) {
+    let startDate = query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
+    let stopDate = query["stop"] || "9999-99-99"
+    let center = query["center"] || null
+    let ev = index.events.filter(e => {
+        let end = e.endDate || e.startDate
+        if (end < startDate)
+            return false
+        if (e.startDate > stopDate)
+            return false
+        if (center && e.center != center)
+            return false
+        return true
+    })
+    ev.sort((a, b) =>
+        tools.strcmp(a.startDate, b.startDate) || (a.id - b.id))
+    let totalCount = ev.length
+    let skip = parseInt(query["skip"]) || 0
+    if (skip)
+        ev = ev.slice(skip)
+    let count = Math.abs(parseInt(query["count"]) || 20)
+    if (count > 100) count = 100
+    if (ev.length > count) ev = ev.slice(0, count)
+    return {
+        totalCount,
+        events: ev,
+    }
+}
+
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)
         return
     currEventsPath = path.join(gitfs.config.eventsRepoPath, "current")
     loadOrCreateIndex()
+
+    winston.debug("mounting events")
+
+    app.get("/ev/:id/edit", async (req, res, next) => {
+        let id = req.params["id"]
+        if (req.appuser) res.redirect("/ev/" + id)
+        else res.redirect("/gw/login?redirect=/ev/" + id)
+    })
+
+    app.get("/ev/:id", async (req, res, next) => {
+        let id = parseInt(req.params["id"]) || 0
+        let ev = await readEventAsync(id)
+        if (!ev) {
+            if (req.params["id"] == "new") {
+                if (!req.appuser)
+                    return res.redirect("/gw/login?redirect=/ev/new")
+                let isAdmin = await auth.hasWritePermAsync(req.appuser, [])
+                let allCenters = tools.values(await getCentersAsync())
+                let centers = allCenters
+                    .filter(c => isAdmin || (c.users || []).indexOf(req.appuser) >= 0)
+                if (centers.length == 0) {
+                    res.status(402)
+                    routing.sendError(req, "User not setup",
+                        "Your user account is not setup to post in any center.")
+                    return
+                }
+                let c0 = centers[0]
+                ev = {
+                    id: 0,
+                    startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
+                    endDate: "",
+                    center: c0.id,
+                    name: c0.name,
+                    address: c0.address,
+                    startTime: "20:00",
+                    title: "Introduction to Buddhism by D. W. Teacher",
+                    description: "<p>Details coming up soon!</p>",
+                }
+            } else {
+                // 404
+                return next()
+            }
+        }
+
+        if (!tools.reqSetup(req)) return
+
+        let cfg: expander.ExpansionConfig = {
+            rootFile: "/ev/event.html",
+            ref: "master",
+            langs: req.langs,
+            appuser: req.appuser,
+            contentOverride: ev as any
+        }
+        let page = await expander.expandFileAsync(cfg)
+        // pageCache.set(cacheKey, page.html)
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf8'
+        })
+        res.end(page.html)
+    })
 
     app.get("/api/events/:id", async (req, res, next) => {
         let id = parseInt(req.params["id"])
@@ -198,32 +288,7 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/api/events", (req, res, next) => {
-        let startDate = req.query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
-        let stopDate = req.query["stop"] || "9999-99-99"
-        let loc = req.query["location"] || null
-        let ev = index.events.filter(e => {
-            let end = e.endDate || e.startDate
-            if (end < startDate)
-                return false
-            if (e.startDate > stopDate)
-                return false
-            if (loc && e.center != loc)
-                return false
-            return true
-        })
-        let totalCount = ev.length
-        let skip = parseInt(req.query["skip"]) || 0
-        if (skip)
-            ev = ev.slice(skip)
-        let count = Math.abs(parseInt(req.query["count"]) || 20)
-        if (count > 100) count = 100
-        if (ev.length > count) ev = ev.slice(0, count)
-        res.json({
-            totalCount,
-            count,
-            skip,
-            events: ev,
-        })
+        res.json(queryEvents(req.query))
     })
 
     app.post("/api/events", async (req, res, next) => {
@@ -242,10 +307,14 @@ export function initRoutes(app: express.Express) {
         let currElt = { id: index.nextId } as FullEvent
         let isFresh = true
         if (typeof delta.id == "number") {
-            currElt = await readEventAsync(delta.id)
-            if (!currElt)
-                return res.status(404).end()
-            isFresh = false
+            if (delta.id <= 0) {
+                delete delta.id
+            } else {
+                currElt = await readEventAsync(delta.id)
+                if (!currElt)
+                    return res.status(404).end()
+                isFresh = false
+            }
         }
 
         let err = applyChanges(currElt, delta)

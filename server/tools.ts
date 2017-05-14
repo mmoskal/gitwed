@@ -370,4 +370,38 @@ export class StringCache extends Cache<string> {
 }
 
 
+export function reqSetup(req: express.Request) {
+    let res: express.Response = req._response
+
+    if (req.query["setlang"] != null) {
+        res.cookie("GWLANG", req.query['setlang'] || "")
+        res.redirect(req.path)
+        return false
+    }
+
+    let langs: string[] = []
+    let addLang = (s: string) => {
+        if (!s) return
+        s = s.toLowerCase()
+        let m = /^([a-z]+)(-[a-z]+)?/.exec(s)
+        if (m) {
+            let full = m[0]
+            if (langs.indexOf(full) >= 0) return
+            langs.push(full)
+            if (m[1] != full)
+                langs.push(m[1])
+        }
+    }
+
+    addLang(req.query["lang"])
+    addLang(req.cookies['GWLANG'])
+    for (let s of (req.header("Accept-Language") || "").split(",")) {
+        let headerLang = (/^\s*([A-Za-z\-]+)/.exec(s) || [])[1];
+        addLang(headerLang)
+    }
+
+    req.langs = langs
+    return true
+}
+
 
