@@ -74,6 +74,7 @@ export interface ExpansionConfig {
     hasWritePerm?: boolean;
     vars?: SMap<string>;
     contentOverride?: SMap<string>;
+    eventInfo?: any;
 }
 
 export function relativePath(curr: string, newpath: string) {
@@ -520,6 +521,7 @@ export function expandFileAsync(cfg: ExpansionConfig) {
                 path: cfg.rootFile,
                 isEditable: hasWrite && cfg.ref == "master",
                 ref: cfg.ref,
+                eventInfo: cfg.eventInfo
             }
             cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
                 JSON.stringify(pageInfo, null, 4) + ";\n"

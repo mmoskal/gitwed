@@ -76,6 +76,11 @@ namespace gw {
         msg: string;
     }
 
+    export interface EventInfo {
+        id: number;
+        center: string;
+    }
+
     export interface PageInfo {
         user: string;
         lang: string;
@@ -85,6 +90,7 @@ namespace gw {
         path: string;
         ref: string;
         isEditable: boolean;
+        eventInfo: EventInfo;
     }
 
     export interface ImgResponse {
@@ -230,23 +236,25 @@ namespace gw {
             return
 
         let metasection = $("#gw-meta-section")
-        metasection.css("display", "block")
-        metasection.prepend("<div class=gw-label>meta-information (only visible to editors)</div>")
-        metasection.children().each((idx, e) => {
-            let ee = $(e)
-            let m = /gw-meta-(.*)/.exec(ee.attr("id"))
-            if (m) {
-                ee.before("<div class=gw-label>" + m[1] + ":</div>")
-            }
-        })
+        if (metasection.length) {
+            metasection.css("display", "block")
+            metasection.prepend("<div class=gw-label>meta-information (only visible to editors)</div>")
+            metasection.children().each((idx, e) => {
+                let ee = $(e)
+                let m = /gw-meta-(.*)/.exec(ee.attr("id"))
+                if (m) {
+                    ee.before("<div class=gw-label>" + m[1] + ":</div>")
+                }
+            })
+        }
 
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
         // This is for fixture editing (i.e., text-only, non-html)
-        ContentEdit.TagNames.get().register(ContentEdit.Text, 
+        ContentEdit.TagNames.get().register(ContentEdit.Text,
             'address', 'blockquote',
             'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-            'p', 'div', 'a', 'span', 'li', 
+            'p', 'div', 'a', 'span', 'li',
             'label', 'footer', 'section');
 
         let editor: any
@@ -263,13 +271,32 @@ namespace gw {
 
             editor.busy(true);
 
-            (Promise as any).each(Object.keys(regions), (id: string) =>
-                postJsonAsync("/api/update", {
-                    page: document.location.pathname,
-                    lang: gitwedPageInfo.lang,
-                    id: id,
-                    value: regions[id]
-                }))
+            let eventInfo = gitwedPageInfo.eventInfo
+            let savePromise: Promise<any>
+
+            if (eventInfo) {
+                let up: any = {
+                    id: eventInfo.id,
+                    center: eventInfo.center,
+                }
+                for (let k of Object.keys(regions)) {
+                    let v = regions[k]
+                    k = k.replace(/^event_/, "")
+                    if (k == "id") continue
+                    up[k] = v
+                }
+                savePromise = postJsonAsync("/api/events", up)
+            } else {
+                savePromise = (Promise as any).each(Object.keys(regions), (id: string) =>
+                    postJsonAsync("/api/update", {
+                        page: document.location.pathname,
+                        lang: gitwedPageInfo.lang,
+                        id: id,
+                        value: regions[id]
+                    }))
+            }
+
+            savePromise
                 .then(() => {
                     editor.busy(false)
                     new ContentTools.FlashUI('ok')

@@ -289,6 +289,10 @@ export function initRoutes(app: express.Express) {
             langs: req.langs,
             appuser: req.appuser,
             contentOverride: ev as any,
+            eventInfo: {
+                id: ev.id,
+                center: ev.center,
+            },
             vars: {
                 "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
                 "mapimg": gmapURL
@@ -324,7 +328,7 @@ export function initRoutes(app: express.Express) {
         let center = await getCenterAsync(delta.center)
 
         if (!center)
-            return res.status(414).end()
+            return res.status(404).end()
 
         if (!await auth.hasWritePermAsync(req.appuser, center.users))
             return res.status(402).end()
@@ -337,7 +341,7 @@ export function initRoutes(app: express.Express) {
             } else {
                 currElt = await readEventAsync(delta.id)
                 if (!currElt)
-                    return res.status(404).end()
+                    return res.status(444).end()
                 isFresh = false
             }
         }
