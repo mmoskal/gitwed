@@ -38,11 +38,15 @@ export interface EventIndex {
 
 export interface Center extends Address {
     id: string;
+    country: string;
+    users: string[];
 }
 
 let index: EventIndex
 let currEventsPath = ""
 let eventsCache: SMap<string> = {}
+
+let centers: SMap<Center>
 
 const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 
@@ -58,6 +62,17 @@ function forIndex(js: FullEvent): EventIndexEntry {
 
 function eventFn(id: number) {
     return ("000000" + id).slice(-6) + ".json"
+}
+
+async function getCentersAsync() {
+    if (centers) return centers
+    if (centers === undefined)
+        gitfs.events.onUpdate(isPull => {
+            if (isPull)
+                centers = null
+        })
+    centers = JSON.parse(await gitfs.events.getTextFileAsync("centers.json"))
+    return centers
 }
 
 // TODO lock?
@@ -150,6 +165,22 @@ function applyChanges(curr: FullEvent, delta: FullEvent) {
     return ""
 }
 
+function publicCenter(c: Center) {
+    return {
+        id: c.id,
+        name: c.name,
+        country: c.country,
+        address: c.address,
+    }
+}
+
+async function getCenterAsync(id: string) {
+    if (typeof id != "string")
+        return null
+    let centers = await getCentersAsync()
+    return tools.lookup(centers, id)
+}
+
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)
         return
@@ -199,10 +230,15 @@ export function initRoutes(app: express.Express) {
         if (!req.appuser)
             return res.status(403).end()
 
-        if (!await auth.hasWritePermAsync(req.appuser, []))
+        let delta = req.body as FullEvent
+        let center = await getCenterAsync(delta.center)
+
+        if (!center)
+            return res.status(414).end()
+
+        if (!await auth.hasWritePermAsync(req.appuser, center.users))
             return res.status(402).end()
 
-        let delta = req.body as FullEvent
         let currElt = { id: index.nextId } as FullEvent
         let isFresh = true
         if (typeof delta.id == "number") {
@@ -221,5 +257,29 @@ export function initRoutes(app: express.Express) {
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)
         }
+    })
+
+    app.get("/api/centers/:id", async (req, res, next) => {
+        let centers = await getCentersAsync()
+        let c = centers[req.params["id"]]
+        if (!c)
+            return res.status(404).end()
+        if (req.appuser)
+            res.json(c)
+        else
+            res.json(publicCenter(c))
+    })
+
+    app.get("/api/centers", async (req, res, next) => {
+        let centers = await getCentersAsync()
+        let lst = tools.values(centers)
+        if (req.appuser)
+            res.json({
+                centers: lst
+            })
+        else
+            res.json({
+                centers: lst.map(publicCenter)
+            })
     })
 }

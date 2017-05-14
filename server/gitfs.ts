@@ -71,7 +71,7 @@ export interface GitFs {
     setJsonFileAsync: (name: string, val: {}, msg: string, user: string) => Promise<void>;
     setBinFileAsync: (name: string, val: Buffer, msg: string, useremail: string) => Promise<void>;
     createBinFileAsync: (dir: string, basename: string, ext: string, buf: Buffer, msg: string, user: string) => Promise<string>;
-    onUpdate: (v: () => void) => void;
+    onUpdate: (f: (isPull: boolean) => void) => void;
 }
 
 export let main: GitFs;
@@ -213,7 +213,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
     let pushNeeded = 0
     let lastRequestTime = 0
     let lastSyncTime = 0
-    let onUpdate: (() => void)[] = []
+    let onUpdate: ((isPull: boolean) => void)[] = []
 
     repoPath = repoPath.replace(/\/$/, "") + "/"
 
@@ -372,7 +372,7 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
             .then(() => runGitAsync(["rev-parse", "HEAD"]))
             .then(buf => {
                 rootId = buf.trim()
-                onUpdate.forEach(f => f())
+                onUpdate.forEach(f => f(false))
                 winston.debug(`HEAD now at ${rootId}`)
             })
     }
@@ -387,8 +387,10 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
             .then(() => {
                 if (id == rootId)
                     winston.info(`empty pull at ${rootId}`)
-                else
+                else {
+                    onUpdate.forEach(f => f(true))
                     winston.info(`git pull: ${id} -> ${rootId}`)
+                }
             })
     }
 
