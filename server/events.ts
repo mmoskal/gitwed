@@ -243,7 +243,23 @@ export function initRoutes(app: express.Express) {
                         "Your user account is not setup to post in any center.")
                     return
                 }
-                let c0 = centers[1]
+                let c0 = centers[0]
+                centers.sort((a, b) => tools.strcmp(a.id, b.id))
+                if (req.query["center"]) {
+                    c0 = centers.find(c => c.id == req.query["center"])
+                    if (!c0)
+                        return res.status(402).end("Cannot post here")
+                } else if (centers.length > 1) {
+                    let pref = req.url
+                    if (pref.indexOf("?") >= 0) pref += "&"
+                    else pref += "?"
+                    let body = centers.map(c =>
+                        `<li><a href="${pref + "center=" + c.id}">${c.id}</a>: ${c.name}`)
+                    routing.sendMsg(req, "Which center?",
+                        "<ul>" + body.join("\n") + "</ul>"
+                    )
+                    return
+                }
                 ev = {
                     id: 0,
                     startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
