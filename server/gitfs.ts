@@ -16,6 +16,7 @@ export interface Config {
     repoPath?: string;
     eventsRepoPath?: string;
     mailgunApiKey?: string;
+    gmapsKey?: string;
     mailgunDomain?: string;
     authDomain?: string;
     serviceName?: string;

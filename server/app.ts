@@ -231,6 +231,8 @@ app.post("/api/update", (req, res) => {
 
 // support let's encrypt cert renewal (when hidden behind apache)
 app.use("/.well-known", express.static("/var/www/html/.well-known"))
+app.use("/map-cache", express.static("map-cache"))
+app.use("/cdn/map-cache", express.static("map-cache"))
 
 app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
     let sha = req.params[1]

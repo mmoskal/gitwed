@@ -3,6 +3,7 @@ import crypto = require("crypto")
 import path = require("path")
 import fs = require("fs")
 import gitfs = require('./gitfs')
+import gmaps = require('./gmaps')
 import mail = require('./mail')
 import tools = require('./tools')
 import auth = require('./auth')
@@ -242,7 +243,7 @@ export function initRoutes(app: express.Express) {
                         "Your user account is not setup to post in any center.")
                     return
                 }
-                let c0 = centers[0]
+                let c0 = centers[1]
                 ev = {
                     id: 0,
                     startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
@@ -262,12 +263,20 @@ export function initRoutes(app: express.Express) {
 
         if (!tools.reqSetup(req)) return
 
+        let addr = ev.name + ", " + gmaps.cleanAddress(ev.address)
+
+        let gmapURL = await gmaps.getMapsPictureAsync({ address: addr })
+
         let cfg: expander.ExpansionConfig = {
             rootFile: "/ev/event.html",
             ref: "master",
             langs: req.langs,
             appuser: req.appuser,
-            contentOverride: ev as any
+            contentOverride: ev as any,
+            vars: {
+                "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
+                "mapimg": gmapURL
+            }
         }
         let page = await expander.expandFileAsync(cfg)
         // pageCache.set(cacheKey, page.html)
