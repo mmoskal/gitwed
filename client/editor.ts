@@ -275,10 +275,15 @@ namespace gw {
             let savePromise: Promise<any>
 
             if (eventInfo) {
-                let up: any = {
-                    id: eventInfo.id,
-                    center: eventInfo.center,
-                }
+                let up: any = eventInfo
+
+                // for pre-exisiting events, just pass the updated data
+                if (eventInfo.id)
+                    up = {
+                        id: eventInfo.id,
+                        center: eventInfo.center,
+                    }
+
                 for (let k of Object.keys(regions)) {
                     let v = regions[k]
                     k = k.replace(/^event_/, "")
@@ -286,6 +291,13 @@ namespace gw {
                     up[k] = v
                 }
                 savePromise = postJsonAsync("/api/events", up)
+                    .then((data: any) => {
+                        if (/\/new/.test(document.location.href) && data && data.id) {
+                            setTimeout(() => {
+                                document.location.href = document.location.href.replace(/\/new.*/, "/" + data.id)
+                            }, 100)
+                        }
+                    })
             } else {
                 savePromise = (Promise as any).each(Object.keys(regions), (id: string) =>
                     postJsonAsync("/api/update", {
@@ -435,6 +447,11 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 
+        if (gitwedPageInfo.eventInfo && !gitwedPageInfo.eventInfo.id) {
+            setTimeout(() => {
+                $(".ct-ignition__button--edit").click()
+            }, 100)
+        }
     })
 
     window.addEventListener("unhandledrejection", (e: any) => {

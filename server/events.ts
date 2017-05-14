@@ -93,10 +93,16 @@ async function readEventAsync(id: number): Promise<FullEvent> {
         return null
     let curr = eventsCache[id + ""]
     if (!curr) {
-        let text = await gitfs.events.getTextFileAsync(eventFn(id))
+        let text = await gitfs.events.getTextFileAsync("current/" + eventFn(id))
         curr = eventsCache[id + ""] = text
     }
-    return JSON.parse(curr)
+    let r: FullEvent = JSON.parse(curr)
+    if (!r.address) {
+        let c = await getCenterAsync(r.center)
+        r.address = c.address
+        r.name = c.name
+    }
+    return r
 }
 
 function loadOrCreateIndex() {
@@ -289,10 +295,7 @@ export function initRoutes(app: express.Express) {
             langs: req.langs,
             appuser: req.appuser,
             contentOverride: ev as any,
-            eventInfo: {
-                id: ev.id,
-                center: ev.center,
-            },
+            eventInfo: req.appuser ? ev : null,
             vars: {
                 "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
                 "mapimg": gmapURL
@@ -352,6 +355,10 @@ export function initRoutes(app: express.Express) {
         } else {
             if (isFresh)
                 index.nextId++
+            if (currElt.address == center.address)
+                delete currElt.address
+            if (currElt.name == center.name)
+                delete currElt.name
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)
         }
