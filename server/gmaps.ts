@@ -22,7 +22,7 @@ export function cleanAddress(addr: string) {
 }
 
 export async function getMapsPictureAsync(opts: MapOptions) {
-    if (!opts.zoom) opts.zoom = 16
+    if (!opts.zoom) opts.zoom = 13
     if (!opts.scale) opts.scale = 2
     if (!opts.size) opts.size = "280x200"
     opts.markers = "color:red|" + cleanAddress(opts.address)
