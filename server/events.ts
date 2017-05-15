@@ -228,7 +228,7 @@ async function queryEventsAsync(query: SMap<string>) {
     let skip = parseInt(query["skip"]) || 0
     if (skip)
         ev = ev.slice(skip)
-    let count = Math.abs(parseInt(query["count"]) || 20)
+    let count = Math.abs(parseInt(query["count"]) || 100)
     if (count > 100) count = 100
     if (ev.length > count) ev = ev.slice(0, count)
     await getCentersAsync()
@@ -237,6 +237,20 @@ async function queryEventsAsync(query: SMap<string>) {
         totalCount,
         events: ev,
     }
+}
+
+async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionConfig) {
+    let res: express.Response = req._response
+
+    cfg.ref = "master"
+    cfg.appuser = req.appuser
+    cfg.langs = req.langs
+
+    let page = await expander.expandFileAsync(cfg)
+    res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf8'
+    })
+    res.end(page.html)
 }
 
 export function initRoutes(app: express.Express) {
@@ -251,6 +265,43 @@ export function initRoutes(app: express.Express) {
         let id = req.params["id"]
         if (req.appuser) res.redirect("/ev/" + id)
         else res.redirect("/gw/login?redirect=/ev/" + id)
+    })
+
+    app.get("/ev", async (req, res, next) => {
+        if (!/\/$/.test(req.path))
+            return res.redirect("/ev/")
+
+        let onerow = (ev: EventIndexEntry) => {
+            let r = `<a class="eventrow" href="/ev/${ev.id}">`
+            r += `<span class="weekday">${tools.weekDay(ev.startDate)}`
+            if (ev.endDate)
+                r += "-" + tools.weekDay(ev.endDate)
+            r += `</span> `
+
+            r += `<span class="days">${tools.monthPlusDay(ev.startDate)}`
+            if (ev.endDate) {
+                if (tools.monthName(ev.startDate) != tools.monthName(ev.endDate)) {
+                    r += "-" + tools.monthPlusDay(ev.endDate)
+                } else {
+                    r += "-" + tools.monthDay(ev.endDate)
+                }
+            }
+            r += `</span> `
+
+            r += `<span class="center">${tools.htmlQuote(ev.fullcity)}</span> `
+            r += `<span class="title">${tools.htmlQuote(ev.title)}</span> `
+            r += `</a>\n`
+            return r
+        }
+        let r = await queryEventsAsync(req.query)
+        let events = r.events.map(onerow).join("")
+
+        await sendTemplateAsync(req, {
+            rootFile: "/ev/events.html",
+            vars: {
+                "events": events
+            }
+        })
     })
 
     app.get("/ev/:id", async (req, res, next) => {
@@ -322,24 +373,15 @@ export function initRoutes(app: express.Express) {
 
         let gmapURL = await gmaps.getMapsPictureAsync({ address: addr })
 
-        let cfg: expander.ExpansionConfig = {
+        await sendTemplateAsync(req, {
             rootFile: "/ev/event.html",
-            ref: "master",
-            langs: req.langs,
-            appuser: req.appuser,
             contentOverride: ev as any,
             eventInfo: req.appuser ? ev : null,
             vars: {
                 "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
                 "mapimg": gmapURL
             }
-        }
-        let page = await expander.expandFileAsync(cfg)
-        // pageCache.set(cacheKey, page.html)
-        res.writeHead(200, {
-            'Content-Type': 'text/html; charset=utf8'
         })
-        res.end(page.html)
     })
 
     app.get("/api/events/:id", async (req, res, next) => {

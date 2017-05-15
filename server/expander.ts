@@ -63,8 +63,8 @@ export interface PageConfig {
 
 export interface ExpansionConfig {
     rootFile: string;
-    ref: string;
-    appuser: string;
+    ref?: string;
+    appuser?: string;
     rootFileContent?: string;
     lang?: string;
     langs?: string[];

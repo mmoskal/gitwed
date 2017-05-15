@@ -340,6 +340,35 @@ export function readTextFileAsync(fn: string) {
         .then<string>(buf => buf.toString("utf8"), err => null)
 }
 
+const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+export function weekDay(date: string) {
+    if (!date) return ""
+    let d = new Date(date)
+    return days[d.getDay()]
+}
+
+export function monthName(date: string) {
+    if (!date) return ""
+    let d = new Date(date)
+    return months[d.getMonth()]
+}
+
+export function monthDay(date: string) {
+    if (!date) return ""
+    let d = new Date(date)
+    return "" + d.getDate()
+}
+
+export function monthPlusDay(date: string) {
+    return monthName(date) + " " + monthDay(date)
+}
+
+export function htmlQuote(s: string) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 export class Cache<T> {
     cache: SMap<T> = {}
     size = 0
