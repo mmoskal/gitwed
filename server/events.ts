@@ -135,6 +135,21 @@ async function saveEventAsync(e: FullEvent, user: string) {
 }
 
 async function readEventAsync(id: number): Promise<FullEvent> {
+    if (!gitfs.events) {
+        let c = await getCenterAsync("nowhere")
+        return {
+            "id": 8,
+            "center": c.id,
+            address: c.address,
+            name: c.name,
+            "startDate": "2017-09-28",
+            "endDate": "",
+            "title": "Ngondro in Daily Life by Foo Bar",
+            "description": "<p>Start start start! something something!\n</p>\n<p>Second para 2</p>",
+            "startTime": "20:00"
+        }
+    }
+
     if (!index.events.some(e => e.id == id))
         return null
     let curr = eventsCache[id + ""]
@@ -300,6 +315,26 @@ function augmentEvent(ev: EventIndexEntry): EventListEntry {
 }
 
 async function queryEventsAsync(query: SMap<string>) {
+    if (!gitfs.events) {
+        return {
+            totalCount: 2,
+            events: [{
+                id: 3,
+                startDate: '2017-05-28',
+                endDate: '',
+                title: 'Introduction to Buddhism by D. W. Teacher',
+                center: 'nowhere'
+            },
+            {
+                id: 7,
+                startDate: '2017-06-28',
+                endDate: '',
+                title: 'Seven Wisdoms',
+                center: 'nowhere'
+            }].map(augmentEvent)
+        }
+    }
+
     let startDate = query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
     let stopDate = query["stop"] || "9999-99-99"
     let center = query["center"] || "*"
@@ -347,8 +382,6 @@ async function queryEventsAsync(query: SMap<string>) {
 }
 
 export async function expandEventListAsync(templ: string, query: SMap<string>) {
-    if (!gitfs.events)
-        return ""
     let r = await queryEventsAsync(query)
     return r.events.map(ev => templ.replace(/@@(\w+)@@/g, (f, v) => {
         return tools.htmlQuote(((ev as any)[v] || "") + "")
