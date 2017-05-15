@@ -334,6 +334,12 @@ export function allowReqCache(req: express.Request) {
     response.setHeader("Cache-Control", "public, max-age=63072000")
 }
 
+let readAsync = bluebird.promisify(fs.readFile)
+export function readTextFileAsync(fn: string) {
+    return readAsync(fn)
+        .then<string>(buf => buf.toString("utf8"), err => null)
+}
+
 export class Cache<T> {
     cache: SMap<T> = {}
     size = 0

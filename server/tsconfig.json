@@ -5,6 +5,7 @@
         "noImplicitReturns": true,
         "outDir": "../built",
         "module": "commonjs",
+        "declaration": true,
         "rootDir": ".",
         "newLine": "LF",
         "sourceMap": false
