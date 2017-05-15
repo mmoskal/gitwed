@@ -266,16 +266,28 @@ export function initRoutes(app: express.Express) {
                     )
                     return
                 }
-                ev = {
-                    id: 0,
-                    startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
-                    endDate: "",
-                    center: c0.id,
-                    name: c0.name,
-                    address: c0.address,
-                    startTime: "20:00",
-                    title: "Introduction to Buddhism by D. W. Teacher",
-                    description: "<p>Details coming up soon!</p>",
+                if (req.query["clone"]) {
+                    ev = await readEventAsync(parseInt(req.query["clone"]))
+                    if (!ev)
+                        return res.status(404).end("cannot clone")
+                    if (ev.center != c0.id) {
+                        ev.center = c0.id
+                        ev.address = c0.address
+                        ev.name = c0.name
+                    }
+                    ev.id = 0
+                } else {
+                    ev = {
+                        id: 0,
+                        startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
+                        endDate: "",
+                        center: c0.id,
+                        name: c0.name,
+                        address: c0.address,
+                        startTime: "20:00",
+                        title: "Introduction to Buddhism by D. W. Teacher",
+                        description: "<p>Details coming up soon!</p>",
+                    }
                 }
             } else {
                 // 404

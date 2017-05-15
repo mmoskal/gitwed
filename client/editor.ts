@@ -372,8 +372,13 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 </p>
 `)
 
-            let hist = $("<button>Show page history</button>")
-            hist.click(() => {
+            let addButton = (lbl:string, fn:()=>void) => {
+                let btn = $(`<button>${lbl}</button>`)
+                btn.click(fn)
+                root.append(btn)
+            }
+
+            addButton("Page history", () => {
                 status("Loading...")
                 getJsonAsync("/api/history?path=" + encodeURIComponent(currPath.replace(/\/[^\/]+$/, "")))
                     .then((data: LogEntry[]) => {
@@ -392,10 +397,8 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                     })
 
             })
-            root.append(hist)
 
-            let refresh = $("<button>Force server refresh</button>")
-            refresh.click(() => {
+            addButton("Force server refresh", () => {
                 status("Refreshing...")
                 getJsonAsync("/api/refresh")
                     .then(() => {
@@ -403,10 +406,8 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                         window.location.reload()
                     })
             })
-            root.append(refresh)
 
-            let invite = $("<button>Invite someone to edit</button>")
-            invite.click(() => {
+            addButton("Invite someone to edit", () => {
                 root.empty()
                 let dir = "/" + currPath.slice(1).replace(/\/.*/, "")
                 root.append(`The person you're inviting will be able to edit the website under <strong>${dir}</strong>.<br>
@@ -435,7 +436,21 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                         })
                 })
             })
-            root.append(invite)
+
+            let evInfo = gitwedPageInfo.eventInfo
+            if (gitwedPageInfo.eventInfo) {
+                root.append("<h3>Event management</h3>")
+                let cloneUrl =  "/ev/new?clone=" + evInfo.id
+                addButton("Clone in same center", () => {
+                    status("Cloning...")
+                    window.location.href = cloneUrl + "&center=" + evInfo.center
+                })
+                addButton("Clone in other center", () => {
+                    status("Cloning...")
+                    window.location.href = cloneUrl
+                })
+            }
+
 
             $(dialog._domClose).click(() => {
                 modal.hide()
