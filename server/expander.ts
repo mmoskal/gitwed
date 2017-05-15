@@ -535,6 +535,13 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     cfg.hasWritePerm = await auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
     if (!cfg.vars) cfg.vars = {}
+
+    if (cfg.eventInfo) {
+        pcfg.center = cfg.eventInfo.center
+        let cent = await events.getCenterAsync(cfg.eventInfo.center)
+        cfg.hasWritePerm = cfg.hasWritePerm || await auth.hasWritePermAsync(cfg.appuser, cent.users)
+    }
+
     let pageInfo = {
         user: cfg.appuser || null,
         lang: cfg.lang,
