@@ -550,7 +550,7 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
         JSON.stringify(pageInfo, null, 4) + ";\n"
 
-    if (pcfg.center && gitfs.events)
+    if (pcfg.center)
         await events.addCenterVarsAsync(pcfg.center, cfg)
 
     let r = await expandAsync(cfg)

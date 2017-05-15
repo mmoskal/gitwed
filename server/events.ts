@@ -79,8 +79,10 @@ const readdirAsync = bluebird.promisify(fs.readdir)
 const readAsync: (fn: string, enc: string) => Promise<string> = bluebird.promisify(fs.readFile) as any
 
 function cachedCenters() {
-    if (!gitfs.events)
+    if (!gitfs.events) {
+        hasAllCenters = true
         return _centers = {}
+    }
     if (_centers == null) {
         gitfs.events.onUpdate(isPull => {
             if (isPull) {
@@ -254,7 +256,16 @@ function publicCenter(c: Center) {
     }
 }
 
-export async function getCenterAsync(id: string) {
+export async function getCenterAsync(id: string): Promise<Center> {
+    if (!gitfs.events)
+        return {
+            id: "nowhere",
+            name: "Diamond Way Center in Nowhere",
+            address: "1600 Pennsylvania Ave NW<br>Washington, DC 20500",
+            fullcity: "Washington, DC, US",
+            country: "us",
+            users: []
+        }
     if (typeof id != "string")
         return null
     let centers = cachedCenters()
@@ -378,7 +389,7 @@ async function setMapImgAsync(pref: string, addrObj: Address, cfg: expander.Expa
         cfg.contentOverride[pref + k] = (addrObj as any)[k] + ""
     }
 
-    let addr = addrObj.name + ", " + gmaps.cleanAddress(addrObj.address)
+    let addr = gmaps.cleanAddress(addrObj.address)
     if (!cfg.vars) cfg.vars = {}
     cfg.vars[pref + "mapurl"] = "https://maps.google.com/?q=" + encodeURI(addr)
     cfg.vars[pref + "mapimg"] = await gmaps.getMapsPictureAsync({ address: addr })
