@@ -471,7 +471,7 @@ export function pageConfigPath(page: string) {
 }
 
 export function getPageConfigAsync(page: string): Promise<PageConfig> {
-    let m = /^center-(\w+)/.exec(page)
+    let m = /^\/?center-(\w+)/.exec(page)
     if (m)
         return Promise.resolve({ center: m[1] })
 
@@ -497,7 +497,7 @@ export function getPageConfigAsync(page: string): Promise<PageConfig> {
 }
 
 export async function hasWritePermAsync(appuser: string, page: string) {
-    let m = /^center-(\w+)/.exec(page)
+    let m = /^\/?center-(\w+)/.exec(page)
     if (m) {
         let c = await events.getCenterAsync(m[1])
         if (c)
