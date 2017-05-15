@@ -435,8 +435,7 @@ export async function addCenterVarsAsync(id: string, cfg: expander.ExpansionConf
 }
 
 async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
-    if (cfg.appuser)
-        cfg.eventInfo = ev
+    cfg.eventInfo = ev
     await setMapImgAsync("ev_", ev, cfg)
 }
 

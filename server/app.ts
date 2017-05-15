@@ -365,6 +365,8 @@ async function genericGet(req: express.Request, res: express.Response) {
             await events.addEventVarsAsync(eventId, cfg)
             if (!cfg.eventInfo)
                 return notFound(req, "No such event.")
+            if (!cfg.appuser)
+                cfg.eventInfo = null
         }
 
         let page = await expander.expandFileAsync(cfg)
