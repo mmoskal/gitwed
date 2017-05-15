@@ -212,6 +212,8 @@ async function queryEventsAsync(query: SMap<string>) {
     let startDate = query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
     let stopDate = query["stop"] || "9999-99-99"
     let center = query["center"] || null
+    let country = query["country"] || null
+    let centers = await getCentersAsync()
     let ev = index.events.filter(e => {
         let end = e.endDate || e.startDate
         if (end < startDate)
@@ -220,6 +222,11 @@ async function queryEventsAsync(query: SMap<string>) {
             return false
         if (center && e.center != center)
             return false
+        if (country) {
+            let c = centers[e.center]
+            if (!c || c.country != country)
+                return false
+        }
         return true
     })
     ev.sort((a, b) =>
@@ -231,7 +238,6 @@ async function queryEventsAsync(query: SMap<string>) {
     let count = Math.abs(parseInt(query["count"]) || 100)
     if (count > 100) count = 100
     if (ev.length > count) ev = ev.slice(0, count)
-    await getCentersAsync()
     ev.forEach(augmentEvent)
     return {
         totalCount,

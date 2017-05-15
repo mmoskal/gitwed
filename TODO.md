@@ -1,11 +1,9 @@
 # GitWEd - TODO
 
-* authentication for `/api/update`
-* image/binary data upload
-* editing of `<title>`, `description=...` etc
-* localization
+## Events
 
-
-## Maybe
-
-* queue edits for say 5 minutes into one commit
+* [ ] client-side validation of date, time, size of fields (see `events.ts` - `applyChanges`)
+* [ ] unpublished events
+* [ ] starred events
+* [x] filtering by country
+* [ ] event website field?
