@@ -74,6 +74,8 @@ function eventFn(id: number) {
 
 async function getCentersAsync() {
     if (centers) return centers
+    if (!gitfs.events)
+        return centers = {}
     if (centers === undefined)
         gitfs.events.onUpdate(isPull => {
             if (isPull)
@@ -200,7 +202,7 @@ function publicCenter(c: Center) {
     }
 }
 
-async function getCenterAsync(id: string) {
+export async function getCenterAsync(id: string) {
     if (typeof id != "string")
         return null
     let centers = await getCentersAsync()
@@ -292,6 +294,14 @@ export async function addEventVarsAsync(eventId: number, cfg: expander.Expansion
     let ev = await readEventAsync(eventId)
     if (!ev) return
     await addEventVarsCoreAsync(ev, cfg)
+}
+
+export async function updateCenterAsync(id: string, f: (c: Center) => void, msg: string, user: string) {
+    await gitfs.events.pokeAsync()
+    let centers = await getCentersAsync()
+    let c = centers[id]
+    f(c)
+    await gitfs.events.setJsonFileAsync("centers.json", centers, msg, user)
 }
 
 async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {

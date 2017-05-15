@@ -347,7 +347,7 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
                 langs: req.langs,
                 appuser: req.appuser
             }
-            
+
             if (eventId) {
                 await events.addEventVarsAsync(eventId, cfg)
                 if (!cfg.eventInfo)
@@ -498,6 +498,8 @@ function setupCerts() {
 gitfs.initAsync(cfg)
     .then(() => {
         gitfs.main.onUpdate(() => pageCache.flush())
+        if (gitfs.events)
+            gitfs.events.onUpdate(() => pageCache.flush())
         events.initRoutes(app)
         setupFinalRoutes()
 

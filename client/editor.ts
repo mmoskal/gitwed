@@ -240,6 +240,8 @@ namespace gw {
         if (!gitwedPageInfo.isEditable)
             return
 
+        let evInfo = gitwedPageInfo.eventInfo
+
         let metasection = $("#gw-meta-section")
         if (metasection.length) {
             metasection.css("display", "block")
@@ -287,17 +289,16 @@ namespace gw {
 
             editor.busy(true);
 
-            let eventInfo = gitwedPageInfo.eventInfo
             let savePromise: Promise<any>
 
-            if (eventInfo) {
-                let up: any = eventInfo
+            if (evInfo) {
+                let up: any = evInfo
 
                 // for pre-exisiting events, just pass the updated data
-                if (eventInfo.id)
+                if (evInfo.id)
                     up = {
-                        id: eventInfo.id,
-                        center: eventInfo.center,
+                        id: evInfo.id,
+                        center: evInfo.center,
                     }
 
                 for (let k of Object.keys(regions)) {
@@ -433,6 +434,8 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
             addButton("Invite someone to edit", () => {
                 root.empty()
                 let dir = "/" + currPath.slice(1).replace(/\/.*/, "")
+                if (evInfo)
+                    dir = "/center-" + evInfo.center
                 root.append(`The person you're inviting will be able to edit the website under <strong>${dir}</strong>.<br>
                 Their email: `)
                 let inp = $("<input type=email>")
@@ -449,7 +452,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                     status("Inviting...")
 
                     postJsonAsync("/api/invite", {
-                        path: currPath,
+                        path: dir,
                         email: e
                     })
                         .then(res => {
@@ -460,8 +463,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 })
             })
 
-            let evInfo = gitwedPageInfo.eventInfo
-            if (gitwedPageInfo.eventInfo) {
+            if (evInfo) {
                 root.append("<h3>Event management</h3>")
                 let cloneUrl = "/events/new?clone=" + evInfo.id
                 addButton("Clone in same center", () => {
@@ -485,7 +487,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 
-        if (gitwedPageInfo.eventInfo && !gitwedPageInfo.eventInfo.id) {
+        if (evInfo && !evInfo.id) {
             setTimeout(() => {
                 $(".ct-ignition__button--edit").click()
             }, 100)

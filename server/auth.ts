@@ -5,6 +5,7 @@ import mail = require('./mail')
 import tools = require('./tools')
 import routing = require('./routing')
 import expander = require('./expander')
+import events = require('./events')
 import bluebird = require('bluebird')
 import winston = require('winston')
 import * as jwt from "jwt-simple";
@@ -167,7 +168,7 @@ export function initRoutes(app: express.Express) {
 
     app.get("/gw/auth", (req, res, next) => {
         if (vhost(req)) return
-        
+
         let tok: string = req.query["tok"] || ""
         try {
             let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
@@ -204,7 +205,7 @@ export function initRoutes(app: express.Express) {
     })
 
 
-    app.post("/api/invite", (req, res) => {
+    app.post("/api/invite", async (req, res) => {
         if (!req.appuser)
             return res.status(403).end()
 
@@ -220,40 +221,48 @@ export function initRoutes(app: express.Express) {
             encodeURIComponent(email) +
             "&redirect=" + encodeURIComponent(page)
 
-        expander.hasWritePermAsync(req.appuser, page)
-            .then(() => gitfs.main.pokeAsync(true))
-            .then(() => lookupUserAsync(email))
-            .then(u => {
-                if (u) return Promise.resolve()
-                return getUserConfigAsync()
-                    .then(cfg => {
-                        cfg.users.push({
-                            email: email,
-                            nickname: email.replace(/@.*/, "")
-                        })
-                        return gitfs.main.setJsonFileAsync("private/users.json", cfg,
-                            "Adding user " + email + " for the first time", req.appuser)
-                    })
+        if (!await expander.hasWritePermAsync(req.appuser, page))
+            return res.status(402).end()
+
+        await gitfs.main.pokeAsync(true)
+
+        let u = await lookupUserAsync(email)
+        if (!u) {
+            let userCfg = await getUserConfigAsync()
+            userCfg.users.push({
+                email: email,
+                nickname: email.replace(/@.*/, "")
             })
-            .then(() => expander.getPageConfigAsync(page))
-            .then(cfg => {
-                if (!cfg.users) cfg.users = []
-                if (cfg.users.indexOf(email) >= 0)
-                    return Promise.resolve()
-                cfg.users.push(email)
-                return gitfs.main.setJsonFileAsync(cfgPath, cfg,
-                    "Adding user " + email + " to " + page,
-                    req.appuser)
-            })
-            .then(() =>
-                mail.sendAsync({
-                    to: email,
-                    subject: "Invitation to edit " + editUrl,
-                    text: `${req.appuser} has invited you to edit ${editUrl}. To accept, please follow the link below:\n\n    ${acceptLink}\n`
-                }))
-            .then(() => {
-                res.json({})
-            })
+            await gitfs.main.setJsonFileAsync("private/users.json", userCfg,
+                "Adding user " + email + " for the first time", req.appuser)
+
+        }
+        let cfg = await expander.getPageConfigAsync(page)
+
+        if (!cfg.users) cfg.users = []
+        if (cfg.users.indexOf(email) >= 0)
+            return
+
+        let msg = "Adding user " + email + " to " + page
+
+        if (cfg.center) {
+            await events.updateCenterAsync(cfg.center, c => {
+                if (!c.users) c.users = []
+                if (c.users.indexOf(email) < 0)
+                    c.users.push(email)
+            }, msg, req.appuser)
+        } else {
+            cfg.users.push(email)
+            await gitfs.main.setJsonFileAsync(cfgPath, cfg, msg, req.appuser)
+        }
+
+        await mail.sendAsync({
+            to: email,
+            subject: "Invitation to edit " + editUrl,
+            text: `${req.appuser} has invited you to edit ${editUrl}. To accept, please follow the link below:\n\n    ${acceptLink}\n`
+        })
+
+        res.json({})
     })
 }
 

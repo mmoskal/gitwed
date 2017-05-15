@@ -60,6 +60,7 @@ export interface Pos {
 export interface PageConfig {
     langs?: string[];
     users?: string[];
+    center?: string;
 }
 
 export interface ExpansionConfig {
@@ -465,7 +466,11 @@ export function pageConfigPath(page: string) {
     return "/" + m[1] + "/config.json"
 }
 
-export function getPageConfigAsync(page: string) {
+export function getPageConfigAsync(page: string): Promise<PageConfig> {
+    let m = /^center-(\w+)/.exec(page)
+    if (m)
+        return Promise.resolve({ center: m[1] })
+
     let path = pageConfigPath(page)
     if (!path)
         return Promise.resolve({} as PageConfig)
@@ -476,14 +481,27 @@ export function getPageConfigAsync(page: string) {
                 winston.info(path + ": " + e.message)
                 return ""
             }))
-        .then(cfText => {
-            return JSON.parse(cfText || "{}") as PageConfig
+        .then(async (cfText) => {
+            let cfg = JSON.parse(cfText || "{}") as PageConfig
+            if (cfg.center && gitfs.events) {
+                let c = await events.getCenterAsync(cfg.center)
+                if (c)
+                    cfg.users = c.users
+            }
+            return cfg
         })
 }
 
-export function hasWritePermAsync(appuser: string, page: string) {
-    return getPageConfigAsync(page)
-        .then(cfg => auth.hasWritePermAsync(appuser, cfg.users))
+export async function hasWritePermAsync(appuser: string, page: string) {
+    let m = /^center-(\w+)/.exec(page)
+    if (m) {
+        let c = await events.getCenterAsync(m[1])
+        if (c)
+            return auth.hasWritePermAsync(appuser, c.users)
+    }
+
+    let cfg = await getPageConfigAsync(page)
+    return auth.hasWritePermAsync(appuser, cfg.users)
 }
 
 export function expandFileAsync(cfg: ExpansionConfig) {
