@@ -147,6 +147,12 @@ namespace gw {
         }
     }
 
+    function copyAll(trg: any, src: any) {
+        for (let k of Object.keys(src)) {
+            trg[k] = src[k]
+        }
+    }
+
     function extractPrefixed(pref: string, regions: SMap<string>) {
         let ret: SMap<string> = {}
         let num = 0
@@ -326,7 +332,7 @@ namespace gw {
                         center: evInfo.center,
                     }
 
-                copyMissing(up, upd)
+                copyAll(up, upd)
                 savePromise = savePromise
                     .then(() => postJsonAsync("/api/events", up))
                     .then((data: any) => {

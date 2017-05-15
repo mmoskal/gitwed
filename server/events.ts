@@ -472,6 +472,7 @@ export function initRoutes(app: express.Express) {
         if (!tools.reqSetup(req)) return
         let cfg: expander.ExpansionConfig = {
             rootFile: "/events/_event.html",
+            eventInfo: ev
         }
         await addEventVarsCoreAsync(ev, cfg)
         await sendTemplateAsync(req, cfg)
