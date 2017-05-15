@@ -125,7 +125,7 @@ export async function parseAddressAsync(addr: string): Promise<ParsedAddress> {
     res = {
         street: short("route"),
         street_number: short("street_number"),
-        city: short("postal_town"),
+        city: short("postal_town") || short("locality"),
         country: short("country"),
         state: "",
         fullcity: ""

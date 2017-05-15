@@ -50,7 +50,7 @@ interface Ctx {
     fileContent: string;
 }
 
-interface Pos {
+export interface Pos {
     filename: string;
     startIdx: number;
     length: number;

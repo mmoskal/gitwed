@@ -18,6 +18,7 @@ export interface EventIndexEntry {
     endDate: string;
     title: string;
     center: string; // "wroclaw"
+    fullcity: string; // inferred
 }
 
 export interface Address {
@@ -57,7 +58,8 @@ function forIndex(js: FullEvent): EventIndexEntry {
         startDate: js.startDate,
         endDate: js.endDate,
         title: js.title,
-        center: js.center
+        center: js.center,
+        fullcity: js.fullcity
     }
 }
 
@@ -155,6 +157,10 @@ function applyChanges(curr: FullEvent, delta: FullEvent) {
         return "invalid start time"
     if ((delta.title || "").length > 200)
         return "title too long"
+    if ((delta.address || "").length > 200)
+        return "address too long"
+    if ((delta.name || "").length > 200)
+        return "name too long"
     if ((delta.description || "").length > 4000)
         return "description too long"
 
@@ -165,6 +171,8 @@ function applyChanges(curr: FullEvent, delta: FullEvent) {
         "title",
         "description",
         "startTime",
+        "name",
+        "address",
     ]) {
         if (delta.hasOwnProperty(k))
             (curr as any)[k] = (delta as any)[k]
@@ -287,6 +295,7 @@ export function initRoutes(app: express.Express) {
                         startTime: "20:00",
                         title: "Introduction to Buddhism by D. W. Teacher",
                         description: "<p>Details coming up soon!</p>",
+                        fullcity: ""
                     }
                 }
             } else {
@@ -367,6 +376,7 @@ export function initRoutes(app: express.Express) {
         } else {
             if (isFresh)
                 index.nextId++
+            currElt.fullcity = (await gmaps.parseAddressAsync(currElt.address)).fullcity
             if (currElt.address == center.address)
                 delete currElt.address
             if (currElt.name == center.name)
