@@ -48,6 +48,8 @@ export interface Center extends Address {
     id: string;
     country: string;
     users: string[];
+    program?: string;
+    about?: string;
 }
 
 let index: EventIndex
@@ -185,6 +187,28 @@ function validDate(d: string) {
 
 function validTime(d: string) {
     return d == null || d == "" || /^\d\d:\d\d$/.test(d)
+}
+
+function applyCenterChanges(curr: Center, delta: Center) {
+    for (let k of [
+        "*program",
+        "*about",
+        "name",
+        "address",
+    ]) {
+        let limit = 200
+        if (k[0] == "*") {
+            limit = 4000
+            k = k.slice(1)
+        }
+        if (delta.hasOwnProperty(k)) {
+            let v = (delta as any)[k] + ""
+            if (v.length > limit)
+                return k + " too long";
+            (curr as any)[k] = v
+        }
+    }
+    return ""
 }
 
 function applyChanges(curr: FullEvent, delta: FullEvent) {
@@ -532,4 +556,30 @@ export function initRoutes(app: express.Express) {
                 centers: lst.map(publicCenter)
             })
     })
+
+    app.post("/api/centers", async (req, res, next) => {
+        if (!req.appuser)
+            return res.status(403).end()
+
+        let delta = req.body as Center
+        let center = await getCenterAsync(delta.id)
+
+        if (!center)
+            return res.status(404).end()
+
+        if (!await auth.hasWritePermAsync(req.appuser, center.users))
+            return res.status(402).end()
+
+        let err = applyCenterChanges(center, delta)
+        if (err) {
+            res.status(412).json({ error: err })
+        } else {
+            await updateCenterAsync(center.id, c => {
+                applyCenterChanges(c, delta)
+                center = c
+            }, "Center " + center.id + " updated", req.appuser)
+            res.json(center)
+        }
+    })
+
 }

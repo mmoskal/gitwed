@@ -544,7 +544,8 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         path: cfg.rootFile,
         isEditable: cfg.hasWritePerm && cfg.ref == "master",
         ref: cfg.ref,
-        eventInfo: cfg.eventInfo
+        eventInfo: cfg.eventInfo,
+        center: pcfg.center
     }
     cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
         JSON.stringify(pageInfo, null, 4) + ";\n"

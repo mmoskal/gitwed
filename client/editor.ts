@@ -2,6 +2,8 @@ declare var ContentTools: any;
 declare var ContentEdit: any;
 declare var gitwedPageInfo: gw.PageInfo;
 
+type SMap<T> = { [s: string]: T };
+
 namespace gw {
     function __ct_extends(child: any, parent: any) {
         const __hasProp = {}.hasOwnProperty;
@@ -91,6 +93,7 @@ namespace gw {
         ref: string;
         isEditable: boolean;
         eventInfo: EventInfo;
+        center: string;
     }
 
     export interface ImgResponse {
@@ -136,6 +139,28 @@ namespace gw {
         return httpRequestAsync({ url: path })
     }
 
+
+    function copyMissing(trg: any, src: any) {
+        for (let k of Object.keys(src)) {
+            if (!trg.hasOwnProperty(k))
+                trg[k] = src[k]
+        }
+    }
+
+    function extractPrefixed(pref: string, regions: SMap<string>) {
+        let ret: SMap<string> = {}
+        let num = 0
+        for (let k of Object.keys(regions)) {
+            let idx = k.indexOf(pref)
+            if (idx < 0) continue
+            let m = k.slice(idx + pref.length)
+            ret[m] = regions[k]
+            delete regions[k]
+            num++
+        }
+        if (!num) return null
+        return ret
+    }
 
     function resizePicture(max: number, img: HTMLImageElement) {
         var w = img.width;
@@ -276,10 +301,7 @@ namespace gw {
         editor.addEventListener('saved', (ev: any) => {
             let regions = ev.detail().regions
 
-            for (let k of Object.keys(failedRegions)) {
-                if (!regions.hasOwnProperty(k))
-                    regions[k] = failedRegions[k]
-            }
+            copyMissing(regions, failedRegions)
 
             if (Object.keys(regions).length == 0)
                 return
@@ -289,9 +311,12 @@ namespace gw {
 
             editor.busy(true);
 
-            let savePromise: Promise<any>
+            let savePromise = Promise.resolve()
 
-            if (evInfo) {
+            let final = () => { }
+
+            let upd = extractPrefixed("_ev_", regions)
+            if (upd) {
                 let up: any = evInfo
 
                 // for pre-exisiting events, just pass the updated data
@@ -301,34 +326,42 @@ namespace gw {
                         center: evInfo.center,
                     }
 
-                for (let k of Object.keys(regions)) {
-                    let v = regions[k]
-                    k = k.replace(/^\w+_ev_/, "")
-                    if (k == "id") continue
-                    up[k] = v
-                }
-                savePromise = postJsonAsync("/api/events", up)
+                copyMissing(up, upd)
+                savePromise = savePromise
+                    .then(() => postJsonAsync("/api/events", up))
                     .then((data: any) => {
                         if (/\/new/.test(document.location.href) && data && data.id) {
-                            setTimeout(() => {
-                                document.location.href = document.location.href.replace(/\/new.*/, "/" + data.id)
-                            }, 100)
+                            final = () =>
+                                setTimeout(() => {
+                                    document.location.href = document.location.href.replace(/\/new.*/, "/" + data.id)
+                                }, 100)
                         }
                     })
-            } else {
-                savePromise = (Promise as any).each(Object.keys(regions), (id: string) =>
-                    postJsonAsync("/api/update", {
-                        page: document.location.pathname,
-                        lang: gitwedPageInfo.lang,
-                        id: id,
-                        value: regions[id]
-                    }))
             }
+
+            let centerUpd = extractPrefixed("_cnt_", regions)
+            if (centerUpd) {
+                centerUpd.id = gitwedPageInfo.center
+                savePromise = savePromise
+                    .then(() => postJsonAsync("/api/centers", centerUpd))
+                    .then(() => { })
+            }
+
+            if (Object.keys(regions).length)
+                savePromise = savePromise
+                    .then(() => (Promise as any).each(Object.keys(regions), (id: string) =>
+                        postJsonAsync("/api/update", {
+                            page: document.location.pathname,
+                            lang: gitwedPageInfo.lang,
+                            id: id,
+                            value: regions[id]
+                        })))
 
             savePromise
                 .then(() => {
                     editor.busy(false)
                     new ContentTools.FlashUI('ok')
+                    final()
                 })
                 .catch((e: any) => {
                     console.error(e)
