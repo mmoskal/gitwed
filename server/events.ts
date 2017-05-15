@@ -234,8 +234,8 @@ function augmentEvent(ev: EventIndexEntry): EventListEntry {
 async function queryEventsAsync(query: SMap<string>) {
     let startDate = query["start"] || formatDate(new Date(Date.now() - 3 * 24 * 3600 * 1000))
     let stopDate = query["stop"] || "9999-99-99"
-    let center = query["center"] || null
-    let country = query["country"] || null
+    let center = query["center"] || "*"
+    let country = query["country"] || "*"
     let centers = await getCentersAsync()
     let ev = index.events.filter(e => {
         let end = e.endDate || e.startDate
@@ -243,9 +243,9 @@ async function queryEventsAsync(query: SMap<string>) {
             return false
         if (e.startDate > stopDate)
             return false
-        if (center && e.center != center)
+        if (center != "*" && e.center != center)
             return false
-        if (country) {
+        if (country != "*") {
             let c = centers[e.center]
             if (!c || c.country != country)
                 return false
@@ -304,20 +304,32 @@ export async function updateCenterAsync(id: string, f: (c: Center) => void, msg:
     await gitfs.events.setJsonFileAsync("centers.json", centers, msg, user)
 }
 
-async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
-    let addr = ev.name + ", " + gmaps.cleanAddress(ev.address)
-    let gmapURL = await gmaps.getMapsPictureAsync({ address: addr })
-    cfg.contentOverride = {}
-    for (let k of Object.keys(ev)) {
-        cfg.contentOverride["ev_" + k] = (ev as any)[k] + ""
+async function setMapImgAsync(pref: string, addrObj: Address, cfg: expander.ExpansionConfig) {
+    if (!cfg.contentOverride)
+        cfg.contentOverride = {}
+    for (let k of Object.keys(addrObj)) {
+        cfg.contentOverride[pref + k] = (addrObj as any)[k] + ""
     }
+
+    let addr = addrObj.name + ", " + gmaps.cleanAddress(addrObj.address)
+    if (!cfg.vars) cfg.vars = {}
+    cfg.vars[pref + "mapurl"] = "https://maps.google.com/?q=" + encodeURI(addr)
+    cfg.vars[pref + "mapimg"] = await gmaps.getMapsPictureAsync({ address: addr })
+}
+
+export async function addCenterVarsAsync(id: string, cfg: expander.ExpansionConfig) {
+    let cent = await getCenterAsync(id)
+    if (!cent) return
+    await setMapImgAsync("cnt_", cent, cfg)
+}
+
+async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
     if (cfg.appuser)
         cfg.eventInfo = ev
-    cfg.vars = {
-        "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
-        "mapimg": gmapURL
-    }
+    await setMapImgAsync("ev_", ev, cfg)
 }
+
+
 
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)

@@ -438,7 +438,11 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         if (tag == "event-list") {
-            return events.expandEventListAsync(elt.html(), {})
+            return events.expandEventListAsync(elt.html(), {
+                count: elt.attr("count"),
+                country: elt.attr("country"),
+                center: elt.attr("center") || cfg.pageConfig.center || null
+            })
                 .then(html => {
                     elt.html(html)
                 })
@@ -504,59 +508,56 @@ export async function hasWritePermAsync(appuser: string, page: string) {
     return auth.hasWritePermAsync(appuser, cfg.users)
 }
 
-export function expandFileAsync(cfg: ExpansionConfig) {
-    return fillContentAsync(cfg)
-        .then(() => getPageConfigAsync(cfg.rootFile))
-        .then(pcfg => {
-            cfg.pageConfig = pcfg
-            let plangs = cfg.pageConfig.langs
-            if (!plangs || !plangs.length)
-                cfg.pageConfig.langs = plangs = ["en"]
-            if (cfg.langs) {
-                for (let l of cfg.langs) {
-                    if (plangs.indexOf(l) >= 0) {
-                        cfg.lang = l
-                        break
-                    }
-                }
+export async function expandFileAsync(cfg: ExpansionConfig) {
+    await fillContentAsync(cfg)
+    let pcfg = await getPageConfigAsync(cfg.rootFile)
+    cfg.pageConfig = pcfg
+    let plangs = cfg.pageConfig.langs
+    if (!plangs || !plangs.length)
+        cfg.pageConfig.langs = plangs = ["en"]
+    if (cfg.langs) {
+        for (let l of cfg.langs) {
+            if (plangs.indexOf(l) >= 0) {
+                cfg.lang = l
+                break
             }
-            if (!cfg.lang) {
-                // if no match, default to en (if available), not first langauge in the list
-                cfg.lang = plangs.indexOf("en") >= 0 ? "en" : plangs[0]
-            }
-            if (cfg.lang != plangs[0]) {
-                cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-                return gitfs.main.getTextFileAsync(cfg.langFileName, cfg.ref)
-                    .then(v => v, e => "")
-            } else
-                return null
-        })
-        .then(lnText => {
-            cfg.langFileContent = lnText
-            return auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
-        })
-        .then(hasWrite => {
-            if (!cfg.vars) cfg.vars = {}
-            cfg.hasWritePerm = hasWrite
-            let pageInfo = {
-                user: cfg.appuser || null,
-                lang: cfg.lang,
-                langFileCreated: !!cfg.langFileContent,
-                availableLangs: cfg.pageConfig.langs,
-                isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
-                path: cfg.rootFile,
-                isEditable: hasWrite && cfg.ref == "master",
-                ref: cfg.ref,
-                eventInfo: cfg.eventInfo
-            }
-            cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
-                JSON.stringify(pageInfo, null, 4) + ";\n"
+        }
+    }
+    if (!cfg.lang) {
+        // if no match, default to en (if available), not first langauge in the list
+        cfg.lang = plangs.indexOf("en") >= 0 ? "en" : plangs[0]
+    }
+    if (cfg.lang != plangs[0]) {
+        cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
+        cfg.langFileContent = await gitfs.main.getTextFileAsync(cfg.langFileName, cfg.ref)
+            .then(v => v, e => "")
+    }
 
-            return expandAsync(cfg)
-                .then(r => {
-                    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) =>
-                        cfg.vars[v] || cfg.contentOverride[v] || "")
-                    return r
-                })
-        })
+    cfg.hasWritePerm = await auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
+    if (!cfg.vars) cfg.vars = {}
+    let pageInfo = {
+        user: cfg.appuser || null,
+        lang: cfg.lang,
+        langFileCreated: !!cfg.langFileContent,
+        availableLangs: cfg.pageConfig.langs,
+        isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
+        path: cfg.rootFile,
+        isEditable: cfg.hasWritePerm && cfg.ref == "master",
+        ref: cfg.ref,
+        eventInfo: cfg.eventInfo
+    }
+    cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
+        JSON.stringify(pageInfo, null, 4) + ";\n"
+
+    if (pcfg.center && gitfs.events)
+        await events.addCenterVarsAsync(pcfg.center, cfg)
+
+    let r = await expandAsync(cfg)
+
+    if (!cfg.contentOverride) cfg.contentOverride = {}
+
+    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) =>
+        cfg.vars[v] || cfg.contentOverride[v] || "")
+
+    return r
 }

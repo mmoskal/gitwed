@@ -254,7 +254,7 @@ app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
         })
 })
 
-async function genericGet(req: express.Request, res: express.Response, next: () => void) {
+async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
     let cleaned = req.path.replace(/\/index(\.html?)?$/, "/")
@@ -290,7 +290,7 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
     }
 
     if (/^(private|logs\/)/.test(cleaned))
-        return next()
+        return notFound(req, "Private.")
 
     cleaned = cleaned.replace(/\.html?$/i, "")
 
@@ -298,7 +298,7 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
     let isHtml = spl.name.indexOf(".") < 0
 
     if (spl.name == "config.json" || /\/[\._]/.test(cleaned))
-        return next()
+        return notFound(req, "Hidden.")
 
     let gitFileName = cleaned
     let eventId = 0
@@ -309,7 +309,13 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
 
     let errHandler = (e: any) => {
         winston.info("error: " + cleaned + " " + e.message)
-        next()
+        if (req.appuser) {
+            res.status(500)
+            routing.sendError(req, "Page not found",
+                "Something went wrong. " + tools.htmlQuote(e.message))
+        } else {
+            notFound(req)
+        }
     }
 
     if (!isHtml) {
@@ -338,48 +344,52 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
         return res.end(cached)
     }
 
-    gitfs.main.getTextFileAsync(gitFileName, ref)
-        .then(async (str) => {
-            let cfg: expander.ExpansionConfig = {
-                rootFile: gitFileName,
-                ref,
-                rootFileContent: str,
-                langs: req.langs,
-                appuser: req.appuser
-            }
-
-            if (eventId) {
-                await events.addEventVarsAsync(eventId, cfg)
-                if (!cfg.eventInfo)
-                    return next()
-            }
-
-            try {
-                let page = await expander.expandFileAsync(cfg)
-                pageCache.set(cacheKey, page.html)
-                res.writeHead(200, {
-                    'Content-Type': 'text/html; charset=utf8'
-                })
-                res.end(page.html)
-            } catch (err) {
-                next() // 404
-            }
-        }, err => {
+    let str = await gitfs.main.getTextFileAsync(gitFileName, ref)
+        .then(v => v, err =>
             gitfs.main.getTextFileAsync(cleaned + "/index.html")
-                .then(() => {
-                    res.redirect(cleaned + "/")
-                }, _ => errHandler(err))
+                .then(() => res.redirect(cleaned + "/"), _ => notFound(req))
+                .then(() => null))
+
+    if (str == null) return
+
+    try {
+        let cfg: expander.ExpansionConfig = {
+            rootFile: gitFileName,
+            ref,
+            rootFileContent: str,
+            langs: req.langs,
+            appuser: req.appuser
+        }
+
+        if (eventId) {
+            await events.addEventVarsAsync(eventId, cfg)
+            if (!cfg.eventInfo)
+                return notFound(req, "No such event.")
+        }
+
+        let page = await expander.expandFileAsync(cfg)
+        pageCache.set(cacheKey, page.html)
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf8'
         })
+        res.end(page.html)
+
+    } catch (err) {
+        errHandler(err)
+    }
+}
+
+function notFound(req: express.Request, msg = "") {
+    let res = req._response as express.Response
+    res.status(404)
+    routing.sendError(req, "Page not found",
+        "Whoops! We couldn't find the page your were looking for. " + msg)
 }
 
 function setupFinalRoutes() {
     app.get(/.*/, genericGet)
 
-    app.use((req, res) => {
-        res.status(404)
-        routing.sendError(req, "Page not found",
-            "Whoops! We couldn't find the page your were looking for.")
-    })
+    app.use((req, res) => notFound(req))
 
     app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
         logs.logError(error, req)
