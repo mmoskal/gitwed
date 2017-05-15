@@ -54,7 +54,8 @@ let index: EventIndex
 let currEventsPath = ""
 let eventsCache: SMap<string> = {}
 
-let centers: SMap<Center>
+let hasAllCenters = false
+let _centers: SMap<Center>
 
 const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 
@@ -72,19 +73,46 @@ function eventFn(id: number) {
     return ("000000" + id).slice(-6) + ".json"
 }
 
-async function getCentersAsync() {
-    if (centers) return centers
+const readdirAsync = bluebird.promisify(fs.readdir)
+const readAsync: (fn: string, enc: string) => Promise<string> = bluebird.promisify(fs.readFile) as any
+
+function cachedCenters() {
     if (!gitfs.events)
-        return centers = {}
-    if (centers === undefined)
+        return _centers = {}
+    if (_centers == null) {
         gitfs.events.onUpdate(isPull => {
-            if (isPull)
-                centers = null
+            if (isPull) {
+                _centers = {}
+                hasAllCenters = false
+            }
         })
-    centers = JSON.parse(await gitfs.events.getTextFileAsync("centers.json"))
-    for (let c of tools.values(centers)) {
-        if (!c.fullcity) {
-            c.fullcity = (await gmaps.parseAddressAsync(c.address)).fullcity
+        _centers = {}
+    }
+    return _centers
+}
+
+async function parseCenterAsync(str: string) {
+    let c: Center = JSON.parse(str)
+    if (!c.fullcity) {
+        c.fullcity = (await gmaps.parseAddressAsync(c.address)).fullcity
+    }
+    return c
+}
+
+async function getCentersAsync() {
+    let centers = cachedCenters()
+    if (!hasAllCenters) {
+        let dir = path.join(gitfs.config.eventsRepoPath, "centers")
+        let files = await readdirAsync(dir)
+        hasAllCenters = true
+        for (let f of files) {
+            let m = /^(\w+)\.json$/.exec(f)
+            if (m) {
+                if (!centers[m[1]]) {
+                    let str = await readAsync(path.join(dir, f), "utf8")
+                    centers[m[1]] = await parseCenterAsync(str)
+                }
+            }
         }
     }
     return centers
@@ -205,17 +233,22 @@ function publicCenter(c: Center) {
 export async function getCenterAsync(id: string) {
     if (typeof id != "string")
         return null
-    let centers = await getCentersAsync()
-    return tools.lookup(centers, id)
+    let centers = cachedCenters()
+    let r = tools.lookup(centers, id)
+    if (r || hasAllCenters)
+        return r
+    let str = await gitfs.events.getTextFileAsync("centers/" + id + ".json")
+    return (centers[id] = await parseCenterAsync(str))
 }
 
 function augmentEvent(ev: EventIndexEntry): EventListEntry {
     let r = tools.clone(ev) as EventListEntry
-    if (centers) {
-        let c = centers[r.center]
-        if (c)
-            r.fullcity = c.fullcity
-    }
+
+    let centers = cachedCenters()
+    let c = centers[r.center]
+    if (c)
+        r.fullcity = c.fullcity
+
     r.weekdayRange = tools.weekDay(ev.startDate)
     r.dateRange = tools.monthPlusDay(ev.startDate)
     r.combinedRange = tools.fullDate(ev.startDate)
@@ -236,8 +269,8 @@ async function queryEventsAsync(query: SMap<string>) {
     let stopDate = query["stop"] || "9999-99-99"
     let center = query["center"] || "*"
     let country = query["country"] || "*"
-    let centers = await getCentersAsync()
-    let ev = index.events.filter(e => {
+
+    let events = index.events.filter(e => {
         let end = e.endDate || e.startDate
         if (end < startDate)
             return false
@@ -245,25 +278,36 @@ async function queryEventsAsync(query: SMap<string>) {
             return false
         if (center != "*" && e.center != center)
             return false
-        if (country != "*") {
+        return true
+    })
+
+    // fetch centers for filtered events
+    for (let e of events) {
+        await getCenterAsync(e.center)
+    }
+
+    if (country != "*") {
+        let centers = cachedCenters()
+        events = events.filter(e => {
             let c = centers[e.center]
             if (!c || c.country != country)
                 return false
-        }
-        return true
-    })
-    ev.sort((a, b) =>
+            return true
+        })
+    }
+
+    events.sort((a, b) =>
         tools.strcmp(a.startDate, b.startDate) || (a.id - b.id))
-    let totalCount = ev.length
+    let totalCount = events.length
     let skip = parseInt(query["skip"]) || 0
     if (skip)
-        ev = ev.slice(skip)
+        events = events.slice(skip)
     let count = Math.abs(parseInt(query["count"]) || 100)
     if (count > 100) count = 100
-    if (ev.length > count) ev = ev.slice(0, count)
+    if (events.length > count) events = events.slice(0, count)
     return {
         totalCount,
-        events: ev.map(augmentEvent),
+        events: events.map(augmentEvent),
     }
 }
 
@@ -298,10 +342,9 @@ export async function addEventVarsAsync(eventId: number, cfg: expander.Expansion
 
 export async function updateCenterAsync(id: string, f: (c: Center) => void, msg: string, user: string) {
     await gitfs.events.pokeAsync()
-    let centers = await getCentersAsync()
-    let c = centers[id]
+    let c = await getCenterAsync(id)
     f(c)
-    await gitfs.events.setJsonFileAsync("centers.json", centers, msg, user)
+    await gitfs.events.setJsonFileAsync("centers/" + c.id + ".json", c, msg, user)
 }
 
 async function setMapImgAsync(pref: string, addrObj: Address, cfg: expander.ExpansionConfig) {
@@ -468,8 +511,7 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/api/centers/:id", async (req, res, next) => {
-        let centers = await getCentersAsync()
-        let c = centers[req.params["id"]]
+        let c = await getCenterAsync(req.params["id"])
         if (!c)
             return res.status(404).end()
         if (req.appuser)
