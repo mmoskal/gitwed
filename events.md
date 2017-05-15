@@ -2,15 +2,17 @@
 
 ## User-facing pages
 
-`GET /ev/:id/edit`
+This is mostly configured through gitwed-data repo.
 
-Login if needed and redirect to `/ev/:id`
+`GET /events/:id/edit`
 
-`GET /ev/`
+Login if needed and redirect to `/events/:id`
+
+`GET /events/`
 
 List events. Supports query parameters, see below.
 
-`GET /ev/:id`
+`GET /events/:id`
 
 Page for a specific event. Supports editing if user has the permission.
 

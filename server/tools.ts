@@ -369,6 +369,10 @@ export function htmlQuote(s: string) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
+export function fullDate(s: string) {
+    return weekDay(s) + " " + monthPlusDay(s)
+}
+
 export class Cache<T> {
     cache: SMap<T> = {}
     size = 0

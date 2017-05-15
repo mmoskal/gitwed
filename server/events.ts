@@ -21,6 +21,12 @@ export interface EventIndexEntry {
     fullcity?: string;
 }
 
+export interface EventListEntry extends EventIndexEntry {
+    weekdayRange?: string;
+    dateRange?: string;
+    combinedRange?: string;
+}
+
 export interface Address {
     name: string;
     address: string; // multi-line
@@ -28,7 +34,7 @@ export interface Address {
 }
 
 // address is optional - can be taken from center
-export interface FullEvent extends EventIndexEntry, Address {
+export interface FullEvent extends EventListEntry, Address {
     startTime: string; // "20:00"
     description: string;
 }
@@ -108,7 +114,7 @@ async function readEventAsync(id: number): Promise<FullEvent> {
         r.address = c.address
         r.name = c.name
     }
-    augmentEvent(r)
+    r = augmentEvent(r) as FullEvent
     return r
 }
 
@@ -201,11 +207,26 @@ async function getCenterAsync(id: string) {
     return tools.lookup(centers, id)
 }
 
-function augmentEvent(ev: EventIndexEntry) {
-    if (!centers) return
-    let c = centers[ev.center]
-    if (!c) return
-    ev.fullcity = c.fullcity
+function augmentEvent(ev: EventIndexEntry): EventListEntry {
+    let r = tools.clone(ev) as EventListEntry
+    if (centers) {
+        let c = centers[r.center]
+        if (c)
+            r.fullcity = c.fullcity
+    }
+    r.weekdayRange = tools.weekDay(ev.startDate)
+    r.dateRange = tools.monthPlusDay(ev.startDate)
+    r.combinedRange = tools.fullDate(ev.startDate)
+    if (r.endDate) {
+        r.weekdayRange += "-" + tools.weekDay(ev.endDate)
+        if (tools.monthName(ev.startDate) != tools.monthName(ev.endDate)) {
+            r.dateRange += "-" + tools.monthPlusDay(ev.endDate)
+        } else {
+            r.dateRange += "-" + tools.monthDay(ev.endDate)
+        }
+        r.combinedRange += tools.fullDate(ev.endDate)
+    }
+    return r
 }
 
 async function queryEventsAsync(query: SMap<string>) {
@@ -238,11 +259,19 @@ async function queryEventsAsync(query: SMap<string>) {
     let count = Math.abs(parseInt(query["count"]) || 100)
     if (count > 100) count = 100
     if (ev.length > count) ev = ev.slice(0, count)
-    ev.forEach(augmentEvent)
     return {
         totalCount,
-        events: ev,
+        events: ev.map(augmentEvent),
     }
+}
+
+export async function expandEventListAsync(templ: string, query: SMap<string>) {
+    if (!gitfs.events)
+        return ""
+    let r = await queryEventsAsync(query)
+    return r.events.map(ev => templ.replace(/@@(\w+)@@/g, (f, v) => {
+        return tools.htmlQuote(((ev as any)[v] || "") + "")
+    })).join("\n")
 }
 
 async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionConfig) {
@@ -259,6 +288,27 @@ async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionCo
     res.end(page.html)
 }
 
+export async function addEventVarsAsync(eventId: number, cfg: expander.ExpansionConfig) {
+    let ev = await readEventAsync(eventId)
+    if (!ev) return
+    await addEventVarsCoreAsync(ev, cfg)
+}
+
+async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
+    let addr = ev.name + ", " + gmaps.cleanAddress(ev.address)
+    let gmapURL = await gmaps.getMapsPictureAsync({ address: addr })
+    cfg.contentOverride = {}
+    for (let k of Object.keys(ev)) {
+        cfg.contentOverride["ev_" + k] = (ev as any)[k] + ""
+    }
+    if (cfg.appuser)
+        cfg.eventInfo = ev
+    cfg.vars = {
+        "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
+        "mapimg": gmapURL
+    }
+}
+
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)
         return
@@ -267,127 +317,75 @@ export function initRoutes(app: express.Express) {
 
     winston.debug("mounting events")
 
-    app.get("/ev/:id/edit", async (req, res, next) => {
+    app.get("/events/:id/edit", async (req, res, next) => {
         let id = req.params["id"]
-        if (req.appuser) res.redirect("/ev/" + id)
-        else res.redirect("/gw/login?redirect=/ev/" + id)
+        let path = req.url.replace(/\/edit/, "")
+        if (req.appuser) res.redirect(path)
+        else res.redirect("/gw/login?redirect=" + encodeURIComponent(path))
     })
 
-    app.get("/ev", async (req, res, next) => {
-        if (!/\/$/.test(req.path))
-            return res.redirect("/ev/")
-
-        let onerow = (ev: EventIndexEntry) => {
-            let r = `<a class="eventrow" href="/ev/${ev.id}">`
-            r += `<span class="weekday">${tools.weekDay(ev.startDate)}`
-            if (ev.endDate)
-                r += "-" + tools.weekDay(ev.endDate)
-            r += `</span> `
-
-            r += `<span class="days">${tools.monthPlusDay(ev.startDate)}`
-            if (ev.endDate) {
-                if (tools.monthName(ev.startDate) != tools.monthName(ev.endDate)) {
-                    r += "-" + tools.monthPlusDay(ev.endDate)
-                } else {
-                    r += "-" + tools.monthDay(ev.endDate)
-                }
-            }
-            r += `</span> `
-
-            r += `<span class="center">${tools.htmlQuote(ev.fullcity)}</span> `
-            r += `<span class="title">${tools.htmlQuote(ev.title)}</span> `
-            r += `</a>\n`
-            return r
+    app.get("/events/new", async (req, res, next) => {
+        let ev: FullEvent
+        if (!req.appuser)
+            return res.redirect("/gw/login?redirect=" + encodeURIComponent(req.url))
+        let isAdmin = await auth.hasWritePermAsync(req.appuser, [])
+        let allCenters = tools.values(await getCentersAsync())
+        let centers = allCenters
+            .filter(c => isAdmin || (c.users || []).indexOf(req.appuser) >= 0)
+        if (centers.length == 0) {
+            res.status(402)
+            routing.sendError(req, "User not setup",
+                "Your user account is not setup to post in any center.")
+            return
         }
-        let r = await queryEventsAsync(req.query)
-        let events = r.events.map(onerow).join("")
-
-        await sendTemplateAsync(req, {
-            rootFile: "/ev/events.html",
-            vars: {
-                "events": events
+        let c0 = centers[0]
+        centers.sort((a, b) => tools.strcmp(a.id, b.id))
+        if (req.query["center"]) {
+            c0 = centers.find(c => c.id == req.query["center"])
+            if (!c0)
+                return res.status(402).end("Cannot post here")
+        } else if (centers.length > 1) {
+            let pref = req.url
+            if (pref.indexOf("?") >= 0) pref += "&"
+            else pref += "?"
+            let body = centers.map(c =>
+                `<li><a href="${pref + "center=" + c.id}">${c.id}</a>: ${c.name}`)
+            routing.sendMsg(req, "Which center?",
+                "<ul>" + body.join("\n") + "</ul>"
+            )
+            return
+        }
+        if (req.query["clone"]) {
+            ev = await readEventAsync(parseInt(req.query["clone"]))
+            if (!ev)
+                return res.status(404).end("cannot clone")
+            if (ev.center != c0.id) {
+                ev.center = c0.id
+                ev.address = c0.address
+                ev.name = c0.name
             }
-        })
-    })
-
-    app.get("/ev/:id", async (req, res, next) => {
-        let id = parseInt(req.params["id"]) || 0
-        let ev = await readEventAsync(id)
-        if (!ev) {
-            if (req.params["id"] == "new") {
-                if (!req.appuser)
-                    return res.redirect("/gw/login?redirect=/ev/new")
-                let isAdmin = await auth.hasWritePermAsync(req.appuser, [])
-                let allCenters = tools.values(await getCentersAsync())
-                let centers = allCenters
-                    .filter(c => isAdmin || (c.users || []).indexOf(req.appuser) >= 0)
-                if (centers.length == 0) {
-                    res.status(402)
-                    routing.sendError(req, "User not setup",
-                        "Your user account is not setup to post in any center.")
-                    return
-                }
-                let c0 = centers[0]
-                centers.sort((a, b) => tools.strcmp(a.id, b.id))
-                if (req.query["center"]) {
-                    c0 = centers.find(c => c.id == req.query["center"])
-                    if (!c0)
-                        return res.status(402).end("Cannot post here")
-                } else if (centers.length > 1) {
-                    let pref = req.url
-                    if (pref.indexOf("?") >= 0) pref += "&"
-                    else pref += "?"
-                    let body = centers.map(c =>
-                        `<li><a href="${pref + "center=" + c.id}">${c.id}</a>: ${c.name}`)
-                    routing.sendMsg(req, "Which center?",
-                        "<ul>" + body.join("\n") + "</ul>"
-                    )
-                    return
-                }
-                if (req.query["clone"]) {
-                    ev = await readEventAsync(parseInt(req.query["clone"]))
-                    if (!ev)
-                        return res.status(404).end("cannot clone")
-                    if (ev.center != c0.id) {
-                        ev.center = c0.id
-                        ev.address = c0.address
-                        ev.name = c0.name
-                    }
-                    ev.id = 0
-                } else {
-                    ev = {
-                        id: 0,
-                        startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
-                        endDate: "",
-                        center: c0.id,
-                        name: c0.name,
-                        address: c0.address,
-                        startTime: "20:00",
-                        title: "Introduction to Buddhism by D. W. Teacher",
-                        description: "<p>Details coming up soon!</p>",
-                    }
-                }
-            } else {
-                // 404
-                return next()
+            ev.id = 0
+        } else {
+            ev = {
+                id: 0,
+                startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
+                endDate: "",
+                center: c0.id,
+                name: c0.name,
+                address: c0.address,
+                startTime: "20:00",
+                title: "Introduction to Buddhism by D. W. Teacher",
+                description: "<p>Details coming up soon!</p>",
             }
         }
+
 
         if (!tools.reqSetup(req)) return
-
-        let addr = ev.name + ", " + gmaps.cleanAddress(ev.address)
-
-        let gmapURL = await gmaps.getMapsPictureAsync({ address: addr })
-
-        await sendTemplateAsync(req, {
-            rootFile: "/ev/event.html",
-            contentOverride: ev as any,
-            eventInfo: req.appuser ? ev : null,
-            vars: {
-                "mapurl": "https://maps.google.com/?q=" + encodeURI(addr),
-                "mapimg": gmapURL
-            }
-        })
+        let cfg: expander.ExpansionConfig = {
+            rootFile: "/events/_event.html",
+        }
+        await addEventVarsCoreAsync(ev, cfg)
+        await sendTemplateAsync(req, cfg)
     })
 
     app.get("/api/events/:id", async (req, res, next) => {
@@ -440,6 +438,8 @@ export function initRoutes(app: express.Express) {
                 delete currElt.address
             if (currElt.name == center.name)
                 delete currElt.name
+            if (currElt.endDate == currElt.startDate)
+                delete currElt.endDate
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)
         }

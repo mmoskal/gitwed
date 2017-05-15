@@ -1,6 +1,7 @@
 import cheerio = require("cheerio")
 import gitfs = require('./gitfs')
 import auth = require('./auth')
+import events = require('./events')
 import * as bluebird from "bluebird";
 import * as winston from "winston";
 
@@ -435,6 +436,13 @@ function expandAsync(cfg: ExpansionConfig) {
             return Promise.resolve()
         }
 
+        if (tag == "event-list") {
+            return events.expandEventListAsync(elt.html(), {})
+                .then(html => {
+                    elt.html(html)
+                })
+        }
+
         let arr = elt.length > 1 ? elt.toArray() : elt.children().toArray()
         return bluebird.each(arr, ee => recAsync(ctx, h(ee)))
             .then(() => { })
@@ -528,7 +536,8 @@ export function expandFileAsync(cfg: ExpansionConfig) {
 
             return expandAsync(cfg)
                 .then(r => {
-                    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) => cfg.vars[v] || "")
+                    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) =>
+                        cfg.vars[v] || cfg.contentOverride[v] || "")
                     return r
                 })
         })

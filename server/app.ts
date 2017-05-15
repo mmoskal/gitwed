@@ -300,13 +300,20 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
     if (spl.name == "config.json" || /\/[\._]/.test(cleaned))
         return next()
 
+    let gitFileName = cleaned
+    let eventId = 0
+    if (/^\d+$/.test(spl.name)) {
+        eventId = parseInt(spl.name)
+        gitFileName = cleaned.replace(/\d+$/, "_event")
+    }
+
     let errHandler = (e: any) => {
         winston.info("error: " + cleaned + " " + e.message)
         next()
     }
 
     if (!isHtml) {
-        gitfs.main.getFileAsync(cleaned, ref)
+        gitfs.main.getFileAsync(gitFileName, ref)
             .then(buf => {
                 res.writeHead(200, {
                     'Content-Type': mime.lookup(cleaned),
@@ -317,8 +324,7 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
         return
     }
 
-    let orig = cleaned
-    cleaned += ".html"
+    gitFileName += ".html"
 
     let cacheKey = ref + ":" + cleaned + ":" + req.langs.join(",")
     if (req.appuser || gitfs.config.justDir) cacheKey = null
@@ -332,28 +338,36 @@ async function genericGet(req: express.Request, res: express.Response, next: () 
         return res.end(cached)
     }
 
-    gitfs.main.getTextFileAsync(cleaned, ref)
-        .then(str => {
+    gitfs.main.getTextFileAsync(gitFileName, ref)
+        .then(async (str) => {
             let cfg: expander.ExpansionConfig = {
-                rootFile: cleaned,
+                rootFile: gitFileName,
                 ref,
                 rootFileContent: str,
                 langs: req.langs,
                 appuser: req.appuser
             }
-            expander.expandFileAsync(cfg)
-                .then(page => {
-                    pageCache.set(cacheKey, page.html)
-                    res.writeHead(200, {
-                        'Content-Type': 'text/html; charset=utf8'
-                    })
-                    res.end(page.html)
+            
+            if (eventId) {
+                await events.addEventVarsAsync(eventId, cfg)
+                if (!cfg.eventInfo)
+                    return next()
+            }
+
+            try {
+                let page = await expander.expandFileAsync(cfg)
+                pageCache.set(cacheKey, page.html)
+                res.writeHead(200, {
+                    'Content-Type': 'text/html; charset=utf8'
                 })
-                .then(v => v, next)
+                res.end(page.html)
+            } catch (err) {
+                next() // 404
+            }
         }, err => {
-            gitfs.main.getTextFileAsync(orig + "/index.html")
+            gitfs.main.getTextFileAsync(cleaned + "/index.html")
                 .then(() => {
-                    res.redirect(orig + "/")
+                    res.redirect(cleaned + "/")
                 }, _ => errHandler(err))
         })
 }

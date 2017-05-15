@@ -302,7 +302,7 @@ namespace gw {
 
                 for (let k of Object.keys(regions)) {
                     let v = regions[k]
-                    k = k.replace(/^event_/, "")
+                    k = k.replace(/^\w+_ev_/, "")
                     if (k == "id") continue
                     up[k] = v
                 }
@@ -463,7 +463,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
             let evInfo = gitwedPageInfo.eventInfo
             if (gitwedPageInfo.eventInfo) {
                 root.append("<h3>Event management</h3>")
-                let cloneUrl = "/ev/new?clone=" + evInfo.id
+                let cloneUrl = "/events/new?clone=" + evInfo.id
                 addButton("Clone in same center", () => {
                     status("Cloning...")
                     window.location.href = cloneUrl + "&center=" + evInfo.center
