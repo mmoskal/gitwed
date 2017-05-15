@@ -117,7 +117,12 @@ namespace gw {
                     resolve(data)
                 },
                 error: (jq, status, err) => {
-                    reject(new Error(err || status))
+                    let msg = err || status
+                    try {
+                        let j = JSON.parse(jq.responseText)
+                        if (j.error) msg = j.error
+                    } catch (e) { }
+                    reject(new Error(msg))
                 }
             })
         })
@@ -264,10 +269,21 @@ namespace gw {
         editor = ContentTools.EditorApp.get()
         editor.init('[data-editable], [data-fixture]', 'data-gw-id')
 
+        let failedRegions: any = {}
+
         editor.addEventListener('saved', (ev: any) => {
             let regions = ev.detail().regions
+
+            for (let k of Object.keys(failedRegions)) {
+                if (!regions.hasOwnProperty(k))
+                    regions[k] = failedRegions[k]
+            }
+
             if (Object.keys(regions).length == 0)
                 return
+
+            let myRegions = {}
+            failedRegions = myRegions
 
             editor.busy(true);
 
@@ -317,6 +333,13 @@ namespace gw {
                     console.error(e)
                     editor.busy(false)
                     new ContentTools.FlashUI('no')
+                    if (e.message)
+                        alert(e.message)
+                    // prevent race
+                    if (failedRegions === myRegions) {
+                        failedRegions = regions
+                        $(".ct-ignition__button--edit").click()
+                    }
                 })
         });
 
@@ -372,7 +395,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 </p>
 `)
 
-            let addButton = (lbl:string, fn:()=>void) => {
+            let addButton = (lbl: string, fn: () => void) => {
                 let btn = $(`<button>${lbl}</button>`)
                 btn.click(fn)
                 root.append(btn)
@@ -440,7 +463,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
             let evInfo = gitwedPageInfo.eventInfo
             if (gitwedPageInfo.eventInfo) {
                 root.append("<h3>Event management</h3>")
-                let cloneUrl =  "/ev/new?clone=" + evInfo.id
+                let cloneUrl = "/ev/new?clone=" + evInfo.id
                 addButton("Clone in same center", () => {
                     status("Cloning...")
                     window.location.href = cloneUrl + "&center=" + evInfo.center
