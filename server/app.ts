@@ -332,7 +332,7 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     gitFileName += ".html"
 
-    let cacheKey = ref + ":" + cleaned + ":" + req.langs.join(",")
+    let cacheKey = ref + ":" + cleaned + ":" + JSON.stringify(req.query) + req.langs.join(",")
     if (req.appuser || gitfs.config.justDir) cacheKey = null
 
     let cached = pageCache.get(cacheKey)
@@ -356,6 +356,7 @@ async function genericGet(req: express.Request, res: express.Response) {
         let cfg: expander.ExpansionConfig = {
             rootFile: gitFileName,
             origHref: req.url,
+            origQuery: req.query,
             ref,
             rootFileContent: str,
             langs: req.langs,

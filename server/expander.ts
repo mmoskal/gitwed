@@ -67,6 +67,7 @@ export interface PageConfig {
 export interface ExpansionConfig {
     rootFile: string;
     origHref?: string;
+    origQuery?: SMap<string>;
     ref?: string;
     appuser?: string;
     rootFileContent?: string;
@@ -442,11 +443,10 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         if (tag == "event-list") {
-            return events.queryEventsAsync({
-                count: elt.attr("count"),
-                country: elt.attr("country"),
-                center: elt.attr("center") || cfg.pageConfig.center || null
-            }, cfg.lang)
+            let q = tools.clone(cfg.origQuery || {})
+            tools.copyFields(q, elt[0].attribs)
+            q["center"] = q["center"] || cfg.pageConfig.center
+            return events.queryEventsAsync(q, cfg.lang)
                 .then(r => {
                     let html = tools.expandTemplateList(elt.html(), r.events)
                     elt.replaceWith(html)
