@@ -369,6 +369,21 @@ export function htmlQuote(s: string) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
+export function expandTemplate(templ: string, vars: any) {
+    return templ.replace(/@@(\w+)@@/g, (f, v) =>
+        htmlQuote((vars[v] || "") + ""))
+}
+
+export const langList: SMap<string> = {
+    "en": "English",
+    "pl": "polski",
+    "de": "Deutsch",
+}
+
+export function expandTemplateList(templ: string, objs: any[]) {
+    return objs.map(e => expandTemplate(templ, e)).join("\n")
+}
+
 export function fullDate(s: string) {
     return weekDay(s) + " " + monthPlusDay(s)
 }

@@ -2,6 +2,7 @@ import cheerio = require("cheerio")
 import gitfs = require('./gitfs')
 import auth = require('./auth')
 import events = require('./events')
+import tools = require('./tools')
 import * as bluebird from "bluebird";
 import * as winston from "winston";
 
@@ -76,7 +77,8 @@ export interface ExpansionConfig {
     hasWritePerm?: boolean;
     vars?: SMap<string>;
     contentOverride?: SMap<string>;
-    eventInfo?: any;
+    eventInfo?: events.FullEvent;
+    centerInfo?: events.Center;
 }
 
 export function relativePath(curr: string, newpath: string) {
@@ -143,7 +145,6 @@ export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
 }
 
 function expandAsync(cfg: ExpansionConfig) {
-
     let filename = cfg.rootFile
     let fileContent = cfg.rootFileContent
 
@@ -444,8 +445,33 @@ function expandAsync(cfg: ExpansionConfig) {
                 center: elt.attr("center") || cfg.pageConfig.center || null
             })
                 .then(html => {
-                    elt.html(html)
+                    elt.replaceWith(html)
                 })
+        }
+
+        if (tag == "lang-list") {
+            let deflTempl = ""
+            let templ = elt.html().replace(/<current>([^]*)<\/current>/, (f, c) => {
+                deflTempl = c
+                return ""
+            })
+            if (!deflTempl) deflTempl = templ
+            let ht = cfg.langs.map(lang => {
+                let currPath = cfg.rootFile.replace(/.*\//, "").replace(/\.html$/, "").replace(/^index$/, "")
+                let isCurr = lang == cfg.lang
+                let href = currPath + "?setlang=" + lang
+                let full = tools.langList[lang] || lang
+                return tools.expandTemplate(isCurr ? deflTempl : templ, {
+                    lang,
+                    LANG: lang.toUpperCase(),
+                    href,
+                    full,
+                    current: isCurr ? "current" : ""
+                })
+            }).join("\n")
+            if (cfg.langs.length <= 1) ht = ""
+            elt.replaceWith(ht)
+            return Promise.resolve()
         }
 
         let arr = elt.length > 1 ? elt.toArray() : elt.children().toArray()
@@ -490,7 +516,7 @@ export function getPageConfigAsync(page: string): Promise<PageConfig> {
             if (cfg.center && gitfs.events) {
                 let c = await events.getCenterAsync(cfg.center)
                 if (c)
-                    cfg.users = c.users
+                    cfg.users = c.users.slice()
             }
             return cfg
         })
@@ -513,20 +539,39 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     let pcfg = await getPageConfigAsync(cfg.rootFile)
     cfg.pageConfig = pcfg
     let plangs = cfg.pageConfig.langs
+    let avlangs = plangs
+
+    let centerId = pcfg.center
+    if (cfg.eventInfo) centerId = cfg.eventInfo.center
+
+    if (centerId)
+        cfg.centerInfo = await events.getCenterAsync(centerId)
+
     if (!plangs || !plangs.length)
         cfg.pageConfig.langs = plangs = ["en"]
+
+    if (cfg.eventInfo && !cfg.appuser) {
+        avlangs = events.getLangs(cfg.eventInfo)
+    } else if (cfg.centerInfo) {
+        avlangs = events.getLangs(cfg.centerInfo)
+    } else {
+        avlangs = plangs
+    }
+
     if (cfg.langs) {
         for (let l of cfg.langs) {
-            if (plangs.indexOf(l) >= 0) {
+            if (avlangs.indexOf(l) >= 0) {
                 cfg.lang = l
                 break
             }
         }
     }
+
     if (!cfg.lang) {
         // if no match, default to en (if available), not first langauge in the list
-        cfg.lang = plangs.indexOf("en") >= 0 ? "en" : plangs[0]
+        cfg.lang = avlangs.indexOf("en") >= 0 ? "en" : avlangs[0]
     }
+
     if (cfg.lang != plangs[0]) {
         cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
         cfg.langFileContent = await gitfs.main.getTextFileAsync(cfg.langFileName, cfg.ref)
@@ -535,6 +580,8 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     cfg.hasWritePerm = await auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
     if (!cfg.vars) cfg.vars = {}
+
+    await events.addVarsAsync(cfg)
 
     if (cfg.eventInfo) {
         pcfg.center = cfg.eventInfo.center
@@ -546,19 +593,19 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         user: cfg.appuser || null,
         lang: cfg.lang,
         langFileCreated: !!cfg.langFileContent,
-        availableLangs: cfg.pageConfig.langs,
-        isDefaultLang: cfg.lang == cfg.pageConfig.langs[0],
+        availableLangs: avlangs,
+        isDefaultLang: avlangs[0] == cfg.lang,
         path: cfg.rootFile,
         isEditable: cfg.hasWritePerm && cfg.ref == "master",
         ref: cfg.ref,
-        eventInfo: cfg.eventInfo,
+        eventInfo: cfg.appuser ? cfg.eventInfo : null,
+        centerInfo: cfg.appuser ? cfg.centerInfo : null,
         center: pcfg.center
     }
     cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
         JSON.stringify(pageInfo, null, 4) + ";\n"
-
-    if (pcfg.center)
-        await events.addCenterVarsAsync(pcfg.center, cfg)
+    cfg.vars["gw_lang"] = cfg.lang
+    cfg.langs = avlangs
 
     let r = await expandAsync(cfg)
 

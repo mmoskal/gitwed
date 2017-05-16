@@ -12,13 +12,34 @@ import expander = require('./expander')
 import bluebird = require('bluebird')
 import winston = require('winston')
 
-export interface EventIndexEntry {
+export interface Translation {
+    lang: string;
+}
+
+export interface WithTranslations {
+    lang?: string;
+    translations?: Translation[];
+}
+
+export interface EventTranslation extends Translation {
+    title?: string;
+    description?: string;
+}
+
+export interface CenterTranslation extends Translation {
+    name?: string;
+    program?: string;
+    about?: string;
+}
+
+export interface EventIndexEntry extends Translation {
     id: number;
     startDate: string; // "2016-01-05"
     endDate: string;
     title: string;
     center: string; // "wroclaw"
     fullcity?: string;
+    translations?: EventTranslation[];
 }
 
 export interface EventListEntry extends EventIndexEntry {
@@ -27,7 +48,7 @@ export interface EventListEntry extends EventIndexEntry {
     combinedRange?: string;
 }
 
-export interface Address {
+export interface Address extends Translation {
     name: string;
     address: string; // multi-line
     fullcity?: string;
@@ -50,6 +71,7 @@ export interface Center extends Address {
     users: string[];
     program?: string;
     about?: string;
+    translations?: CenterTranslation[];
 }
 
 let index: EventIndex
@@ -58,6 +80,17 @@ let eventsCache: SMap<string> = {}
 
 let hasAllCenters = false
 let _centers: SMap<Center>
+
+export function getLangs(ev: WithTranslations) {
+    let langs = [ev.lang || "en"]
+    if (ev.translations) {
+        for (let t of ev.translations) {
+            if (t.lang && langs.indexOf(t.lang) < 0)
+                langs.push(t.lang)
+        }
+    }
+    return langs
+}
 
 const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
 
@@ -68,6 +101,11 @@ function forIndex(js: FullEvent): EventIndexEntry {
         endDate: js.endDate,
         title: js.title,
         center: js.center,
+        lang: js.lang,
+        translations: js.translations.map(t => ({
+            lang: t.lang,
+            title: t.title,
+        }))
     }
 }
 
@@ -134,19 +172,20 @@ async function saveEventAsync(e: FullEvent, user: string) {
     await gitfs.events.setJsonFileAsync("current/" + eventFn(e.id), e, "Update " + e.title, user)
 }
 
-async function readEventAsync(id: number): Promise<FullEvent> {
+export async function readEventAsync(id: number): Promise<FullEvent> {
     if (!gitfs.events) {
         let c = await getCenterAsync("nowhere")
         return {
-            "id": 8,
-            "center": c.id,
+            id: 8,
+            center: c.id,
             address: c.address,
             name: c.name,
-            "startDate": "2017-09-28",
-            "endDate": "",
-            "title": "Ngondro in Daily Life by Foo Bar",
-            "description": "<p>Start start start! something something!\n</p>\n<p>Second para 2</p>",
-            "startTime": "20:00"
+            startDate: "2017-09-28",
+            endDate: "",
+            title: "Ngondro in Daily Life by Foo Bar",
+            description: "<p>Start start start! something something!\n</p>\n<p>Second para 2</p>",
+            startTime: "20:00",
+            lang: "en"
         }
     }
 
@@ -206,29 +245,57 @@ function validTime(d: string) {
     return d == null || d == "" || /^\d\d:\d\d$/.test(d)
 }
 
-function applyCenterChanges(curr: Center, delta: Center) {
-    for (let k of [
-        "*program",
-        "*about",
-        "name",
-        "address",
-    ]) {
+function validateLang(l: string) {
+    if (typeof l != "string") return false
+    return /^[a-z][a-z](-[A-Z]{2,3})?$/.test(l)
+}
+
+function getUpdateTarget(curr: WithTranslations, lang: string) {
+    let trg = curr as any
+    if (lang && lang != curr.lang) {
+        if (!curr.translations) curr.translations = []
+        trg = curr.translations.find(t => t.lang == lang)
+        if (!trg) {
+            curr.translations.push(trg = { lang: lang })
+        }
+    }
+    return trg
+}
+
+function genericUpdate(curr: WithTranslations, delta: SMap<string>, lang: string, fields: string[]) {
+    if (!validateLang(lang))
+        return "invalid langauge code"
+
+    let trg = getUpdateTarget(curr, lang)
+    for (let k of fields) {
         let limit = 200
         if (k[0] == "*") {
             limit = 4000
             k = k.slice(1)
         }
         if (delta.hasOwnProperty(k)) {
-            let v = (delta as any)[k] + ""
+            let v = delta[k] + ""
             if (v.length > limit)
                 return k + " too long";
-            (curr as any)[k] = v
+            trg[k] = v
         }
     }
     return ""
 }
 
-function applyChanges(curr: FullEvent, delta: FullEvent) {
+function applyCenterChanges(curr: Center, delta: Center, lang: string) {
+    return genericUpdate(curr, delta as any, lang, [
+        "*program",
+        "*about",
+        "name",
+        "address",
+    ])
+}
+
+function applyChanges(curr: FullEvent, delta: FullEvent, lang: string) {
+    if (!validateLang(lang))
+        return "invalid langauge code"
+
     if (curr.center && delta.center != curr.center)
         return "cannot change event center"
     if (!validDate(delta.startDate))
@@ -237,29 +304,23 @@ function applyChanges(curr: FullEvent, delta: FullEvent) {
         return "invalid end date"
     if (!validTime(delta.startTime))
         return "invalid start time"
-    if ((delta.title || "").length > 200)
-        return "title too long"
-    if ((delta.address || "").length > 200)
-        return "address too long"
-    if ((delta.name || "").length > 200)
-        return "name too long"
-    if ((delta.description || "").length > 4000)
-        return "description too long"
 
     for (let k of [
         "center",
         "startDate",
         "endDate",
-        "title",
-        "description",
         "startTime",
-        "name",
-        "address",
     ]) {
         if (delta.hasOwnProperty(k))
             (curr as any)[k] = (delta as any)[k]
     }
-    return ""
+
+    return genericUpdate(curr, delta as any, lang, [
+        "title",
+        "*description",
+        "name",
+        "address",
+    ])
 }
 
 function publicCenter(c: Center) {
@@ -279,7 +340,8 @@ export async function getCenterAsync(id: string): Promise<Center> {
             address: "1600 Pennsylvania Ave NW<br>Washington, DC 20500",
             fullcity: "Washington, DC, US",
             country: "us",
-            users: []
+            users: [],
+            lang: "en"
         }
     if (typeof id != "string")
         return null
@@ -383,9 +445,7 @@ async function queryEventsAsync(query: SMap<string>) {
 
 export async function expandEventListAsync(templ: string, query: SMap<string>) {
     let r = await queryEventsAsync(query)
-    return r.events.map(ev => templ.replace(/@@(\w+)@@/g, (f, v) => {
-        return tools.htmlQuote(((ev as any)[v] || "") + "")
-    })).join("\n")
+    return tools.expandTemplateList(templ, r.events)
 }
 
 async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionConfig) {
@@ -402,12 +462,6 @@ async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionCo
     res.end(page.html)
 }
 
-export async function addEventVarsAsync(eventId: number, cfg: expander.ExpansionConfig) {
-    let ev = await readEventAsync(eventId)
-    if (!ev) return
-    await addEventVarsCoreAsync(ev, cfg)
-}
-
 export async function updateCenterAsync(id: string, f: (c: Center) => void, msg: string, user: string) {
     await gitfs.events.pokeAsync()
     let c = await getCenterAsync(id)
@@ -415,11 +469,21 @@ export async function updateCenterAsync(id: string, f: (c: Center) => void, msg:
     await gitfs.events.setJsonFileAsync("centers/" + c.id + ".json", c, msg, user)
 }
 
-async function setMapImgAsync(pref: string, addrObj: Address, cfg: expander.ExpansionConfig) {
+async function setMapImgAsync(
+    pref: string,
+    addrObj: (Address & WithTranslations),
+    cfg: expander.ExpansionConfig
+) {
     if (!cfg.contentOverride)
         cfg.contentOverride = {}
+
+    let tr = (addrObj.translations || []).find(t => t.lang == cfg.lang) as any
+    let base = addrObj as any
+
     for (let k of Object.keys(addrObj)) {
-        cfg.contentOverride[pref + k] = (addrObj as any)[k] + ""
+        let v = base[k]
+        if (tr.hasOwnProperty(k)) v = tr[k]
+        cfg.contentOverride[pref + k] = v + ""
     }
 
     let addr = gmaps.cleanAddress(addrObj.address)
@@ -428,18 +492,18 @@ async function setMapImgAsync(pref: string, addrObj: Address, cfg: expander.Expa
     cfg.vars[pref + "mapimg"] = await gmaps.getMapsPictureAsync({ address: addr })
 }
 
-export async function addCenterVarsAsync(id: string, cfg: expander.ExpansionConfig) {
-    let cent = await getCenterAsync(id)
-    if (!cent) return
-    await setMapImgAsync("cnt_", cent, cfg)
+export async function addVarsAsync(cfg: expander.ExpansionConfig) {
+    if (cfg.centerInfo) {
+        await setMapImgAsync("cnt_", cfg.centerInfo, cfg)
+    }
+    if (cfg.eventInfo) {
+        await setMapImgAsync("ev_", cfg.eventInfo, cfg)
+    }
 }
 
 async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
     cfg.eventInfo = ev
-    await setMapImgAsync("ev_", ev, cfg)
 }
-
-
 
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)
@@ -508,16 +572,16 @@ export function initRoutes(app: express.Express) {
                 startTime: "20:00",
                 title: "Introduction to Buddhism by D. W. Teacher",
                 description: "<p>Details coming up soon!</p>",
+                lang: c0.lang,
             }
         }
-
 
         if (!tools.reqSetup(req)) return
         let cfg: expander.ExpansionConfig = {
             rootFile: "/events/_event.html",
             eventInfo: ev
         }
-        await addEventVarsCoreAsync(ev, cfg)
+        await addVarsAsync(cfg)
         await sendTemplateAsync(req, cfg)
     })
 
@@ -561,18 +625,21 @@ export function initRoutes(app: express.Express) {
             }
         }
 
-        let err = applyChanges(currElt, delta)
+        let err = applyChanges(currElt, delta, req.body["_lang"])
         if (err) {
             res.status(412).json({ error: err })
         } else {
             if (isFresh)
                 index.nextId++
+            if (currElt.endDate == currElt.startDate)
+                delete currElt.endDate
+
+            // TODO translations
             if (currElt.address == center.address)
                 delete currElt.address
             if (currElt.name == center.name)
                 delete currElt.name
-            if (currElt.endDate == currElt.startDate)
-                delete currElt.endDate
+
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)
         }
@@ -614,12 +681,14 @@ export function initRoutes(app: express.Express) {
         if (!await auth.hasWritePermAsync(req.appuser, center.users))
             return res.status(402).end()
 
-        let err = applyCenterChanges(center, delta)
+        let lang = req.body["_lang"] as string
+
+        let err = applyCenterChanges(center, delta, lang)
         if (err) {
             res.status(412).json({ error: err })
         } else {
             await updateCenterAsync(center.id, c => {
-                applyCenterChanges(c, delta)
+                applyCenterChanges(c, delta, lang)
                 center = c
             }, "Center " + center.id + " updated", req.appuser)
             res.json(center)
