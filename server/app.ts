@@ -322,9 +322,13 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (!isHtml) {
         gitfs.main.getFileAsync(gitFileName, ref)
+            .then(v => v, err =>
+                gitFileName.endsWith("favicon.ico") ?
+                    gitfs.main.getFileAsync("favicon.ico", ref) :
+                    Promise.reject(err))
             .then(buf => {
                 res.writeHead(200, {
-                    'Content-Type': mime.lookup(cleaned),
+                    'Content-Type': mime.lookup(gitFileName),
                     'Content-Length': buf.length
                 })
                 res.end(buf)
@@ -455,6 +459,10 @@ if (cfg.justDir) {
 }
 
 process.on('SIGINT', () => {
+    gitfs.shutdown()
+});
+
+process.on('SIGTERM', () => {
     gitfs.shutdown()
 });
 
