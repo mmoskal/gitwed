@@ -308,7 +308,9 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 
     let errHandler = (e: any) => {
-        winston.info("error: " + cleaned + " " + e.stack)
+        let msg = e.message
+        if (!/ENOENT/.test(msg)) msg = e.stack
+        winston.info("error: " + cleaned + " " + msg)
         if (req.appuser) {
             res.status(500)
             routing.sendError(req, "Page not found",
