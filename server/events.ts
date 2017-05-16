@@ -364,14 +364,13 @@ export async function getCenterAsync(id: string): Promise<Center> {
     return (centers[id] = await parseCenterAsync(str))
 }
 
-function applyTranslation(evs: EventIndexEntry[], lang: string) {
-    for (let r of evs) {
-        for (let t of r.translations) {
-            if (t.lang == lang)
-                tools.copyFields(r, t)
-        }
+function applyTranslation(r: EventIndexEntry, lang: string) {
+    for (let t of r.translations) {
+        if (t.lang == lang)
+            tools.copyFields(r, t)
     }
-    return evs
+    delete r.translations
+    return r
 }
 
 function augmentEvent(ev: EventIndexEntry): EventListEntry {
@@ -461,7 +460,7 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
     if (events.length > count) events = events.slice(0, count)
     return {
         totalCount,
-        events: applyTranslation(events.map(augmentEvent), lang),
+        events: events.map(augmentEvent).map(e => applyTranslation(e, lang)),
     }
 }
 
@@ -607,7 +606,7 @@ export function initRoutes(app: express.Express) {
             return
         }
         await setEventAddressAsync(ev, req.query["lang"] || "en")
-        res.json(ev)
+        res.json(applyTranslation(ev, req.query["lang"] || "en"))
     })
 
     app.get("/api/events", async (req, res, next) => {
