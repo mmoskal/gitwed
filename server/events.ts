@@ -394,6 +394,7 @@ function augmentEvent(r: EventListEntry, lang: string) {
 }
 
 export async function queryEventsAsync(query: SMap<string>, lang: string) {
+    let loc = tools.getLocale(lang)
     if (!gitfs.events) {
         return {
             totalCount: 2,
@@ -401,14 +402,14 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
                 id: 3,
                 startDate: '2017-05-28',
                 endDate: '',
-                title: 'Introduction to Buddhism by D. W. Teacher',
+                title: loc.titlePlaceholder,
                 center: 'nowhere'
             },
             {
                 id: 7,
                 startDate: '2017-06-28',
                 endDate: '',
-                title: 'Seven Wisdoms',
+                title: loc.titlePlaceholder + " #2",
                 center: 'nowhere'
             }].map(c => applyTranslation(c as any, lang))
         }
@@ -565,6 +566,7 @@ export function initRoutes(app: express.Express) {
             }
             ev.id = 0
         } else {
+            let loc = tools.getLocale(c0.lang)
             ev = {
                 id: 0,
                 startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
@@ -573,8 +575,8 @@ export function initRoutes(app: express.Express) {
                 name: "",
                 address: "",
                 startTime: "20:00",
-                title: "Introduction to Buddhism by D. W. Teacher",
-                description: "<p>Details coming up soon!</p>",
+                title: loc.titlePlaceholder,
+                description: loc.programPlaceholder,
                 lang: c0.lang,
             }
         }

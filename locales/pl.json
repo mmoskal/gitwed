@@ -5,6 +5,8 @@
     ],
     "shortdate": "@day@ @monthname@",
     "clock": 24,
+    "titlePlaceholder": "Wprowadzenie do Buddyzmu - wykład N. D. Drogi",
+    "programPlaceholder": "<p>Szczegóły wkrótce!</p>",
     "translations": {
         "Sun": "nd",
         "Mon": "pn",

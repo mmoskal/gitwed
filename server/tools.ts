@@ -19,6 +19,8 @@ export interface Locale {
     shortdate: string; // "@day@ @monthname@",
     clock: number; // 12 or 24
     translations: SMap<string>;
+    titlePlaceholder: string;
+    programPlaceholder: string;
 }
 
 let localeEn: Locale = {
@@ -26,6 +28,8 @@ let localeEn: Locale = {
     countries: ["us", "gb", "au", "nz"],
     shortdate: "@monthname@ @day@",
     clock: 12,
+    titlePlaceholder: "Introduction to Buddhism by D. W. Teacher",
+    programPlaceholder: "<p>Details coming up soon!</p>",
     translations: {}
 }
 
@@ -58,6 +62,8 @@ export function getLocale(lang: string) {
     if (!r.clock) r.clock = 24
     if (!r.shortdate) r.shortdate = "@monthnumber@-@day0@"
     if (!r.translations) r.translations = {}
+    if (!r.titlePlaceholder) r.titlePlaceholder = localeEn.titlePlaceholder
+    if (!r.programPlaceholder) r.programPlaceholder = localeEn.programPlaceholder
     localeCache[lang] = r
     return r
 }
