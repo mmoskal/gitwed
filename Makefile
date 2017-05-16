@@ -22,4 +22,4 @@ d: deploy
 deploy:
 	git pull
 	$(MAKE) build
-	kill `ps fax | grep "node[ ]gitwed"|awk '{print $1}'`
+	kill `ps fax | grep "node[ ]gitwed"|awk '{print $$1}'`
