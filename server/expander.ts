@@ -66,6 +66,7 @@ export interface PageConfig {
 
 export interface ExpansionConfig {
     rootFile: string;
+    origHref?: string;
     ref?: string;
     appuser?: string;
     rootFileContent?: string;
@@ -439,12 +440,13 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         if (tag == "event-list") {
-            return events.expandEventListAsync(elt.html(), {
+            return events.queryEventsAsync({
                 count: elt.attr("count"),
                 country: elt.attr("country"),
                 center: elt.attr("center") || cfg.pageConfig.center || null
-            })
-                .then(html => {
+            }, cfg.lang)
+                .then(r => {
+                    let html = tools.expandTemplateList(elt.html(), r.events)
                     elt.replaceWith(html)
                 })
         }
@@ -457,9 +459,10 @@ function expandAsync(cfg: ExpansionConfig) {
             })
             if (!deflTempl) deflTempl = templ
             let ht = cfg.langs.map(lang => {
-                let currPath = cfg.rootFile.replace(/.*\//, "").replace(/\.html$/, "").replace(/^index$/, "")
+                let currPath = cfg.origHref || cfg.rootFile
+                let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "setlang="
                 let isCurr = lang == cfg.lang
-                let href = currPath + "?setlang=" + lang
+                let href = setlang + lang
                 let full = tools.langList[lang] || lang
                 return tools.expandTemplate(isCurr ? deflTempl : templ, {
                     lang,
@@ -516,7 +519,7 @@ export function getPageConfigAsync(page: string): Promise<PageConfig> {
             if (cfg.center && gitfs.events) {
                 let c = await events.getCenterAsync(cfg.center)
                 if (c)
-                    cfg.users = c.users.slice()
+                    cfg.users = (c.users || []).slice()
             }
             return cfg
         })

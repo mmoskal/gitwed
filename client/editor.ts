@@ -165,6 +165,7 @@ namespace gw {
             num++
         }
         if (!num) return null
+        ret["_lang"] = gitwedPageInfo.lang
         return ret
     }
 

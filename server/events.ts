@@ -102,7 +102,7 @@ function forIndex(js: FullEvent): EventIndexEntry {
         title: js.title,
         center: js.center,
         lang: js.lang,
-        translations: js.translations.map(t => ({
+        translations: (js.translations || []).map(t => ({
             lang: t.lang,
             title: t.title,
         }))
@@ -353,6 +353,16 @@ export async function getCenterAsync(id: string): Promise<Center> {
     return (centers[id] = await parseCenterAsync(str))
 }
 
+function applyTranslation(evs: EventIndexEntry[], lang: string) {
+    for (let r of evs) {
+        for (let t of r.translations) {
+            if (t.lang == lang)
+                tools.copyFields(r, t)
+        }
+    }
+    return evs
+}
+
 function augmentEvent(ev: EventIndexEntry): EventListEntry {
     let r = tools.clone(ev) as EventListEntry
 
@@ -373,10 +383,11 @@ function augmentEvent(ev: EventIndexEntry): EventListEntry {
         }
         r.combinedRange += tools.fullDate(ev.endDate)
     }
+
     return r
 }
 
-async function queryEventsAsync(query: SMap<string>) {
+export async function queryEventsAsync(query: SMap<string>, lang: string) {
     if (!gitfs.events) {
         return {
             totalCount: 2,
@@ -439,13 +450,8 @@ async function queryEventsAsync(query: SMap<string>) {
     if (events.length > count) events = events.slice(0, count)
     return {
         totalCount,
-        events: events.map(augmentEvent),
+        events: applyTranslation(events.map(augmentEvent), lang),
     }
-}
-
-export async function expandEventListAsync(templ: string, query: SMap<string>) {
-    let r = await queryEventsAsync(query)
-    return tools.expandTemplateList(templ, r.events)
 }
 
 async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionConfig) {
@@ -482,7 +488,7 @@ async function setMapImgAsync(
 
     for (let k of Object.keys(addrObj)) {
         let v = base[k]
-        if (tr.hasOwnProperty(k)) v = tr[k]
+        if (tr && tr.hasOwnProperty(k)) v = tr[k]
         cfg.contentOverride[pref + k] = v + ""
     }
 
@@ -596,7 +602,7 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/api/events", async (req, res, next) => {
-        res.json(await queryEventsAsync(req.query))
+        res.json(await queryEventsAsync(req.query, req.query["lang"] || "en"))
     })
 
     app.post("/api/events", async (req, res, next) => {

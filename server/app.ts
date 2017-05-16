@@ -277,9 +277,8 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 
     // asking for root index?
-    // TODO change this in future?
     if (cleaned == "index") {
-        res.redirect("/sample/")
+        res.redirect("/events/")
         return
     }
 
@@ -308,7 +307,7 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 
     let errHandler = (e: any) => {
-        winston.info("error: " + cleaned + " " + e.message)
+        winston.info("error: " + cleaned + " " + e.stack)
         if (req.appuser) {
             res.status(500)
             routing.sendError(req, "Page not found",
@@ -355,6 +354,7 @@ async function genericGet(req: express.Request, res: express.Response) {
     try {
         let cfg: expander.ExpansionConfig = {
             rootFile: gitFileName,
+            origHref: req.url,
             ref,
             rootFileContent: str,
             langs: req.langs,

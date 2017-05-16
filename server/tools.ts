@@ -428,8 +428,11 @@ export function reqSetup(req: express.Request) {
     let res: express.Response = req._response
 
     if (req.query["setlang"] != null) {
-        res.cookie("GWLANG", req.query['setlang'] || "")
-        res.redirect(req.path)
+        let ln = req.query['setlang'] || ""
+        delete req.query["setlang"]
+        let qs2 = querystring.stringify(req.query)
+        res.cookie("GWLANG", ln)
+        res.redirect(req.path + (qs2 ? "?" + qs2 : ""))
         return false
     }
 
