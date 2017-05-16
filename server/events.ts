@@ -282,7 +282,10 @@ function genericUpdate(curr: WithTranslations, delta: SMap<string>, lang: string
             let v = delta[k] + ""
             if (v.length > limit)
                 return k + " too long";
-            trg[k] = v
+            if (v == "" && trg !== curr)
+                delete trg[k]
+            else
+                trg[k] = v
         }
     }
     return ""
@@ -519,13 +522,6 @@ export function initRoutes(app: express.Express) {
     loadOrCreateIndex()
 
     winston.debug("mounting events")
-
-    app.get("/events/:id/edit", async (req, res, next) => {
-        let id = req.params["id"]
-        let path = req.url.replace(/\/edit/, "")
-        if (req.appuser) res.redirect(path)
-        else res.redirect("/gw/login?redirect=" + encodeURIComponent(path))
-    })
 
     app.get("/events/new", async (req, res, next) => {
         let ev: FullEvent
