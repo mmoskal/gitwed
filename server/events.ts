@@ -361,7 +361,7 @@ export async function getCenterAsync(id: string): Promise<Center> {
 function applyTranslation(r: EventListEntry, lang: string) {
     r = tools.clone(r)
 
-    for (let t of r.translations) {
+    for (let t of r.translations || []) {
         if (t.lang == lang)
             tools.copyFields(r, t)
     }
