@@ -167,6 +167,7 @@ app.post("/api/update", (req, res) => {
     let page = req.body.page + ""
 
     if (page.endsWith("/")) page += "index"
+    page = page.replace(/\d+$/, "_event")
 
     let fn = page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)

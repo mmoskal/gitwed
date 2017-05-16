@@ -630,8 +630,12 @@ export function initRoutes(app: express.Express) {
                 isFresh = false
             }
         }
+        let lang = req.body["_lang"] as string
+        if (!delta.id && validateLang(lang)) {
+            currElt.lang = lang // set primary langauge
+        }
 
-        let err = applyChanges(currElt, delta, req.body["_lang"])
+        let err = applyChanges(currElt, delta, lang)
         if (err) {
             res.status(412).json({ error: err })
         } else {

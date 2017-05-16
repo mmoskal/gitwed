@@ -373,9 +373,8 @@ function expandAsync(cfg: ExpansionConfig) {
         parser = new htmlparser2.Parser(handler, cheerioOptions)
         parser.end(fileContent);
 
-        e.find("[edit]").each((i, ch) => {
-            let x = h(ch)
-            let start = ch.startIndex
+        let setloc = (x: Cheerio) => {
+            let start = x[0].startIndex
             let end = mapping[start + ""]
             if (fileContent[start] == "<") {
                 while (start < fileContent.length && fileContent[start] != ">")
@@ -384,7 +383,10 @@ function expandAsync(cfg: ExpansionConfig) {
             }
             //console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
             x.attr("gw-pos", filename + "@" + start + "-" + (end - start))
-        })
+        }
+
+        if (e.attr("edit")) setloc(e)
+        e.find("[edit]").each((i, ch) => setloc(h(ch)))
     }
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
