@@ -454,12 +454,12 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         if (tag == "lang-list") {
-            let deflTempl = ""
+            let deflTempl: string = null
             let templ = elt.html().replace(/<current>([^]*)<\/current>/, (f, c) => {
                 deflTempl = c
                 return ""
             })
-            if (!deflTempl) deflTempl = templ
+            if (deflTempl == null) deflTempl = templ
             let ht = cfg.langs.map(lang => {
                 let currPath = cfg.origHref || cfg.rootFile
                 let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "setlang="
