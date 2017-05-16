@@ -300,7 +300,23 @@ namespace gw {
         ContentTools.StylePalette.add([
             new ContentTools.Style('Author', 'author', ['p'])
         ])
+
         editor = ContentTools.EditorApp.get()
+        let numdisabled = 0
+
+        if (evInfo && !/templateedit/.test(document.location.hash)) {
+            $('[data-editable], [data-fixture]').each((i, e) => {
+                let ee = $(e)
+                if (/_ev_/.test(ee.attr("data-gw-id"))) {
+                    // skip
+                } else {
+                    numdisabled++
+                    ee.removeAttr("data-editable")
+                    ee.removeAttr("data-fixture")
+                }
+            })
+        }
+
         editor.init('[data-editable], [data-fixture]', 'data-gw-id')
 
         let failedRegions: any = {}
@@ -470,6 +486,13 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                         window.location.reload()
                     })
             })
+
+            if (numdisabled)
+                addButton("Enable template edit", () => {
+                    status("Reloading...")
+                    document.location.hash = "templateedit"
+                    document.location.reload()
+                })
 
             addButton("Invite someone to edit", () => {
                 root.empty()
