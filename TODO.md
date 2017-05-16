@@ -7,3 +7,4 @@
 * [ ] starred events
 * [x] filtering by country
 * [ ] event website field?
+* [ ] disable template editing for users with no permission

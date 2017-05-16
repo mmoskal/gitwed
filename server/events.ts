@@ -28,6 +28,7 @@ export interface EventTranslation extends Translation {
 
 export interface CenterTranslation extends Translation {
     name?: string;
+    address?: string;
     program?: string;
     about?: string;
 }
@@ -172,6 +173,21 @@ async function saveEventAsync(e: FullEvent, user: string) {
     await gitfs.events.setJsonFileAsync("current/" + eventFn(e.id), e, "Update " + e.title, user)
 }
 
+async function setEventAddressAsync(r: FullEvent, lang: string) {
+    let c = await getCenterAsync(r.center)
+    if (c && !r.address) {
+        r.address = c.address
+        r.name = c.name
+        if (c.lang != lang)
+            for (let t of c.translations || []) {
+                if (t.lang == lang) {
+                    if (t.address) r.address = t.address
+                    if (t.name) r.name = t.name
+                }
+            }
+    }
+}
+
 export async function readEventAsync(id: number): Promise<FullEvent> {
     if (!gitfs.events) {
         let c = await getCenterAsync("nowhere")
@@ -197,11 +213,6 @@ export async function readEventAsync(id: number): Promise<FullEvent> {
         curr = eventsCache[id + ""] = text
     }
     let r: FullEvent = JSON.parse(curr)
-    let c = await getCenterAsync(r.center)
-    if (!r.address) {
-        r.address = c.address
-        r.name = c.name
-    }
     r = augmentEvent(r) as FullEvent
     return r
 }
@@ -503,12 +514,9 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
         await setMapImgAsync("cnt_", cfg.centerInfo, cfg)
     }
     if (cfg.eventInfo) {
+        await setEventAddressAsync(cfg.eventInfo, cfg.lang)
         await setMapImgAsync("ev_", cfg.eventInfo, cfg)
     }
-}
-
-async function addEventVarsCoreAsync(ev: FullEvent, cfg: expander.ExpansionConfig) {
-    cfg.eventInfo = ev
 }
 
 export function initRoutes(app: express.Express) {
@@ -563,8 +571,8 @@ export function initRoutes(app: express.Express) {
                 return res.status(404).end("cannot clone")
             if (ev.center != c0.id) {
                 ev.center = c0.id
-                ev.address = c0.address
-                ev.name = c0.name
+                ev.address = ""
+                ev.name = ""
             }
             ev.id = 0
         } else {
@@ -573,8 +581,8 @@ export function initRoutes(app: express.Express) {
                 startDate: tools.formatDate(new Date(Date.now() + 14 * 24 * 3600 * 1000)),
                 endDate: "",
                 center: c0.id,
-                name: c0.name,
-                address: c0.address,
+                name: "",
+                address: "",
                 startTime: "20:00",
                 title: "Introduction to Buddhism by D. W. Teacher",
                 description: "<p>Details coming up soon!</p>",
@@ -598,6 +606,7 @@ export function initRoutes(app: express.Express) {
             res.status(404).json({})
             return
         }
+        await setEventAddressAsync(ev, req.query["lang"] || "en")
         res.json(ev)
     })
 
@@ -635,6 +644,15 @@ export function initRoutes(app: express.Express) {
             currElt.lang = lang // set primary langauge
         }
 
+
+        let tmp = { center: currElt.center } as FullEvent
+        await setEventAddressAsync(tmp, lang)
+
+        if (delta.address == tmp.address)
+            delete delta.address
+        if (delta.name == tmp.name)
+            delete delta.name
+
         let err = applyChanges(currElt, delta, lang)
         if (err) {
             res.status(412).json({ error: err })
@@ -644,11 +662,6 @@ export function initRoutes(app: express.Express) {
             if (currElt.endDate == currElt.startDate)
                 delete currElt.endDate
 
-            // TODO translations
-            if (currElt.address == center.address)
-                delete currElt.address
-            if (currElt.name == center.name)
-                delete currElt.name
 
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)
