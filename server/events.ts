@@ -213,7 +213,6 @@ export async function readEventAsync(id: number): Promise<FullEvent> {
         curr = eventsCache[id + ""] = text
     }
     let r: FullEvent = JSON.parse(curr)
-    r = augmentEvent(r) as FullEvent
     return r
 }
 
@@ -256,11 +255,6 @@ function validTime(d: string) {
     return d == null || d == "" || /^\d\d:\d\d$/.test(d)
 }
 
-function validateLang(l: string) {
-    if (typeof l != "string") return false
-    return /^[a-z][a-z](-[A-Z]{2,3})?$/.test(l)
-}
-
 function getUpdateTarget(curr: WithTranslations, lang: string) {
     let trg = curr as any
     if (lang && lang != curr.lang) {
@@ -274,7 +268,7 @@ function getUpdateTarget(curr: WithTranslations, lang: string) {
 }
 
 function genericUpdate(curr: WithTranslations, delta: SMap<string>, lang: string, fields: string[]) {
-    if (!validateLang(lang))
+    if (!tools.validateLang(lang))
         return "invalid langauge code"
 
     let trg = getUpdateTarget(curr, lang)
@@ -304,7 +298,7 @@ function applyCenterChanges(curr: Center, delta: Center, lang: string) {
 }
 
 function applyChanges(curr: FullEvent, delta: FullEvent, lang: string) {
-    if (!validateLang(lang))
+    if (!tools.validateLang(lang))
         return "invalid langauge code"
 
     if (curr.center && delta.center != curr.center)
@@ -364,37 +358,36 @@ export async function getCenterAsync(id: string): Promise<Center> {
     return (centers[id] = await parseCenterAsync(str))
 }
 
-function applyTranslation(r: EventIndexEntry, lang: string) {
+function applyTranslation(r: EventListEntry, lang: string) {
+    r = tools.clone(r)
+
     for (let t of r.translations) {
         if (t.lang == lang)
             tools.copyFields(r, t)
     }
     delete r.translations
+    augmentEvent(r, lang)
     return r
 }
 
-function augmentEvent(ev: EventIndexEntry): EventListEntry {
-    let r = tools.clone(ev) as EventListEntry
-
+function augmentEvent(r: EventListEntry, lang: string) {
     let centers = cachedCenters()
     let c = centers[r.center]
     if (c)
         r.fullcity = c.fullcity
 
-    r.weekdayRange = tools.weekDay(ev.startDate)
-    r.dateRange = tools.monthPlusDay(ev.startDate)
-    r.combinedRange = tools.fullDate(ev.startDate)
+    r.weekdayRange = tools.weekDay(r.startDate, lang)
+    r.dateRange = tools.monthPlusDay(r.startDate, lang)
+    r.combinedRange = tools.fullDate(r.startDate, lang)
     if (r.endDate) {
-        r.weekdayRange += "-" + tools.weekDay(ev.endDate)
-        if (tools.monthName(ev.startDate) != tools.monthName(ev.endDate)) {
-            r.dateRange += "-" + tools.monthPlusDay(ev.endDate)
+        r.weekdayRange += " - " + tools.weekDay(r.endDate, lang)
+        if (tools.monthName(r.startDate, lang) != tools.monthName(r.endDate, lang)) {
+            r.dateRange += " - " + tools.monthPlusDay(r.endDate, lang)
         } else {
-            r.dateRange += "-" + tools.monthDay(ev.endDate)
+            r.dateRange += " - " + tools.monthDay(r.endDate, lang)
         }
-        r.combinedRange += tools.fullDate(ev.endDate)
+        r.combinedRange += tools.fullDate(r.endDate, lang)
     }
-
-    return r
 }
 
 export async function queryEventsAsync(query: SMap<string>, lang: string) {
@@ -414,7 +407,7 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
                 endDate: '',
                 title: 'Seven Wisdoms',
                 center: 'nowhere'
-            }].map(augmentEvent)
+            }].map(c => applyTranslation(c as any, lang))
         }
     }
 
@@ -460,7 +453,7 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
     if (events.length > count) events = events.slice(0, count)
     return {
         totalCount,
-        events: events.map(augmentEvent).map(e => applyTranslation(e, lang)),
+        events: events.map(e => applyTranslation(e, lang)),
     }
 }
 
@@ -513,6 +506,7 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
         await setMapImgAsync("cnt_", cfg.centerInfo, cfg)
     }
     if (cfg.eventInfo) {
+        augmentEvent(cfg.eventInfo, cfg.lang)
         await setEventAddressAsync(cfg.eventInfo, cfg.lang)
         await setMapImgAsync("ev_", cfg.eventInfo, cfg)
     }
@@ -639,7 +633,7 @@ export function initRoutes(app: express.Express) {
             }
         }
         let lang = req.body["_lang"] as string
-        if (!delta.id && validateLang(lang)) {
+        if (!delta.id && tools.validateLang(lang)) {
             currElt.lang = lang // set primary langauge
         }
 
@@ -660,7 +654,6 @@ export function initRoutes(app: express.Express) {
                 index.nextId++
             if (currElt.endDate == currElt.startDate)
                 delete currElt.endDate
-
 
             await saveEventAsync(currElt, req.appuser)
             res.json(currElt)

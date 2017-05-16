@@ -13,6 +13,55 @@ import express = require('express');
 const maxCacheSize = 32 * 1024 * 1024
 const maxCacheEltSize = 256 * 1024
 
+export interface Locale {
+    lang: string; // "polski"
+    countries: string[]; // ["pl"]
+    shortdate: string; // "@day@ @monthname@",
+    clock: number; // 12 or 24
+    translations: SMap<string>;
+}
+
+let localeEn: Locale = {
+    lang: "English",
+    countries: ["us", "gb", "au", "nz"],
+    shortdate: "@monthname@ @day@",
+    clock: 12,
+    translations: {}
+}
+
+export function validateLang(l: string) {
+    if (typeof l != "string") return false
+    return /^[a-z][a-z](-[A-Z]{2,3})?$/.test(l)
+}
+
+const localeCache: SMap<Locale> = {}
+export function getLocale(lang: string) {
+    let r = lookup(localeCache, lang)
+    if (r) return r
+
+    if (validateLang(lang)) {
+        if (/^en/.test(lang)) {
+            return (localeCache[lang] = localeEn)
+        }
+
+        let fn = "locales/" + lang + ".json"
+        if (!fs.existsSync(fn)) {
+            fn = "locales/" + lang.replace(/-.*/, "") + ".json"
+        }
+        if (fs.existsSync(fn)) {
+            r = JSON.parse(fs.readFileSync(fn, "utf8"))
+        }
+    }
+    if (!r) r = {} as any
+    if (!r.lang) r.lang = lang
+    if (!r.countries) r.countries = [lang]
+    if (!r.clock) r.clock = 24
+    if (!r.shortdate) r.shortdate = "@monthnumber@-@day0@"
+    if (!r.translations) r.translations = {}
+    localeCache[lang] = r
+    return r
+}
+
 export function readResAsync(g: events.EventEmitter) {
     return new Promise<Buffer>((resolve, reject) => {
         let bufs: Buffer[] = []
@@ -343,26 +392,42 @@ export function readTextFileAsync(fn: string) {
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-export function weekDay(date: string) {
+export function weekDay(date: string, lang: string) {
     if (!date) return ""
     let d = new Date(date)
-    return days[d.getDay()]
+    return translate(days[d.getDay()], lang)
 }
 
-export function monthName(date: string) {
+export function translate(s: string, lang: string) {
+    let l = getLocale(lang)
+    return lookup(l.translations, s) || s
+}
+
+export function monthName(date: string, lang: string) {
     if (!date) return ""
     let d = new Date(date)
-    return months[d.getMonth()]
+    return translate(months[d.getMonth()], lang)
 }
 
-export function monthDay(date: string) {
+export function monthNumber(date: string, lang: string) {
+    if (!date) return ""
+    let d = new Date(date)
+    return ("0" + (d.getMonth() + 1)).slice(-2)
+}
+
+export function monthDay(date: string, lang: string) {
     if (!date) return ""
     let d = new Date(date)
     return "" + d.getDate()
 }
 
-export function monthPlusDay(date: string) {
-    return monthName(date) + " " + monthDay(date)
+export function monthPlusDay(date: string, lang: string) {
+    let l = getLocale(lang)
+    return l.shortdate
+        .replace("@day@", monthDay(date, lang))
+        .replace("@day0@", ("0" + monthDay(date, lang)).slice(-2))
+        .replace("@monthname@", monthName(date, lang))
+        .replace("@monthnumber@", monthNumber(date, lang))
 }
 
 export function htmlQuote(s: string) {
@@ -374,18 +439,12 @@ export function expandTemplate(templ: string, vars: any) {
         htmlQuote((vars[v] || "") + ""))
 }
 
-export const langList: SMap<string> = {
-    "en": "English",
-    "pl": "polski",
-    "de": "Deutsch",
-}
-
 export function expandTemplateList(templ: string, objs: any[]) {
     return objs.map(e => expandTemplate(templ, e)).join("\n")
 }
 
-export function fullDate(s: string) {
-    return weekDay(s) + " " + monthPlusDay(s)
+export function fullDate(s: string, lang: string) {
+    return weekDay(s, lang) + " " + monthPlusDay(s, lang)
 }
 
 export class Cache<T> {

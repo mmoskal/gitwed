@@ -465,7 +465,7 @@ function expandAsync(cfg: ExpansionConfig) {
                 let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "setlang="
                 let isCurr = lang == cfg.lang
                 let href = setlang + lang
-                let full = tools.langList[lang] || lang
+                let full = tools.getLocale(lang).lang
                 return tools.expandTemplate(isCurr ? deflTempl : templ, {
                     lang,
                     LANG: lang.toUpperCase(),
