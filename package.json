@@ -1,6 +1,6 @@
 {
   "name": "gitwed",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Git-based website editor",
   "main": "index.js",
   "repository": {
