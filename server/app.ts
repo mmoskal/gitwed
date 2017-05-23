@@ -30,6 +30,8 @@ const pageCache = new tools.StringCache()
 
 const fileLocks = tools.promiseQueue()
 
+let ownSSL = false
+
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
     req._response = res;
@@ -61,6 +63,7 @@ app.use(bodyParser.urlencoded({
 app.use((req, res, next) => {
     res.setHeader("X-XSS-Protection", "1");
     res.setHeader("X-Content-Type-Options", "nosniff");
+
     if (gitfs.config.proxy) {
         let hts = "https://" + (req.header("x-forwarded-host") || req.header("host"))
         if (hts == gitfs.config.authDomain) {
@@ -71,6 +74,12 @@ app.use((req, res, next) => {
             res.redirect(hts + req.url)
             return
         }
+    }
+
+    if (ownSSL && !req.secure && !req.header("x-forwarded-for")) {
+        let hts = "https://" + req.header("host")
+        res.redirect(hts + req.url)
+        return
     }
 
     // refresh in background if needed
@@ -506,7 +515,7 @@ function setupCerts() {
         debug: true,
     });
 
-    http.createServer(lex.middleware(require('redirect-https')()))
+    http.createServer(lex.middleware(app))
         .listen(80, function () {
             winston.info("Listening for ACME http-01 challenges on: " + this.address());
         });
