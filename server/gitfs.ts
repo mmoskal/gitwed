@@ -352,9 +352,11 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
     function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
         name = name.replace(/^\/+/, "")
         let m = /^gw\/(.*)/.exec(name)
-        if (m)
+        if (m) 
             return readAsync("gw/" + m[1])
                 .then(v => v, err => readAsync("built/gw/" + m[1]))
+                .then(v => v, err => readAsync("node_modules/gitwed/gw/" + m[1]))
+                .then(v => v, err => readAsync("node_modules/gitwed/built/gw/" + m[1]))
 
         if (ref == "master")
             return readAsync(repoPath + name)
