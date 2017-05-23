@@ -515,6 +515,8 @@ function setupCerts() {
         debug: true,
     });
 
+    ownSSL = true
+
     http.createServer(lex.middleware(app))
         .listen(80, function () {
             winston.info("Listening for ACME http-01 challenges on: " + this.address());
