@@ -164,6 +164,17 @@ function expandAsync(cfg: ExpansionConfig) {
             h("group, if-edit").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
+            h("li a[href]").each((i, e) => {
+                let ee = h(e)
+                let hr = ee.attr("href")
+                let m = /\/([^\/]+)\.html$/.exec(cfg.rootFile)
+                let here = m ? m[1] : "???"
+                if (hr == here) {
+                    ee.parent().addClass("active")
+                } else {
+                    ee.parent().removeClass("active")
+                }
+            })
             h("[gw-pos]").each((i, e) => {
                 let ee = h(e)
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
