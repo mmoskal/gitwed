@@ -1,6 +1,32 @@
 # GitWEd - Git-based website editor
 
-Provide a git-backed WYSIWG website editing experience.
+Provides a git-backed WYSIWG website editing experience.
+
+## What does it do?
+
+GitWEd is a application running in node.js in the cloud, which serves websites
+from a git repo of your choosing. The website developer can update the HTML/CSS/image/... files
+in this repo as usual. Content editors can authorize using their email
+address, and then update the specially marked fragments of HTML
+using [ContentTools](http://getcontenttools.com/), a WYSIWG editor.
+The changes are saved to the git repo.
+
+## How does it work?
+
+GitWEd is written in TypeScript, compiled down to JavaScript and running on the
+server using node.js and on the client in the browser. GitWEd serves plain
+files from a git repo (called data repo, as it doesn't have GitWEd sources,
+just the websites to be served).  The server also handles AJAX POST requests
+from authorized users, which update the HTML and check in the new version into
+the data repo. These POSTs update specifically marked fragments of HTML
+(ones with `edit=...` attribute).
+
+Resource files (images, JavaScript, CSS, etc.) are served exactly as is.  HTML files
+are parsed, and the server expands a few additional tags, things like
+`<include src="_footer.html">`; it isn't necessary to use these additional tags,
+so you can just write plain HTML if you feel like it.
+Additionally, references to resources in the HTML files are optionally
+rewritten to use browser-cachable URLs on a CDN.
 
 ## Running locally
 
