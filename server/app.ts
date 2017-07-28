@@ -97,7 +97,6 @@ auth.initRoutes(app)
 interface ImgData {
     page: string;
     full: string;
-    thumb: string;
     filename: string;
     format: string;
 }

@@ -1,12 +1,13 @@
-
 .ct-app .ct-widget.ct-ignition.ct-ignition--ready .ct-ignition__button--more {
     display: block;
     left: 64px;
     background: #ff4500;
 }
+
 .ct-widget .ct-ignition__button--more:before {
     content: '···';
 }
+
 .ct-app .ct-widget.ct-ignition .ct-ignition__button--more:hover {
     background: #ff7e4e;
 }
@@ -57,12 +58,29 @@
     font-family: serif;
 }
 
-.ct-widget .ct-tool--h1:before { content: "H1"; }
-.ct-widget .ct-tool--h2:before { content: "H2"; }
-.ct-widget .ct-tool--h3:before { content: "H3"; }
-.ct-widget .ct-tool--h4:before { content: "H4"; }
-.ct-widget .ct-tool--h5:before { content: "H5"; }
-.ct-widget .ct-tool--h6:before { content: "H6"; }
+.ct-widget .ct-tool--h1:before {
+    content: "H1";
+}
+
+.ct-widget .ct-tool--h2:before {
+    content: "H2";
+}
+
+.ct-widget .ct-tool--h3:before {
+    content: "H3";
+}
+
+.ct-widget .ct-tool--h4:before {
+    content: "H4";
+}
+
+.ct-widget .ct-tool--h5:before {
+    content: "H5";
+}
+
+.ct-widget .ct-tool--h6:before {
+    content: "H6";
+}
 
 #gw-meta-section {
     font-size: 16px;
@@ -79,4 +97,45 @@
     font-size: 1.2em;
     margin-top: 1em;
     margin-bottom: 0.2em;
+}
+
+#gw-img-edit-cont {
+    margin: 20px 0;
+    text-align: center;
+}
+
+#gw-img-edit-cont .gw-img-edit {
+    width: 200px;
+    height: 200px;
+    margin: 5px;
+    padding: 3px;
+    background-image: linear-gradient(45deg, #bbb 25%, transparent 25%), linear-gradient(-45deg, #bbb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #bbb 75%), linear-gradient(-45deg, transparent 75%, #bbb 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+    display: inline-block;
+    vertical-align: top;
+    text-align: center;
+    position: relative;
+}
+
+#gw-img-edit-cont .gw-img-edit .gw-label {
+    background: rgba(255,255,255,0.7);
+    color: black;
+    font-size: 12px;
+    padding: 3px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-weight: normal;
+}
+
+#gw-img-edit-cont .gw-img-edit img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.gw-busy {
+    opacity: 0.3;
 }

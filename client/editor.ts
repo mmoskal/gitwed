@@ -98,7 +98,6 @@ namespace gw {
 
     export interface ImgResponse {
         url: string;
-        thumbUrl: string;
         w: number;
         h: number;
     }
@@ -169,23 +168,23 @@ namespace gw {
         return ret
     }
 
-    function resizePicture(max: number, img: HTMLImageElement) {
-        var w = img.width;
-        var h = img.height;
-        var scale = 1;
-        if (w > h) {
-            if (w > max) {
-                scale = max / w;
-                w = max;
-                h = Math.floor(scale * h);
-            }
-        } else {
-            if (h > max) {
-                scale = max / h;
-                h = max;
-                w = Math.floor(scale * w);
+    function justBase64(dataURL: string) {
+        return dataURL.replace(/^[^,]*,/, "")
+    }
+
+    function resizePicture(maxW: number, maxH: number, img: HTMLImageElement): ImgResponse {
+        let w = img.width;
+        let h = img.height;
+        let scale = Math.min(maxW / w, maxH / h)
+        if (scale >= 1) {
+            return {
+                url: img.src,
+                w,
+                h
             }
         }
+        w = Math.floor(scale * w)
+        h = Math.floor(scale * h)
 
         var canvasJQ = $("<canvas/>");
         var canvas = canvasJQ[0] as HTMLCanvasElement;
@@ -194,50 +193,48 @@ namespace gw {
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, w, h);
         var r = canvas.toDataURL("image/jpeg", 0.85);
-        return { src: r.replace(/^[^,]*,/, ""), w, h }
+        return { url: r, w, h }
     }
 
-
-    function postImgFileAsync(fileObj: File, maxSize = 1000) {
+    function resizeFileAsync(fileObj: File, maxWidth: number, maxHeight: number) {
         let reader = new FileReader();
 
         return new Promise<ImgResponse>((resolve, reject) => {
             reader.onload = (event) => {
                 let img = new Image();
                 img.onload = () => {
-                    let thumbnail = resizePicture(200, img).src;
-                    let fullimg = img.src
-                    let format = ""
-                    let w = img.width
-                    let h = img.height
-                    if (img.width > maxSize || img.height > maxSize) {
-                        let r = resizePicture(maxSize, img)
-                        w = r.w
-                        h = r.h
-                        fullimg = r.src
-                        format = "jpg"
-                    } else {
-                        if (/^data:image\/png/.test(fullimg)) format = "png"
-                        else format = "jpg"
-                        fullimg = fullimg.replace(/^[^,]*,/, "");
-                    }
-
-                    postJsonAsync("/api/uploadimg", {
-                        page: document.location.pathname,
-                        full: fullimg,
-                        thumb: thumbnail,
-                        filename: fileObj.name,
-                        format: format,
-                    }).then((v: ImgResponse) => {
-                        v.w = w
-                        v.h = h
-                        resolve(v)
-                    }, reject)
+                    resolve(resizePicture(maxWidth, maxHeight, img))
                 }
                 img.src = (event.target as any).result;
             }
             reader.readAsDataURL(fileObj);
         })
+
+    }
+
+    function postImgFileAsync(fileObj: File, max = 1000) {
+        return resizeFileAsync(fileObj, max, max)
+            .then(img => {
+                let format = ""
+                let fullimg = img.url
+                if (/^data:image\/png/.test(fullimg)) format = "png"
+                else format = "jpg"
+
+                return postJsonAsync("/api/uploadimg", {
+                    page: document.location.pathname,
+                    full: fullimg,
+                    filename: fileObj.name,
+                    format: format,
+                }).then((v: ImgResponse) => {
+                    v.w = img.w
+                    v.h = img.h
+                    return v
+                })
+            })
+    }
+
+    function changeImgAsync(fileObj: File, origURL: string, maxW: number, maxH: number) {
+
     }
 
     function imgUploader(dialog: any) {
@@ -268,6 +265,152 @@ namespace gw {
         });
     }
 
+
+    function stopEvent(e: JQueryEventObject) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function setDropClass(t: JQuery) {
+        t.on("dragenter", function (e) {
+            stopEvent(e);
+            t.addClass('gw-drag');
+        });
+        t.on("dragleave", function (e) {
+            t.removeClass('gw-drag');
+        });
+        t.on("dragover", function (e) {
+            stopEvent(e);
+            t.addClass('gw-drag');
+        });
+    }
+
+
+    function editImages() {
+        let imgs = $("#gw-img-edit-cont")
+        imgs.empty()
+        $("img").each((idx, e) => handleElement(e, "src"))
+        $("*[data-background]").each((idx, e) => handleElement(e, "data-background"))
+
+        function handleElement(e_: Element, attrname: string) {
+            let elt = $(e_)
+            let orig = elt.attr("data-gw-orig-" + attrname) || elt.attr(attrname)
+            if (!orig || !/\.(jpe?g|png)$/.exec(orig))
+                return;
+            if (/^https?:/.test(orig))
+                return;
+            let imgSrc = elt.attr(attrname)
+            let img = $("<img>")
+            let label = $("<div class='gw-label'></div>")
+            let origLoaded = false
+            let w = 0
+            let h = 0
+            let lastFile: File = null
+            let currData = ""
+            img.attr("src", imgSrc)
+            let formCont = $("<div></div>")
+            img.on("load", () => {
+                let i = img[0] as any
+                let wn = i.naturalWidth
+                let hn = i.naturalHeight
+                if (!origLoaded) {
+                    origLoaded = true
+                    w = wn
+                    h = hn
+                    label.text("  " + w + "x" + h + "px")
+                    let dl = $("<a class='img-dl'></a>")
+                    dl.text(orig)
+                    dl.attr("href", imgSrc)
+                    dl.attr("download", orig.replace(/.*\//, ""))
+                    label.prepend(dl)
+                    label.prepend(formCont)
+                } else {
+                    // new pic
+                    let p = Promise.resolve()
+                    let options: SMap<string> = {}
+                    let addOption = (mw: number, mh: number) => {
+                        p = p.then(() => resizeFileAsync(lastFile, mw, mh))
+                            .then(img => {
+                                let k = img.w + "x" + img.h
+                                if (options[k]) return
+                                // 600k max size
+                                if (img.url.length > 600000 * 4 / 3)
+                                    img.url = "NONE"
+                                options[k] = img.url
+                            })
+                    }
+                    addOption(w, h)
+                    addOption(1000, 1000)
+                    addOption(2000, 2000)
+                    addOption(10000, 10000)
+                    p.then(() => {
+                        let optform = $("<form action=''></form>")
+                        let ops: JQuery[] = []
+                        Object.keys(options).forEach(k => {
+                            let op = $("<input type='radio' name='res'></input>")
+                            ops.push(op)
+                            op.attr("value", k)
+                            let text = k
+                            if (options[k] == "NONE") {
+                                text += " (too big)"
+                                op.attr("disabled", "true")
+                            }
+                            op.on("change", () => {
+                                if ((op[0] as HTMLInputElement).checked) {
+                                    currData = options[k]
+                                    setInPage(currData)
+                                }
+                            })
+                            let lbl = $("<label></label>")
+                            lbl.text(text)
+                            lbl.prepend(op)
+                            optform.append(lbl)
+                            optform.append("<br>")
+                        });
+                        formCont.empty()
+                        formCont.append(optform)
+                        ops[0].select()
+                        outer.removeClass("gw-busy")
+                    })
+                }
+            })
+            let outer = $("<div class='gw-img-edit'></div>")
+            outer.append(img)
+            outer.append(label)
+
+            setDropClass(outer)
+            outer.on("drop", function (e) {
+                let de = e.originalEvent as DragEvent
+                if (de.dataTransfer) {
+                    if (de.dataTransfer.files.length) {
+                        stopEvent(e);
+                        lastFile = de.dataTransfer.files[0]
+                        let url = URL.createObjectURL(lastFile)
+                        outer.addClass("gw-busy")
+                        img.attr("src", url)
+                    }
+                }
+            });
+
+            imgs.append(outer)
+
+            let origAttrs: SMap<string> = {}
+            function setInPage(url: string) {
+                if (attrname != "src")
+                    $.each(elt[0].attributes, function (i, attrib) {
+                        if (attrib.value) {
+                            if (!origAttrs[attrib.name])
+                                origAttrs[attrib.name] = attrib.value
+                            let n = origAttrs[attrib.name].replace(imgSrc, url)
+                            if (n != origAttrs[attrib.name])
+                                elt.attr(attrib.name, n)
+                        }
+                    });
+                elt.attr(attrname, url)
+            }
+        }
+    }
+
     $(window).on("load", () => {
         if (!gitwedPageInfo.isEditable)
             return
@@ -286,6 +429,16 @@ namespace gw {
                 }
             })
         }
+
+        let imgs = $("#gw-img-edit-cont")
+        if (imgs.length) {
+            imgs.css("display", "block")
+            let b = $("<button>Edit images</button>")
+            b.click(editImages)
+            imgs.empty()
+            imgs.append(b)
+        }
+        editImages(); // TODO remove me
 
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
