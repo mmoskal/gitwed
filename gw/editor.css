@@ -119,7 +119,7 @@
 }
 
 #gw-img-edit-cont .gw-img-edit .gw-label {
-    background: rgba(255,255,255,0.7);
+    background: rgba(255, 255, 255, 0.8);
     color: black;
     font-size: 12px;
     padding: 3px;
@@ -129,6 +129,21 @@
     width: 100%;
     text-align: center;
     font-weight: normal;
+}
+
+#gw-img-edit-cont .gw-img-edit .gw-label form {
+    text-align: left;
+}
+
+#gw-img-edit-cont .gw-img-edit .gw-label form label {
+    display: block;
+    margin-left: 1em;
+    margin-bottom: 0;
+    font-weight: normal;
+}
+
+#gw-img-edit-cont .gw-img-edit .gw-label form label input[type=radio] {
+    -webkit-appearance: radio;
 }
 
 #gw-img-edit-cont .gw-img-edit img {

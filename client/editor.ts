@@ -327,19 +327,21 @@ namespace gw {
                 } else {
                     // new pic
                     let p = Promise.resolve()
-                    let options: SMap<string> = {}
+                    let options: SMap<{ url: string, size: number }> = {}
                     let addOption = (mw: number, mh: number) => {
                         p = p.then(() => resizeFileAsync(lastFile, mw, mh))
                             .then(img => {
                                 let k = img.w + "x" + img.h
                                 if (options[k]) return
-                                // 600k max size
-                                if (img.url.length > 600000 * 4 / 3)
+                                let size = Math.round((img.url.length * 3 / 4) / 1024)
+                                if (size > 600)
                                     img.url = "NONE"
-                                options[k] = img.url
+                                options[k] = { url: img.url, size }
                             })
                     }
                     addOption(w, h)
+                    addOption(w, 3000)
+                    addOption(3000, h)
                     addOption(1000, 1000)
                     addOption(2000, 2000)
                     addOption(10000, 10000)
@@ -350,14 +352,14 @@ namespace gw {
                             let op = $("<input type='radio' name='res'></input>")
                             ops.push(op)
                             op.attr("value", k)
-                            let text = k
-                            if (options[k] == "NONE") {
+                            let text = " " + k + " " + options[k].size + "k"
+                            if (options[k].url == "NONE") {
                                 text += " (too big)"
                                 op.attr("disabled", "true")
                             }
                             op.on("change", () => {
                                 if ((op[0] as HTMLInputElement).checked) {
-                                    currData = options[k]
+                                    currData = options[k].url
                                     setInPage(currData)
                                 }
                             })
@@ -365,11 +367,10 @@ namespace gw {
                             lbl.text(text)
                             lbl.prepend(op)
                             optform.append(lbl)
-                            optform.append("<br>")
                         });
                         formCont.empty()
                         formCont.append(optform)
-                        ops[0].select()
+                        ops[0].click()
                         outer.removeClass("gw-busy")
                     })
                 }
