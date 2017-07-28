@@ -295,6 +295,12 @@ namespace gw {
     function editImages() {
         let imgs = $("#gw-img-edit-cont")
         imgs.empty()
+        imgs.html("<h2>Image replacement</h2>" +
+            "<p>Drag and drop any image you want over one of these below to replace it. " +
+            "You can then choose upload resolution and see how it looks like in the site. " +
+            "After that, you can hit the upload button. " +
+            "Once you do, to go back to the previous picture you will have to upload it again." +
+            "</p>")
         $("img").each((idx, e) => handleElement(e, "src"))
         $("*[data-background]").each((idx, e) => handleElement(e, "data-background"))
 
@@ -403,7 +409,7 @@ namespace gw {
                         formCont.empty()
                         formCont.append(optform)
                         ops[0].click()
-                        
+
                         outer.removeClass("gw-busy")
                     })
                 }
@@ -472,7 +478,7 @@ namespace gw {
             imgs.empty()
             imgs.append(b)
         }
-        editImages(); // TODO remove me
+        //editImages(); // TODO remove me
 
         let msgbox = $("<div id='ct-msgbox'></div>").text("Editing " + gitwedPageInfo.lang)
 
