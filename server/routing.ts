@@ -29,7 +29,8 @@ export function sendTemplate(req: express.Request, cleaned: string, vars: SMap<s
             expander.expandFileAsync(cfg)
                 .then(page => {
                     let res: express.Response = req._response
-                    res.writeHead(200, {
+                    let st = res.statusCode || 200
+                    res.writeHead(st, {
                         'Content-Type': 'text/html; charset=utf8'
                     })
                     res.end(page.html)
