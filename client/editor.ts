@@ -172,19 +172,29 @@ namespace gw {
         return dataURL.replace(/^[^,]*,/, "")
     }
 
-    function resizePicture(maxW: number, maxH: number, img: HTMLImageElement): ImgResponse {
-        let w = img.width;
-        let h = img.height;
+    function constrainSize(w: number, h: number, maxW: number, maxH: number) {
         let scale = Math.min(maxW / w, maxH / h)
-        if (scale >= 1) {
+        if (scale < 1) {
+            w = Math.floor(scale * w)
+            h = Math.floor(scale * h)
+        }
+        return {
+            w,
+            h
+        }
+    }
+
+    function resizePicture(maxW: number, maxH: number, img: HTMLImageElement): ImgResponse {
+        let sz = constrainSize(img.width, img.height, maxW, maxH)
+        let w = sz.w
+        let h = sz.h
+        if (w == img.width) {
             return {
                 url: img.src,
                 w,
                 h
             }
         }
-        w = Math.floor(scale * w)
-        h = Math.floor(scale * h)
 
         var canvasJQ = $("<canvas/>");
         var canvas = canvasJQ[0] as HTMLCanvasElement;
@@ -231,10 +241,6 @@ namespace gw {
                     return v
                 })
             })
-    }
-
-    function changeImgAsync(fileObj: File, origURL: string, maxW: number, maxH: number) {
-
     }
 
     function imgUploader(dialog: any) {
@@ -329,10 +335,16 @@ namespace gw {
                     let p = Promise.resolve()
                     let options: SMap<{ url: string, size: number }> = {}
                     let addOption = (mw: number, mh: number) => {
-                        p = p.then(() => resizeFileAsync(lastFile, mw, mh))
+                        let sz = constrainSize(wn, hn, mw, mh)
+                        let k = sz.w + "x" + sz.h
+                        p = p
+                            .then(() => {
+                                if (options[k])
+                                    return null
+                                return resizeFileAsync(lastFile, mw, mh)
+                            })
                             .then(img => {
-                                let k = img.w + "x" + img.h
-                                if (options[k]) return
+                                if (!img) return
                                 let size = Math.round((img.url.length * 3 / 4) / 1024)
                                 if (size > 600)
                                     img.url = "NONE"
@@ -346,7 +358,7 @@ namespace gw {
                     addOption(2000, 2000)
                     addOption(10000, 10000)
                     p.then(() => {
-                        let optform = $("<form action=''></form>")
+                        let optform = $("<form action='#'></form>")
                         let ops: JQuery[] = []
                         Object.keys(options).forEach(k => {
                             let op = $("<input type='radio' name='res'></input>")
@@ -368,9 +380,30 @@ namespace gw {
                             lbl.prepend(op)
                             optform.append(lbl)
                         });
+
+                        let upload = $("<button>Upload and replace</button>")
+                        upload.click((ev) => {
+                            stopEvent(ev)
+                            let link = document.createElement("a");
+                            link.href = orig
+                            upload.attr("disabled", "true")
+                            return postJsonAsync("/api/replaceimg", {
+                                page: document.location.pathname,
+                                filename: link.pathname,
+                                full: justBase64(currData),
+                            }).then(() => {
+                                formCont.empty()
+                                new ContentTools.FlashUI('ok')
+                            }, err => {
+                                upload.removeAttr("disabled")
+                            })
+                        })
+                        optform.append(upload)
+
                         formCont.empty()
                         formCont.append(optform)
                         ops[0].click()
+                        
                         outer.removeClass("gw-busy")
                     })
                 }

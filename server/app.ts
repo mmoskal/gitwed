@@ -19,6 +19,10 @@ import routing = require('./routing')
 bluebird.longStackTraces();
 logs.init()
 
+// the client enforces smaller
+const maxImageSize = 2 * 1024 * 1024
+
+
 const restartMinutes = 120
 
 const startTime = Date.now()
@@ -141,6 +145,9 @@ app.post("/api/uploadimg", (req, res) => {
         .replace(/[^\w\-]+/g, "_")
     let ext = "." + data.format
     let buf = new Buffer(data.full, "base64")
+    if (buf.length > maxImageSize)
+        return res.status(413).end()
+
     let msg = "Image at " + path + " / " + basename + ext
 
     expander.hasWritePermAsync(req.appuser, path)
@@ -153,6 +160,35 @@ app.post("/api/uploadimg", (req, res) => {
                     .then(imgName => {
                         res.json({
                             url: "img/" + imgName
+                        })
+                    }))
+        })
+
+})
+
+app.post("/api/replaceimg", (req, res) => {
+    if (!req.appuser)
+        return res.status(403).end()
+
+    let data = req.body as ImgData
+    let pathElts = sanitizePath(data.filename)
+    let path = pathElts.join("/")
+
+    let buf = new Buffer(data.full, "base64")
+    if (buf.length > maxImageSize)
+        return res.status(413).end()
+
+    let msg = "Replace image at " + path + " " + Math.round(buf.length / 1024) + "k"
+
+    expander.hasWritePermAsync(req.appuser, path)
+        .then(hasPerm => {
+            if (!hasPerm)
+                return res.status(403).end()
+
+            fileLocks(path, () =>
+                gitfs.main.setBinFileAsync(path, buf, msg, req.appuser)
+                    .then(() => {
+                        res.json({
                         })
                     }))
         })
