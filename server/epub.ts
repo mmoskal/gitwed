@@ -43,12 +43,31 @@ const opfHead = `<?xml version="1.0"?>
     <meta name="cover" content="file_cover" />
   </metadata>
   <manifest>
+    <item id="toc" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+`
+
+const tocHead = `<?xml version="1.0"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN"
+          "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:@UUID@"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle><text>@TITLE@</text></docTitle>
+  <navMap>
 `
 
 function genUUID(b: Buffer) {
     // xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx
     let h = b.toString("hex")
     return h.slice(0, 8) + "-" + h.slice(8, 12) + "-4" + h.slice(12, 15) + "-a" + h.slice(15, 18) + "-" + h.slice(18, 30)
+}
+
+function xmlQ(s: string) {
+    return tools.htmlQuote(s)
 }
 
 async function genEPubAsync(folder: string) {
@@ -61,11 +80,15 @@ async function genEPubAsync(folder: string) {
 
     const filePresent: SMap<number> = {}
     let fileNo = 0
+    let htmlNo = 0
 
     let opf = ""
     let spine = `</manifest>\n<spine toc="toc">\n`
     let guide = `</spine>\n<guide>\n`
     let close = `</guide>\n</package>\n`
+    let toc = tocHead
+
+    let title = ""
 
     async function addFileAsync(n: string, data: any = null) {
         if (filePresent[n])
@@ -73,9 +96,11 @@ async function genEPubAsync(folder: string) {
         if (data === null)
             data = await gitfs.main.getFileAsync(folder + "/" + n, "master")
         let m = mime.lookup(n)
+        if (m == "text/html")
+            m = "application/xhtml+xml"
         fileNo++
         filePresent[n] = fileNo
-        opf += `    <item id="f${fileNo}" href="${n}" media-type=${m} />\n`
+        opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" />\n`
         zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
         hash.update(n + hashSep)
         hash.update(data)
@@ -97,11 +122,13 @@ async function genEPubAsync(folder: string) {
             })
         }
 
+
         if (!opf) {
             opf = opfHead
                 .replace(/<dc:(\w+)><\//g, (f, id) => {
-                    return "<dc:" + id + ">" + h("div[id=gw-meta-" + id + "]").text().trim() + "</"
+                    return "<dc:" + id + ">" + xmlQ(h("div[id=gw-meta-" + id + "]").text().trim()) + "</"
                 })
+            title = h("div[id=gw-meta-title]").text().trim()
         }
 
         let subfiles: string[] = []
@@ -114,8 +141,24 @@ async function genEPubAsync(folder: string) {
             await addFileAsync(fn)
         }
 
-        let id = await addFileAsync(htmlName, res.toHTML(res.cheerio))
+        forEach("*", e => {
+            Object.keys(e[0].attribs).forEach(k => {
+                if (/^data-/.test(k))
+                    e.removeAttr(k)
+            })
+        })
+
+        let id = await addFileAsync(htmlName, res.cheerio.xml())
         spine += `    <itemref idref="${id}" />\n`
+
+        let tit0 = h("h1").first().text().trim()
+        htmlNo++
+        toc += `
+    <navPoint id="navpoint-${htmlNo}" playOrder="${htmlNo}">
+      <navLabel><text>${xmlQ(tit0)}</text></navLabel>
+      <content src="${htmlName}" />
+    </navPoint>
+`;
 
         if (htmlName == "index.html") {
             let subpages: string[] = []
@@ -135,10 +178,17 @@ async function genEPubAsync(folder: string) {
 
     let fullOpf = opf + spine + guide + close
     hash.update(fullOpf)
+    hash.update(toc)
 
     let uuid = genUUID(hash.digest())
-    fullOpf = fullOpf.replace(/@UUID@/g, uuid)
+    fullOpf = fullOpf.replace("@UUID@", uuid)
+
+    toc += `</navMap>\n</ncx>`
+    toc = toc.replace("@UUID@", uuid)
+    toc = toc.replace("@TITLE@", xmlQ(title))
+
     zip.file("content.opf", fullOpf, { compression: "DEFLATE" })
+    zip.file("toc.ncx", toc, { compression: "DEFLATE" })
 
     return await zip.generateAsync({ type: "nodebuffer" })
 }
