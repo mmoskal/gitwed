@@ -216,6 +216,8 @@ function expandAsync(cfg: ExpansionConfig) {
                 allFiles,
                 idToPos,
                 langMap,
+                cheerio: h,
+                toHTML,
                 html: toHTML(h)
             }
         })
