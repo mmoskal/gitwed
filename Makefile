@@ -23,3 +23,7 @@ deploy:
 	git pull
 	$(MAKE) build
 	kill `ps fax | grep "node[ ]gitwed"|awk '{print $$1}'`
+
+e:
+	curl -s 'http://localhost:3000/api/epub?folder=book' > tmp/book.epub
+	cd tmp; rm -rf out; mkdir out; cd out; 7z x ../book.epub >/dev/null

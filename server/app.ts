@@ -14,6 +14,7 @@ import auth = require('./auth')
 import events = require('./events')
 import winston = require('winston')
 import logs = require('./logs')
+import epub = require('./epub')
 import routing = require('./routing')
 
 bluebird.longStackTraces();
@@ -95,8 +96,8 @@ app.use((req, res, next) => {
 });
 
 auth.initCheck(app)
-
 auth.initRoutes(app)
+epub.init(app)
 
 interface ImgData {
     page: string;
