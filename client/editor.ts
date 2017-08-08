@@ -232,7 +232,7 @@ namespace gw {
 
                 return postJsonAsync("/api/uploadimg", {
                     page: document.location.pathname,
-                    full: fullimg,
+                    full: justBase64(fullimg),
                     filename: fileObj.name,
                     format: format,
                 }).then((v: ImgResponse) => {
