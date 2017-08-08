@@ -94,6 +94,7 @@ namespace gw {
         isEditable: boolean;
         eventInfo: EventInfo;
         center: string;
+        epub: boolean;
     }
 
     export interface ImgResponse {
@@ -222,7 +223,7 @@ namespace gw {
 
     }
 
-    function postImgFileAsync(fileObj: File, max = 1000) {
+    function postImgFileAsync(fileObj: File, max: number) {
         return resizeFileAsync(fileObj, max, max)
             .then(img => {
                 let format = ""
@@ -258,7 +259,7 @@ namespace gw {
             dialog.state('uploading');
             dialog.progress(0);
 
-            postImgFileAsync(file)
+            postImgFileAsync(file, gitwedPageInfo.epub ? 1600 : 1000)
                 .then(resp => {
                     dialog.save(
                         resp.url,

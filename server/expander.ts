@@ -62,6 +62,7 @@ export interface PageConfig {
     langs?: string[];
     users?: string[];
     center?: string;
+    epub?: boolean;
 }
 
 export interface ExpansionConfig {
@@ -617,7 +618,8 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         ref: cfg.ref,
         eventInfo: cfg.appuser ? cfg.eventInfo : null,
         centerInfo: cfg.appuser ? cfg.centerInfo : null,
-        center: pcfg.center
+        center: pcfg.center,
+        epub: !!cfg.pageConfig.epub,
     }
     cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
         JSON.stringify(pageInfo, null, 4) + ";\n"
