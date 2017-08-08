@@ -211,6 +211,8 @@ app.post("/api/update", (req, res) => {
 
     let page = req.body.page + ""
 
+    page = page.replace(/\.html?$/i, "")
+
     if (page.endsWith("/")) page += "index"
     page = page.replace(/\d+$/, "_event")
 
