@@ -681,6 +681,13 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                     })
             })
 
+            if (gitwedPageInfo.epub)
+                addButton("Download epub", () => {
+                    status("Generating...")
+                    let folder = window.location.pathname.slice(1).replace(/\/.*/, "")
+                    window.location.href = "/api/epub?folder=" + encodeURIComponent(folder)
+                })
+
             if (numdisabled)
                 addButton("Enable template edit", () => {
                     status("Reloading...")

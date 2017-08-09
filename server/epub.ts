@@ -25,7 +25,7 @@ const opfHead = `<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf"
          xmlns:dc="http://purl.org/dc/elements/1.1/"
          unique-identifier="bookid"
-         version="2.0">
+         version="3.0">
   <metadata xmlns:opf="http://www.idpf.org/2007/opf"
             xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:title></dc:title>
@@ -41,14 +41,13 @@ const opfHead = `<?xml version="1.0"?>
     <dc:identifier id="bookid">urn:uuid:@UUID@</dc:identifier>
     <dc:language></dc:language>
     <meta name="cover" content="file_cover" />
+    <meta property="dcterms:modified">@DATE@</meta>
   </metadata>
   <manifest>
     <item id="toc" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
 `
 
 const tocHead = `<?xml version="1.0"?>
-<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN"
-          "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
     <meta name="dtb:uid" content="urn:uuid:@UUID@"/>
@@ -84,11 +83,17 @@ async function genEPubAsync(folder: string) {
 
     let opf = ""
     let spine = `</manifest>\n<spine toc="toc">\n`
-    let guide = `</spine>\n<guide>\n`
-    let close = `</guide>\n</package>\n`
+    let close = `</spine>\n</package>\n`
     let toc = tocHead
+    let tocHTML = `<nav id="tocnav" style="display:none" epub:type="toc"><ol>\n`
 
     let title = ""
+    let date = ""
+    let indexCheerio: CheerioStatic = null
+
+    function addText(fn: string, data: string) {
+        zip.file(fn, data, { compression: "DEFLATE" })
+    }
 
     async function addFileAsync(n: string, data: any = null) {
         if (filePresent[n])
@@ -100,10 +105,15 @@ async function genEPubAsync(folder: string) {
             m = "application/xhtml+xml"
         fileNo++
         filePresent[n] = fileNo
-        opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" />\n`
-        zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
-        hash.update(n + hashSep)
-        hash.update(data)
+        let add = ""
+        if (n == "index.html")
+            add = `properties="nav"`
+        opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" ${add} />\n`
+        if (data !== 0) {
+            zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
+            hash.update(n + hashSep)
+            hash.update(data)
+        }
         return "f" + filePresent[n]
     }
 
@@ -125,16 +135,39 @@ async function genEPubAsync(folder: string) {
 
         if (!opf) {
             opf = opfHead
-                .replace(/<dc:(\w+)><\//g, (f, id) => {
-                    return "<dc:" + id + ">" + xmlQ(h("div[id=gw-meta-" + id + "]").text().trim()) + "</"
+                .replace(/<dc:(\w+)><\/dc:[^<>]+>/g, (f, id) => {
+                    let v = h("div[id=gw-meta-" + id + "]").text().trim()
+                    if (!v) return ""
+                    return "<dc:" + id + ">" + xmlQ(v) + "</dc:" + id + ">"
                 })
             title = h("div[id=gw-meta-title]").text().trim()
+            date = h("div[id=gw-meta-date]").text().trim()
+        }
+
+        function fileOK(fn: string) {
+            return !/^[\/\.]/.test(fn)
         }
 
         let subfiles: string[] = []
         forEach("link[rel=stylesheet]", e => {
             let fn = e.attr("href")
-            subfiles.push(fn)
+            if (fileOK(fn))
+                subfiles.push(fn)
+            else
+                e.remove()
+        })
+
+        h("script").remove()
+
+        forEach("img", e => {
+            let fn = e.attr("src")
+            if (!e.attr("alt"))
+                e.attr("alt", fn)
+            if (!fileOK(fn)) {
+                e.remove()
+            } else {
+                subfiles.push(fn)
+            }
         })
 
         for (let fn of subfiles) {
@@ -148,7 +181,13 @@ async function genEPubAsync(folder: string) {
             })
         })
 
-        let id = await addFileAsync(htmlName, res.cheerio.xml())
+        let data: any = h.xml()
+        if (htmlName == "index.html") {
+            data = 0
+            indexCheerio = h
+        }
+
+        let id = await addFileAsync(htmlName, data)
         spine += `    <itemref idref="${id}" />\n`
 
         let tit0 = h("h1").first().text().trim()
@@ -158,7 +197,10 @@ async function genEPubAsync(folder: string) {
       <navLabel><text>${xmlQ(tit0)}</text></navLabel>
       <content src="${htmlName}" />
     </navPoint>
-`;
+`
+        tocHTML += `
+    <li><a href="${htmlName}">${xmlQ(tit0)}</a></li>
+`
 
         if (htmlName == "index.html") {
             let subpages: string[] = []
@@ -176,19 +218,25 @@ async function genEPubAsync(folder: string) {
 
     await expandAsync("index.html")
 
-    let fullOpf = opf + spine + guide + close
+    let fullOpf = opf + spine + close
     hash.update(fullOpf)
     hash.update(toc)
 
     let uuid = genUUID(hash.digest())
     fullOpf = fullOpf.replace("@UUID@", uuid)
+    fullOpf = fullOpf.replace("@DATE@", date + "T12:00:00Z")
 
     toc += `</navMap>\n</ncx>`
     toc = toc.replace("@UUID@", uuid)
     toc = toc.replace("@TITLE@", xmlQ(title))
 
-    zip.file("content.opf", fullOpf, { compression: "DEFLATE" })
-    zip.file("toc.ncx", toc, { compression: "DEFLATE" })
+    addText("content.opf", fullOpf)
+    addText("toc.ncx", toc)
+
+    tocHTML += "</ol></nav>"
+
+    indexCheerio("body").prepend(tocHTML)
+    addText("index.html", indexCheerio.xml())
 
     return await zip.generateAsync({ type: "nodebuffer" })
 }
