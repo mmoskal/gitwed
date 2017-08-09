@@ -1,5 +1,6 @@
 declare var ContentTools: any;
 declare var ContentEdit: any;
+declare var ContentSelect: any;
 declare var gitwedPageInfo: gw.PageInfo;
 
 type SMap<T> = { [s: string]: T };
@@ -627,19 +628,130 @@ namespace gw {
             });
         }
 
-        /*
-        function myPaste(element:any, clip:any) {
+        const blockTags: SMap<string> = {
+            "p": "p",
+            "h1": "h1",
+            "h2": "h2",
+            "h3": "h3",
+            "h4": "h4",
+            "h5": "h5",
+            "h6": "h6",
+        }
+
+        const inlineTags: SMap<string> = {
+            "strong": "b",
+            "em": "i",
+            "b": "b",
+            "i": "i",
+        }
+
+        function myPaste(element: any, clip: any) {
             let html = clip.getData('text/html');
             if (!html) {
+                // TODO add some other tests?
                 return editor.paste(element, clip.getData('text/plain'))
             }
+
+            let cleaned = ""
+            let currBlock = ""
+
+            function addInline(s: string) {
+                if (!s) return
+                if (!currBlock) {
+                    currBlock = "p"
+                    cleaned += "<p>"
+                }
+                cleaned += s
+            }
+
+            function endCurrBlock() {
+                if (currBlock)
+                    cleaned += `</${currBlock}>`
+                currBlock = ""
+            }
+
+            function append(ee: Element) {
+                if (ee.nodeType != 1) {
+                    addInline(ee.textContent)
+                    return
+                }
+
+                let tag = ee.tagName.toLowerCase()
+
+                if (tag == "meta") return
+
+                if (blockTags.hasOwnProperty(tag)) {
+                    tag = blockTags[tag]
+                    endCurrBlock()
+                    cleaned += `<${tag}>`
+                    currBlock = tag
+                } else if (tag == "a") {
+                    addInline(`<a href="${ee.getAttribute("href")}">`)
+                } else if (inlineTags.hasOwnProperty(tag)) {
+                    tag = inlineTags[tag]
+                    addInline(`<${tag}>`)
+                } else {
+                    tag = ""
+                }
+
+                for (let i = 0; i < ee.childNodes.length; ++i)
+                    append(ee.childNodes[i] as Element)
+
+                if (tag) {
+                    cleaned += `</${tag}>`
+                    if (currBlock == tag) currBlock = ""
+                }
+            }
+
+            let wrap0 = document.createElement('div')
+            wrap0.innerHTML = html
+            console.log("ORIG", wrap0)
+            append(wrap0)
+            endCurrBlock()
+            console.log(cleaned)
+
+            let wrapper = document.createElement('div')
+            wrapper.innerHTML = cleaned
+            console.log("CLEAN", wrapper)
+
+            let insertNode = element;
+            if (insertNode.parent().type() !== 'Region') {
+                insertNode = element.closest((node: any) =>
+                    node.parent().type() === 'Region')
+            }
+            const insertIn = insertNode.parent();
+            const insertAt = insertIn.children.indexOf(insertNode) + 1;
+            let lastItem: any
+
+            let elts: HTMLElement[] = []
+            for (let i = 0; i < wrapper.childNodes.length; ++i) {
+                let c = wrapper.childNodes[i]
+                if (c.nodeType == 1)
+                    elts.push(c as HTMLElement)
+            }
+
+
+            const tagNames = ContentEdit.TagNames.get();
+
+            let i = 0
+            for (let childNode of elts) {
+                let cls = tagNames.match(childNode.tagName);
+                let item = cls.fromDOMElement(childNode);
+                wrapper.removeChild(childNode);
+                if (!item) continue
+                lastItem = item;
+                insertIn.attach(item, insertAt + i++);
+            }
+
+            let lineLength = lastItem.content.length()
+            lastItem.focus()
+            return lastItem.selection(new ContentSelect.Range(lineLength, lineLength))
         }
 
         ContentEdit.Root.get().unbind('paste', editor._handleClipboardPaste);
         ContentEdit.Root.get().bind('paste', function (element: any, ev: any) {
             myPaste(element, ev.clipboardData || (window as any).clipboardData);
         });
-        */
 
         let moreBtn = $("<div class='ct-ignition__button ct-ignition__button--more'></div>")
         moreBtn.click(() => {
