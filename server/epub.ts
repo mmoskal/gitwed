@@ -95,6 +95,10 @@ async function genEPubAsync(folder: string) {
         zip.file(fn, data, { compression: "DEFLATE" })
     }
 
+    let addProps:SMap<string> = {
+        "index.html": `nav`,
+    }
+
     async function addFileAsync(n: string, data: any = null) {
         if (filePresent[n])
             return "f" + filePresent[n]
@@ -106,8 +110,8 @@ async function genEPubAsync(folder: string) {
         fileNo++
         filePresent[n] = fileNo
         let add = ""
-        if (n == "index.html")
-            add = `properties="nav"`
+        if (addProps[n])
+            add = `properties="${addProps[n]}"`
         opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" ${add} />\n`
         if (data !== 0) {
             zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
@@ -131,7 +135,6 @@ async function genEPubAsync(folder: string) {
                 f(h(e))
             })
         }
-
 
         if (!opf) {
             opf = opfHead
@@ -167,6 +170,9 @@ async function genEPubAsync(folder: string) {
                 e.remove()
             } else {
                 subfiles.push(fn)
+                if (e.hasClass("cover")) {
+                    addProps[fn] = "cover-image"
+                }
             }
         })
 
