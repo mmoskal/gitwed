@@ -648,26 +648,15 @@ namespace gw {
         function myPaste(element: any, clip: any) {
             let html = clip.getData('text/html');
             if (!html) {
-                // TODO add some other tests?
                 return editor.paste(element, clip.getData('text/plain'))
             }
 
             let cleaned = ""
-            let currBlock = ""
+            let isBlock = false
 
             function addInline(s: string) {
                 if (!s) return
-                if (!currBlock) {
-                    currBlock = "p"
-                    cleaned += "<p>"
-                }
                 cleaned += s
-            }
-
-            function endCurrBlock() {
-                if (currBlock)
-                    cleaned += `</${currBlock}>`
-                currBlock = ""
             }
 
             function append(ee: Element) {
@@ -682,9 +671,8 @@ namespace gw {
 
                 if (blockTags.hasOwnProperty(tag)) {
                     tag = blockTags[tag]
-                    endCurrBlock()
                     cleaned += `<${tag}>`
-                    currBlock = tag
+                    isBlock = true
                 } else if (tag == "a") {
                     addInline(`<a href="${ee.getAttribute("href")}">`)
                 } else if (inlineTags.hasOwnProperty(tag)) {
@@ -699,7 +687,6 @@ namespace gw {
 
                 if (tag) {
                     cleaned += `</${tag}>`
-                    if (currBlock == tag) currBlock = ""
                 }
             }
 
@@ -707,14 +694,19 @@ namespace gw {
             wrap0.innerHTML = html
             console.log("ORIG", wrap0)
             append(wrap0)
-            endCurrBlock()
             console.log(cleaned)
+
+            if (!isBlock) {
+                return editor.paste(element, clip.getData('text/plain'))
+            }
 
             let wrapper = document.createElement('div')
             wrapper.innerHTML = cleaned
             console.log("CLEAN", wrapper)
 
-            let insertNode = element;
+
+
+            let insertNode = element
             if (insertNode.parent().type() !== 'Region') {
                 insertNode = element.closest((node: any) =>
                     node.parent().type() === 'Region')
