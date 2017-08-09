@@ -682,6 +682,19 @@ namespace gw {
                     tag = ""
                 }
 
+                if (!tag) {
+                    // style parsing
+                    let st = ee.getAttribute("style")
+                    if (st) {
+                        if (/font-style:\s*(oblique|italic)/.test(st))
+                            tag = "i"
+                        if (/font-weight:\s*(bold|900|800|700)/.test(st))
+                            tag = "b"
+                        if (tag)
+                            addInline(`<${tag}>`)
+                    }
+                }
+
                 for (let i = 0; i < ee.childNodes.length; ++i)
                     append(ee.childNodes[i] as Element)
 
@@ -694,7 +707,11 @@ namespace gw {
             wrap0.innerHTML = html
             console.log("ORIG", wrap0)
             append(wrap0)
+            cleaned = cleaned.replace(/<p>\s*<\/p>/g, "")
             console.log(cleaned)
+            let wrap1 = document.createElement('div')
+            wrap1.innerHTML = cleaned
+            console.log("CLEAN", wrap1)
 
             if (!isBlock) {
                 return editor.paste(element, clip.getData('text/plain'))
@@ -702,9 +719,6 @@ namespace gw {
 
             let wrapper = document.createElement('div')
             wrapper.innerHTML = cleaned
-            console.log("CLEAN", wrapper)
-
-
 
             let insertNode = element
             if (insertNode.parent().type() !== 'Region') {
