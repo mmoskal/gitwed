@@ -69,6 +69,59 @@ function xmlQ(s: string) {
     return tools.htmlQuote(s)
 }
 
+
+function fileOK(fn: string) {
+    return !/^[\/\.]/.test(fn)
+}
+
+// TODO handle mising files!
+
+function runExpanderAsync(fn: string) {
+    let cfg: expander.ExpansionConfig = {
+        rootFile: fn,
+        ref: "master",
+    }
+    return expander.expandFileAsync(cfg)
+}
+
+export interface TocProps {
+    title: string;
+    author: string;
+    image: string;
+    href: string;
+}
+
+async function genTOCAsync(folder: string) {
+    async function getPropsAsync(htmlName: string): Promise<TocProps> {
+        let res = await runExpanderAsync(folder + "/" + htmlName)
+        let h = res.cheerio
+        let title = h(".title").first().text().trim()
+        let author = h(".author").first().text().trim()
+        let image = h("img").first().attr("src")
+        return {
+            title,
+            author,
+            image,
+            href: htmlName
+        }
+    }
+
+    let res = await runExpanderAsync(folder + "/index.html")
+    let h = res.cheerio
+
+    let subpages: string[] = []
+    res.forEach("a", e => {
+        let href = e.attr("href")
+        if (fileOK(href))
+            subpages.push(href)
+    })
+    let rr: TocProps[] = []
+    for (let fn of subpages) {
+        rr.push(await getPropsAsync(fn))
+    }
+    return rr
+}
+
 async function genEPubAsync(folder: string) {
     const zip = new JSZip()
     const hash = crypto.createHash("sha256")
@@ -95,7 +148,7 @@ async function genEPubAsync(folder: string) {
         zip.file(fn, data, { compression: "DEFLATE" })
     }
 
-    let addProps:SMap<string> = {
+    let addProps: SMap<string> = {
         "index.html": `nav`,
     }
 
@@ -122,19 +175,9 @@ async function genEPubAsync(folder: string) {
     }
 
     async function expandAsync(htmlName: string) {
-        let cfg: expander.ExpansionConfig = {
-            rootFile: folder + "/" + htmlName,
-            ref: "master",
-        }
-
-        let res = await expander.expandFileAsync(cfg)
-        let h = res.cheerio
-
-        function forEach(sel: string, f: (elt: Cheerio) => void) {
-            h(sel).each((i, e) => {
-                f(h(e))
-            })
-        }
+        const res = await runExpanderAsync(folder + "/" + htmlName)
+        const h = res.cheerio
+        const forEach = res.forEach
 
         if (!opf) {
             opf = opfHead
@@ -145,10 +188,6 @@ async function genEPubAsync(folder: string) {
                 })
             title = h("div[id=gw-meta-title]").text().trim()
             date = h("div[id=gw-meta-date]").text().trim()
-        }
-
-        function fileOK(fn: string) {
-            return !/^[\/\.]/.test(fn)
         }
 
         let subfiles: string[] = []
@@ -212,7 +251,7 @@ async function genEPubAsync(folder: string) {
             let subpages: string[] = []
             forEach("a", e => {
                 let href = e.attr("href")
-                if (/^[^\/]+$/.test(href)) {
+                if (fileOK(href)) {
                     subpages.push(href)
                 }
             })
@@ -248,14 +287,28 @@ async function genEPubAsync(folder: string) {
 }
 
 export function init(app: express.Express) {
-    app.get("/api/epub", (req, res) => {
-        if (!req.appuser)
+    function getFolder(req:express.Request) {
+         if (!req.appuser)
             tools.throwError(402)
-        let folder = req.query["folder"] || "book"
-        if (!/^[\w\.\-]+$/i.test(folder))
+        let folder = req.query["folder"]
+        if (!folder || !/^[\w\.\-]+$/i.test(folder))
             tools.throwError(400)
         if (folder.indexOf("private") >= 0)
             tools.throwError(403)
+        return folder
+    }
+
+    app.get("/api/epubtoc", (req, res) => {
+        genTOCAsync(getFolder(req))
+            .then(toc => {
+                res.json({
+                    toc: toc
+                })
+            })
+    })
+
+    app.get("/api/epub", (req, res) => {
+        let folder = getFolder(req)
         genEPubAsync(folder)
             .then(buf => {
                 res.contentType("application/epub+zip")

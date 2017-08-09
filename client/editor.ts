@@ -5,6 +5,10 @@ declare var gitwedPageInfo: gw.PageInfo;
 type SMap<T> = { [s: string]: T };
 
 namespace gw {
+    function htmlQuote(s: string) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+
     function __ct_extends(child: any, parent: any) {
         const __hasProp = {}.hasOwnProperty;
         for (var key in parent) {
@@ -107,6 +111,13 @@ namespace gw {
         method?: string;
         url: string;
         data?: string;
+    }
+
+    export interface TocProps {
+        title: string;
+        author: string;
+        image: string;
+        href: string;
     }
 
     export function httpRequestAsync(opts: RequestOptions) {
@@ -681,12 +692,35 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                     })
             })
 
-            if (gitwedPageInfo.epub)
+            if (gitwedPageInfo.epub) {
+                let folder = window.location.pathname.slice(1).replace(/\/.*/, "")
                 addButton("Download epub", () => {
-                    status("Generating...")
-                    let folder = window.location.pathname.slice(1).replace(/\/.*/, "")
+                    modal.hide()
+                    dialog.hide()
                     window.location.href = "/api/epub?folder=" + encodeURIComponent(folder)
                 })
+                let tocTempl = $("#epub-toc-template").html()
+                    .replace(/^\s*<!--/, "")
+                    .replace(/-->\s*$/, "")
+                if (tocTempl) {
+                    addButton("Re-do TOC", () => {
+                        status("Generating...")
+                        let outer = $(tocTempl)
+                        let inner = outer.html()
+                        outer.empty()
+                        function repl(vars: any) {
+                            return inner.replace(/@(\w+)@/g, (f, id) => htmlQuote(vars[id] || ""))
+                        }
+                        getJsonAsync("/api/epubtoc?folder=" + encodeURIComponent(folder))
+                            .then((res: { toc: TocProps[] }) => {
+                                outer.html(res.toc.map(repl).join("\n"))
+                                editor.ignition().edit()
+                                let toc = editor.regions()["index_toc"]
+                                toc.setContent(outer[0].outerHTML)
+                            })
+                    })
+                }
+            }
 
             if (numdisabled)
                 addButton("Enable template edit", () => {

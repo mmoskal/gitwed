@@ -160,13 +160,19 @@ function expandAsync(cfg: ExpansionConfig) {
     let langMap: SMap<string> = {}
 
     setLocations(h.root(), filename, fileContent)
+
+    function forEach(sel: string, f: (elt: Cheerio) => void) {
+        h(sel).each((i, e) => {
+            f(h(e))
+        })
+    }
+
     return recAsync({ filename, subst: {}, fileContent }, h.root())
         .then(() => {
             h("group, if-edit").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
-            h("li a[href]").each((i, e) => {
-                let ee = h(e)
+            forEach("li a[href]", ee => {
                 let hr = ee.attr("href")
                 let m = /\/([^\/]+)\.html$/.exec(cfg.rootFile)
                 let here = m ? m[1] : "???"
@@ -176,8 +182,7 @@ function expandAsync(cfg: ExpansionConfig) {
                     ee.parent().removeClass("active")
                 }
             })
-            h("[gw-pos]").each((i, e) => {
-                let ee = h(e)
+            forEach("[gw-pos]", ee => {
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
                 let id = ee.attr("edit") || ee.attr("id")
                 id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "") + "-" + id
@@ -218,6 +223,7 @@ function expandAsync(cfg: ExpansionConfig) {
                 idToPos,
                 langMap,
                 cheerio: h,
+                forEach,
                 html: toHTML(h)
             }
         })
