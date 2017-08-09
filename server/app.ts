@@ -400,8 +400,33 @@ async function genericGet(req: express.Request, res: express.Response) {
     let str = await gitfs.main.getTextFileAsync(gitFileName, ref)
         .then(v => v, err =>
             gitfs.main.getTextFileAsync(cleaned + "/index.html")
-                .then(() => res.redirect(cleaned + "/"), _ => notFound(req))
-                .then(() => null))
+                .then(() => res.redirect(req.path + "/"),
+                async (_) => {
+                    if (req.appuser) {
+                        let base = cleaned.replace(/\/[^/]*$/, "")
+                        if (req.query["create"] == "true") {
+                            let t = await gitfs.main.getTextFileAsync(base + "/_new.html", ref)
+                                .then(v => v, e => "")
+                            if (!t) {
+                                notFound(req, base + "/_new.html is missing!")
+                            } else {
+                                const pcfg = await expander.getPageConfigAsync(base + "/_new.html")
+                                const hasWritePerm = await auth.hasWritePermAsync(req.appuser, pcfg.users)
+                                if (!hasWritePerm)
+                                    notFound(req, "No permission to create a new page here.")
+                                else {
+                                    await gitfs.main.setTextFileAsync(gitFileName, t,
+                                        "Create based on _new.html", req.appuser)
+                                    res.redirect(req.path)
+                                }
+                            }
+                        } else {
+                            notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
+                        }
+                    } else
+                        notFound(req)
+                })
+                .then(() => null as string))
 
     if (str == null) return
 
