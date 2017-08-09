@@ -705,18 +705,18 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 if (tocTempl) {
                     addButton("Re-do TOC", () => {
                         status("Generating...")
-                        let outer = $(tocTempl)
-                        let inner = outer.html()
-                        outer.empty()
+                        let inner = tocTempl
                         function repl(vars: any) {
                             return inner.replace(/@(\w+)@/g, (f, id) => htmlQuote(vars[id] || ""))
                         }
                         getJsonAsync("/api/epubtoc?folder=" + encodeURIComponent(folder))
                             .then((res: { toc: TocProps[] }) => {
-                                outer.html(res.toc.map(repl).join("\n"))
+                                let v = res.toc.map(repl).join("\n")
                                 editor.ignition().edit()
                                 let toc = editor.regions()["index_toc"]
-                                toc.setContent(outer[0].outerHTML)
+                                toc.setContent(v)
+                                modal.hide()
+                                dialog.hide()
                             })
                     })
                 }
