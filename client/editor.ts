@@ -627,6 +627,19 @@ namespace gw {
             });
         }
 
+        /*
+        function myPaste(element:any, clip:any) {
+            let html = clip.getData('text/html');
+            if (!html) {
+                return editor.paste(element, clip.getData('text/plain'))
+            }
+        }
+
+        ContentEdit.Root.get().unbind('paste', editor._handleClipboardPaste);
+        ContentEdit.Root.get().bind('paste', function (element: any, ev: any) {
+            myPaste(element, ev.clipboardData || (window as any).clipboardData);
+        });
+        */
 
         let moreBtn = $("<div class='ct-ignition__button ct-ignition__button--more'></div>")
         moreBtn.click(() => {
