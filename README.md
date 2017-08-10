@@ -126,8 +126,13 @@ Users are stored in `private/users.json` file.
 
 * there is no auto-save - you need to click the green accept button; you can also use the red reject
   button to discard changes (the browser will warn you)
-* currently, copy-paste only works for text
-* you can drag paragraphs around - click **and hold for a second**, then drag
+* you can copy-paste one or more paragraphs of formatted text; some formatting will be retained
+* if you copy-paste less than a paragraph, it is pasted as text without any formatting
+* you can copy-paste images - they will be uploaded when you save the page; if images are big
+  pasting them can take a few seconds - just wait a moment after pasting
+* after inserting image you can (and should) resize it so it fits the screen
+* you can drag paragraphs around - click **and hold for a second**, then drag; this includes entries
+  in Table of Contents
 * you can also drag some images, by just clicking and dragging
 * when editing, especially translating, links (or other formatted content like headings), 
   to avoid losing formatting position the cursor in the middle of the link, type the new
