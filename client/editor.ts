@@ -6,8 +6,15 @@ declare var gitwedPageInfo: gw.PageInfo;
 type SMap<T> = { [s: string]: T };
 
 namespace gw {
+    let maxImgSize = 1000
+    let blobData: SMap<{ dataURL: string; serverURL: string; }> = {}
+
     function htmlQuote(s: string) {
         return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+
+    function delay(ms: number): Promise<void> {
+        return (Promise as any).delay(ms)
     }
 
     function __ct_extends(child: any, parent: any) {
@@ -181,8 +188,15 @@ namespace gw {
         return ret
     }
 
-    function justBase64(dataURL: string) {
-        return dataURL.replace(/^[^,]*,/, "")
+    function parseDataUri(dataUri: string) {
+        let s = dataUri.split(',')
+        let m = /^data:([^;]+)/.exec(s[0])
+        return {
+            b64: s[1],
+            mime: m[1],
+            ext: m[1] == "image/png" ? "png" :
+                m[1] == "image/jpeg" ? "jpg" : "???"
+        }
     }
 
     function constrainSize(w: number, h: number, maxW: number, maxH: number) {
@@ -197,11 +211,23 @@ namespace gw {
         }
     }
 
+    function dataUriToBlob(url: string) {
+        let u = parseDataUri(url)
+        let b64 = atob(u.b64)
+        let arr = new Uint8Array(b64.length)
+        for (let i = 0; i < b64.length; ++i)
+            arr[i] = b64.charCodeAt(i)
+        return new Blob([arr.buffer], { type: u.mime });
+    }
+
     function resizePicture(maxW: number, maxH: number, img: HTMLImageElement): ImgResponse {
         let sz = constrainSize(img.width, img.height, maxW, maxH)
         let w = sz.w
         let h = sz.h
-        if (w == img.width) {
+        let isJpeg = /^data:image\/jpeg/.test(img.src)
+        // don't allow largish PNG (likely from copy&paste), or very large JPG files
+        let isOK = (isJpeg && img.src.length < 3000000) || img.src.length < 50000
+        if (w == img.width && isOK) {
             return {
                 url: img.src,
                 w,
@@ -235,25 +261,25 @@ namespace gw {
 
     }
 
+    function postImageUrlAsync(url: string, name: string) {
+        let u = parseDataUri(url)
+        return postJsonAsync("/api/uploadimg", {
+            page: document.location.pathname,
+            full: u.b64,
+            filename: name,
+            format: u.ext,
+        })
+            .then((v: ImgResponse) => v)
+    }
+
     function postImgFileAsync(fileObj: File, max: number) {
         return resizeFileAsync(fileObj, max, max)
-            .then(img => {
-                let format = ""
-                let fullimg = img.url
-                if (/^data:image\/png/.test(fullimg)) format = "png"
-                else format = "jpg"
-
-                return postJsonAsync("/api/uploadimg", {
-                    page: document.location.pathname,
-                    full: justBase64(fullimg),
-                    filename: fileObj.name,
-                    format: format,
-                }).then((v: ImgResponse) => {
+            .then(img => postImageUrlAsync(img.url, fileObj.name)
+                .then((v: ImgResponse) => {
                     v.w = img.w
                     v.h = img.h
                     return v
-                })
-            })
+                }))
     }
 
     function imgUploader(dialog: any) {
@@ -271,7 +297,7 @@ namespace gw {
             dialog.state('uploading');
             dialog.progress(0);
 
-            postImgFileAsync(file, gitwedPageInfo.epub ? 1600 : 1000)
+            postImgFileAsync(file, maxImgSize)
                 .then(resp => {
                     dialog.save(
                         resp.url,
@@ -406,10 +432,11 @@ namespace gw {
                             let link = document.createElement("a");
                             link.href = orig
                             upload.attr("disabled", "true")
+                            let u = parseDataUri(currData)
                             return postJsonAsync("/api/replaceimg", {
                                 page: document.location.pathname,
                                 filename: link.pathname,
-                                full: justBase64(currData),
+                                full: u.b64,
                             }).then(() => {
                                 formCont.empty()
                                 new ContentTools.FlashUI('ok')
@@ -467,6 +494,9 @@ namespace gw {
     $(window).on("load", () => {
         if (!gitwedPageInfo.isEditable)
             return
+
+        if (gitwedPageInfo.epub)
+            maxImgSize = 1600
 
         let evInfo = gitwedPageInfo.eventInfo
 
@@ -528,7 +558,7 @@ namespace gw {
         let failedRegions: any = {}
 
         editor.addEventListener('saved', (ev: any) => {
-            let regions = ev.detail().regions
+            let regions: SMap<string> = ev.detail().regions
 
             copyMissing(regions, failedRegions)
 
@@ -576,7 +606,28 @@ namespace gw {
                     .then(() => { })
             }
 
-            if (Object.keys(regions).length)
+            if (Object.keys(regions).length) {
+                Object.keys(regions).forEach(id => {
+                    let r = regions[id]
+                    let r2 = r.replace(/<img\s[^<>]*src="(blob:[^"]+)/g, (f, url) => {
+                        savePromise = savePromise
+                            .then(() => postImageUrlAsync(blobData[url].dataURL, "clip"))
+                            .then(resp => {
+                                blobData[url].dataURL = ""
+                                blobData[url].serverURL = resp.url
+                                regions[id] = regions[id].replace(url, resp.url)
+                            })
+                        return "did something"
+                    })
+                    if (r != r2)
+                        savePromise = savePromise
+                            .then(() => {
+                                debugger
+                                let toc = editor.regions()[id]
+                                //toc.setContent(regions[id])
+                            })
+                })
+
                 savePromise = savePromise
                     .then(() => (Promise as any).each(Object.keys(regions), (id: string) =>
                         postJsonAsync("/api/update", {
@@ -585,11 +636,18 @@ namespace gw {
                             id: id,
                             value: regions[id]
                         })))
+            }
 
             savePromise
                 .then(() => {
                     editor.busy(false)
                     new ContentTools.FlashUI('ok')
+                    $("img").each((i, e) => {
+                        let ee = $(e)
+                        let d = blobData[ee.attr("src")]
+                        if (d && d.serverURL)
+                            ee.attr("src", d.serverURL)
+                    })
                     final()
                 })
                 .catch((e: any) => {
@@ -645,14 +703,9 @@ namespace gw {
             "i": "i",
         }
 
-        function myPaste(element: any, clip: any) {
-            let html = clip.getData('text/html');
-            if (!html) {
-                return editor.paste(element, clip.getData('text/plain'))
-            }
-
-            let cleaned = ""
+        function pasteHTML(element: any, html: string, text: string) {
             let isBlock = false
+            let cleaned = ""
 
             function addInline(s: string) {
                 if (!s) return
@@ -706,7 +759,12 @@ namespace gw {
             let wrap0 = document.createElement('div')
             wrap0.innerHTML = html
             console.log("ORIG", wrap0)
-            append(wrap0)
+            if (text === null) {
+                cleaned = html
+                isBlock = true
+            } else {
+                append(wrap0)
+            }
             cleaned = cleaned.replace(/<p>\s*<\/p>/g, "")
             console.log(cleaned)
             let wrap1 = document.createElement('div')
@@ -714,7 +772,8 @@ namespace gw {
             console.log("CLEAN", wrap1)
 
             if (!isBlock) {
-                return editor.paste(element, clip.getData('text/plain'))
+                editor.paste(element, text)
+                return
             }
 
             let wrapper = document.createElement('div')
@@ -749,9 +808,37 @@ namespace gw {
                 insertIn.attach(item, insertAt + i++);
             }
 
-            let lineLength = lastItem.content.length()
-            lastItem.focus()
-            return lastItem.selection(new ContentSelect.Range(lineLength, lineLength))
+            if (lastItem) {
+                lastItem.focus()
+                if (lastItem.content) {
+                    let lineLength = lastItem.content.length()
+                    lastItem.selection(new ContentSelect.Range(lineLength, lineLength))
+                }
+            }
+        }
+
+        function myPaste(element: any, clip: any) {
+            if (clip.files && clip.files.length) {
+                editor.busy(true);
+                delay(10)
+                    .then(() => resizeFileAsync(clip.files[0], maxImgSize, maxImgSize))
+                    .then(res => {
+                        let burl = window.URL.createObjectURL(dataUriToBlob(res.url))
+                        blobData[burl] = { dataURL: res.url, serverURL: null }
+                        editor.busy(false)
+                        pasteHTML(element,
+                            `<img src="${burl}" width=${res.w} height=${res.h}>`,
+                            null)
+                    })
+                return
+            }
+
+            let html = clip.getData('text/html');
+            let text = clip.getData('text/plain') || ""
+            if (!html)
+                editor.paste(element, text)
+            else
+                pasteHTML(element, html, text)
         }
 
         ContentEdit.Root.get().unbind('paste', editor._handleClipboardPaste);
