@@ -74,6 +74,11 @@ function fileOK(fn: string) {
     return !/^[\/\.]/.test(fn)
 }
 
+function resolveHref(s: string) {
+    if (!/\.html$/.test(s)) s += ".html"
+    return s
+}
+
 // TODO handle mising files!
 
 function runExpanderAsync(fn: string) {
@@ -113,7 +118,7 @@ async function genTOCAsync(folder: string) {
     res.forEach("a", e => {
         let href = e.attr("href")
         if (fileOK(href))
-            subpages.push(href)
+            subpages.push(resolveHref(href))
     })
     let rr: TocProps[] = []
     for (let fn of subpages) {
@@ -226,6 +231,16 @@ async function genEPubAsync(folder: string) {
             })
         })
 
+        let subpages: string[] = []
+        forEach("a", e => {
+            let href = e.attr("href")
+            if (fileOK(href)) {
+                href = resolveHref(href)
+                e.attr("href", href)
+                subpages.push(href)
+            }
+        })
+
         let data: any = h.xml()
         if (htmlName == "index.html") {
             data = 0
@@ -248,13 +263,6 @@ async function genEPubAsync(folder: string) {
 `
 
         if (htmlName == "index.html") {
-            let subpages: string[] = []
-            forEach("a", e => {
-                let href = e.attr("href")
-                if (fileOK(href)) {
-                    subpages.push(href)
-                }
-            })
             for (let fn of subpages) {
                 await expandAsync(fn)
             }
@@ -287,8 +295,8 @@ async function genEPubAsync(folder: string) {
 }
 
 export function init(app: express.Express) {
-    function getFolder(req:express.Request) {
-         if (!req.appuser)
+    function getFolder(req: express.Request) {
+        if (!req.appuser)
             tools.throwError(402)
         let folder = req.query["folder"]
         if (!folder || !/^[\w\.\-]+$/i.test(folder))

@@ -54,7 +54,10 @@
 .ct-widget .ct-tool--h3:before,
 .ct-widget .ct-tool--h4:before,
 .ct-widget .ct-tool--h5:before,
-.ct-widget .ct-tool--h6:before {
+.ct-widget .ct-tool--h6:before,
+.ct-widget .ct-tool--sup:before,
+.ct-widget .ct-tool--figcaption:before,
+.ct-widget .ct-tool--blockquote:before {
     font-family: serif;
 }
 
@@ -81,6 +84,19 @@
 .ct-widget .ct-tool--h6:before {
     content: "H6";
 }
+
+.ct-widget .ct-tool--blockquote:before {
+    content: "❝❞";
+}
+
+.ct-widget .ct-tool--sup:before {
+    content: "¹²³";
+}
+
+.ct-widget .ct-tool--figcaption:before {
+    content: "Fig";
+}
+
 
 #gw-meta-section {
     font-size: 16px;
@@ -149,6 +165,7 @@
 #gw-img-edit-cont .gw-img-edit img {
     max-width: 100%;
     max-height: 100%;
+    margin: 0 auto;
 }
 
 .gw-busy {

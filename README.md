@@ -130,6 +130,8 @@ Users are stored in `private/users.json` file.
 * if you copy-paste less than a paragraph, it is pasted as text without any formatting
 * you can copy-paste images - they will be uploaded when you save the page; if images are big
   pasting them can take a few seconds - just wait a moment after pasting
+* when copy-pasting from different sources of text it's often useful to start selecting from 
+  the end of the paragraph(s), not the beginning
 * after inserting image you can (and should) resize it so it fits the screen
 * you can drag paragraphs around - click **and hold for a second**, then drag; this includes entries
   in Table of Contents

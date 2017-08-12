@@ -29,12 +29,12 @@ namespace gw {
         return child;
     }
 
-    function mkTool(tag: string, icon: string = "") {
+    function mkTool(tag: string, icon: string = "", isInline = false) {
         let Tool: any = function () {
             return Tool.__super__.constructor.apply(this, arguments);
         }
 
-        __ct_extends(Tool, ContentTools.Tools.Heading);
+        __ct_extends(Tool, isInline ? ContentTools.Tools.Bold : ContentTools.Tools.Heading);
 
         ContentTools.ToolShelf.stow(Tool, tag);
 
@@ -46,11 +46,15 @@ namespace gw {
     }
 
     for (let i = 1; i <= 6; i++) mkTool("h" + i)
+    mkTool("blockquote")
+    mkTool("figcaption")
+    mkTool("sup", "", true)
 
     const fullTools = [
-        ['bold', 'italic', 'link', 'align-left', 'align-center', 'align-right'],
+        ['bold', 'italic', 'link', 'sup', 'align-left', 'align-center', 'align-right'],
         ['h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'paragraph', 'unordered-list', 'ordered-list',
+            'blockquote', 'figcaption',
             'table', 'indent', 'unindent', 'line-break'],
         ['image', 'video', 'preformatted'],
         ['undo', 'redo', 'remove']
@@ -530,7 +534,7 @@ namespace gw {
             'address', 'blockquote',
             'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'p', 'div', 'a', 'span', 'li',
-            'label', 'footer', 'section');
+            'label', 'footer', 'section', 'figcaption');
 
         let editor: any
         ContentTools.StylePalette.add([
@@ -743,6 +747,8 @@ namespace gw {
                             tag = "i"
                         if (/font-weight:\s*(bold|900|800|700)/.test(st))
                             tag = "b"
+                        if (/vertical-align:\s*super/.test(st))
+                            tag = "sup"
                         if (tag)
                             addInline(`<${tag}>`)
                     }
@@ -765,28 +771,33 @@ namespace gw {
             } else {
                 append(wrap0)
             }
+            cleaned = cleaned.replace(/<\/b>(\s*)<b>/g, (f, x) => x)
+            cleaned = cleaned.replace(/<b>(\s*)<\/b>/g, (f, x) => x)
+            cleaned = cleaned.replace(/<\/i>(\s*)<i>/g, (f, x) => x)
             cleaned = cleaned.replace(/<p>\s*<\/p>/g, "")
+            cleaned = cleaned.replace(/<p><b>([^<>]+)<\/b><\/p>/g, (f, x) => "<h3>" + x + "</h3>")
             console.log(cleaned)
             let wrap1 = document.createElement('div')
             wrap1.innerHTML = cleaned
             console.log("CLEAN", wrap1)
 
-            if (!isBlock) {
+            let insertNode = element
+            if (insertNode.parent().type() !== 'Region') {
+                insertNode = element.closest((node: any) =>
+                    node.parent() && node.parent().type() === 'Region')
+            }
+
+            if (!isBlock || !insertNode) {
                 editor.paste(element, text)
                 return
             }
 
-            let wrapper = document.createElement('div')
-            wrapper.innerHTML = cleaned
-
-            let insertNode = element
-            if (insertNode.parent().type() !== 'Region') {
-                insertNode = element.closest((node: any) =>
-                    node.parent().type() === 'Region')
-            }
             const insertIn = insertNode.parent();
             const insertAt = insertIn.children.indexOf(insertNode) + 1;
             let lastItem: any
+
+            let wrapper = document.createElement('div')
+            wrapper.innerHTML = cleaned
 
             let elts: HTMLElement[] = []
             for (let i = 0; i < wrapper.childNodes.length; ++i) {
@@ -820,8 +831,7 @@ namespace gw {
         function myPaste(element: any, clip: any) {
             if (clip.files && clip.files.length) {
                 editor.busy(true);
-                delay(10)
-                    .then(() => resizeFileAsync(clip.files[0], maxImgSize, maxImgSize))
+                resizeFileAsync(clip.files[0], maxImgSize, maxImgSize)
                     .then(res => {
                         let burl = window.URL.createObjectURL(dataUriToBlob(res.url))
                         blobData[burl] = { dataURL: res.url, serverURL: null }
