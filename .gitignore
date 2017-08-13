@@ -4,5 +4,5 @@ built
 config.json
 cache/
 logs
-map-cache/
+*-cache/
 tmp

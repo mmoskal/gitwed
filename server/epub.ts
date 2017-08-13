@@ -11,6 +11,7 @@ import auth = require('./auth')
 import winston = require('winston')
 import logs = require('./logs')
 import routing = require('./routing')
+import img = require('./img')
 
 
 const metaInf = `<?xml version="1.0"?>
@@ -183,6 +184,12 @@ async function genEPubAsync(folder: string) {
         let add = ""
         if (addProps[n])
             add = `properties="${addProps[n]}"`
+     
+        if (m == "image/jpeg" || m == "image/png") {
+            let tmp = await img.resizeAsync(data, { maxWidth: /cover/.test(add) ? 2000 : 1000 })
+            data = tmp.buffer
+        }
+     
         opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" ${add} />\n`
         if (data !== 0) {
             zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
@@ -256,7 +263,9 @@ async function genEPubAsync(folder: string) {
                     addProps[fn] = "cover-image"
                 }
             }
-            let isSmall = parseInt(e.attr("width")) < 350
+            let isSmall = 
+                parseInt(e.attr("width")) < 350 &&
+                parseInt(e.attr("height")) < 350
             if (isSmall)
                 e.addClass("small")
             e.removeAttr("width")
