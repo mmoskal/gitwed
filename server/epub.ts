@@ -72,12 +72,16 @@ function xmlQ(s: string) {
 
 
 function fileOK(fn: string) {
-    return !/^[\/\.]/.test(fn)
+    return fn && !/^[\/\.]/.test(fn)
 }
 
-function resolveHref(s: string) {
+function resolveHref(s: string): string {
     if (!s) return s
-    if (s[0] == '#')
+    let m = /(.*)(#.*)/.exec(s)
+    if (m) {
+        return resolveHref(m[1]) + m[2]
+    }
+    if (/^https?:/.test(s))
         return s
     if (!/\.html$/.test(s)) s += ".html"
     return s
@@ -163,6 +167,8 @@ async function genEPubAsync(folder: string) {
     let date = ""
     let indexCheerio: CheerioStatic = null
 
+    let subpages: string[] = []
+
     function addText(fn: string, data: string) {
         zip.file(fn, data, { compression: "DEFLATE" })
     }
@@ -184,12 +190,12 @@ async function genEPubAsync(folder: string) {
         let add = ""
         if (addProps[n])
             add = `properties="${addProps[n]}"`
-     
+
         if (m == "image/jpeg" || m == "image/png") {
             let tmp = await img.resizeAsync(data, { maxWidth: /cover/.test(add) ? 2000 : 1000 })
             data = tmp.buffer
         }
-     
+
         opf += `    <item id="f${fileNo}" href="${n}" media-type="${m}" ${add} />\n`
         if (data !== 0) {
             zip.file(n, data, { compression: /image/.test(m) ? "STORE" : "DEFLATE" })
@@ -205,6 +211,29 @@ async function genEPubAsync(folder: string) {
         const forEach = res.forEach
 
         h("body").removeClass("web")
+
+        let htmlIdx = subpages.indexOf(htmlName)
+        let navTmpl = h("#epub-prev-next")
+        if (htmlIdx != -1 && navTmpl.length) {
+            let tmpl =
+                navTmpl.html()
+                    .replace(/^\s*<!--/, "")
+                    .replace(/-->\s*$/, "")
+            if (tmpl) {
+                let tt = h(tmpl)
+                if (htmlIdx == 0)
+                    tt.find(".prev").addClass("disabled")
+                else
+                    tt.find(".prev").attr("href", subpages[htmlIdx - 1])
+                if (htmlIdx + 1 >= subpages.length)
+                    tt.find(".next").addClass("disabled")
+                else
+                    tt.find(".next").attr("href", subpages[htmlIdx + 1])
+                tt.find(".idx").attr("href", "index.html#toc-pre")
+                h("h1").first().parent().prepend(tt.clone())
+                //h("h1").first().parent().append(tt.clone())
+            }
+        }
 
         if (!opf) {
             opf = opfHead
@@ -263,7 +292,7 @@ async function genEPubAsync(folder: string) {
                     addProps[fn] = "cover-image"
                 }
             }
-            let isSmall = 
+            let isSmall =
                 parseInt(e.attr("width")) < 350 &&
                 parseInt(e.attr("height")) < 350
             if (isSmall)
@@ -296,13 +325,14 @@ async function genEPubAsync(folder: string) {
             })
         })
 
-        let subpages: string[] = []
         forEach("a", e => {
             let href = e.attr("href")
             if (fileOK(href)) {
                 href = resolveHref(href)
                 e.attr("href", href)
-                subpages.push(href)
+                if (htmlName == "index.html") {
+                    subpages.push(href)
+                }
             }
         })
 
