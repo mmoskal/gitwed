@@ -75,6 +75,9 @@ function fileOK(fn: string) {
 }
 
 function resolveHref(s: string) {
+    if (!s) return s
+    if (s[0] == '#')
+        return s
     if (!/\.html$/.test(s)) s += ".html"
     return s
 }
@@ -94,6 +97,7 @@ export interface TocProps {
     author: string;
     image: string;
     href: string;
+    flags: string;
 }
 
 async function genTOCAsync(folder: string) {
@@ -103,11 +107,16 @@ async function genTOCAsync(folder: string) {
         let title = h(".title").first().text().trim()
         let author = h(".author").first().text().trim()
         let image = h("img").first().attr("src")
+        let flags = h("div[id=gw-meta-flags]").text() || ""
+        if (!image || /no-toc-img/i.test(flags))
+             image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8vyL6PwAHswMDJopgsQAAAABJRU5ErkJggg=="
+            //image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
         return {
             title,
             author,
             image,
-            href: htmlName
+            href: htmlName,
+            flags
         }
     }
 
@@ -206,17 +215,53 @@ async function genEPubAsync(folder: string) {
 
         h("script").remove()
 
+        forEach("sup", e => {
+            let par = e.parent()
+            let t = e.text().trim()
+            let m = /^\s*(\d+)\s*$/.exec(t)
+            if (m) {
+                let id = parseInt(m[1])
+                if (par.is("p") && /^\s*<sup>/.test(par.html())) {
+                    par.attr("id", "foot" + id)
+                    e.replaceWith(`<a epub:type="footnote" class="footback" href="#footback${id}"><sup>${id}</sup></a>`)
+                } else {
+                    e.replaceWith(`<a epub:type="noteref" class="foot" id="footback${id}" href="#foot${id}"><sup>${id}</sup></a>`)
+                }
+            } else {
+                t = t.toLowerCase()
+                if (t == "end") {
+                    e.replaceWith(`<span class="end"><img src="img/end.png" alt="The End."></span>`)
+                }
+            }
+        })
+
         forEach("img", e => {
             let fn = e.attr("src")
             if (!e.attr("alt"))
                 e.attr("alt", fn)
             if (!fileOK(fn)) {
                 e.remove()
+                return
+            } else if (/^data:/.test(fn)) {
+                // OK
             } else {
                 subfiles.push(fn)
                 if (e.hasClass("cover")) {
                     addProps[fn] = "cover-image"
                 }
+            }
+            e.removeAttr("width")
+            e.removeAttr("height")
+            let par = e.parent()
+            if (!par.is("div"))
+                return
+
+            let n = e.next("*")
+            let tmp = h(`<figure></figure>`)
+            e.replaceWith(tmp)
+            tmp.append(e)
+            if (n.is("figcaption")) {
+                tmp.append(n)
             }
         })
 

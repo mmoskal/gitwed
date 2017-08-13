@@ -130,6 +130,7 @@ namespace gw {
         author: string;
         image: string;
         href: string;
+        flags: string;
     }
 
     export function httpRequestAsync(opts: RequestOptions) {
@@ -626,8 +627,7 @@ namespace gw {
                     if (r != r2)
                         savePromise = savePromise
                             .then(() => {
-                                debugger
-                                let toc = editor.regions()[id]
+                                //let toc = editor.regions()[id]
                                 //toc.setContent(regions[id])
                             })
                 })
@@ -763,6 +763,8 @@ namespace gw {
             }
 
             let wrap0 = document.createElement('div')
+            // remove word-breaks
+            html = html.replace(/-<br\s*\/>/g, "")
             wrap0.innerHTML = html
             console.log("ORIG", wrap0)
             if (text === null) {

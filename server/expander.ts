@@ -270,7 +270,7 @@ function expandAsync(cfg: ExpansionConfig) {
     function metaRewrite() {
         let clean = (s: string) => (s || "").replace(/\s+/g, " ").trim()
         let metas: SMap<string> = {
-            title: clean(h("#gw-meta-title").text() || h("title").text())
+            title: clean(h("#gw-meta-title").text() || h("title").text() || h("h1").first().text())
         }
         let commonMeta = ["description", "keywords", "copyright", "author"]
         for (let m of commonMeta) {
