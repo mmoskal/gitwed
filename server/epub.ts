@@ -197,6 +197,8 @@ async function genEPubAsync(folder: string) {
         const h = res.cheerio
         const forEach = res.forEach
 
+        h("body").removeClass("web")
+
         if (!opf) {
             opf = opfHead
                 .replace(/<dc:(\w+)><\/dc:[^<>]+>/g, (f, id) => {
@@ -254,6 +256,9 @@ async function genEPubAsync(folder: string) {
                     addProps[fn] = "cover-image"
                 }
             }
+            let isSmall = parseInt(e.attr("width")) < 350
+            if (isSmall)
+                e.addClass("small")
             e.removeAttr("width")
             e.removeAttr("height")
             let par = e.parent()
@@ -262,6 +267,8 @@ async function genEPubAsync(folder: string) {
 
             let n = e.next("*")
             let tmp = h(`<figure></figure>`)
+            if (isSmall)
+                tmp.addClass("small")
             e.replaceWith(tmp)
             tmp.append(e)
             if (n.is("figcaption")) {
