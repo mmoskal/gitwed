@@ -108,9 +108,13 @@ async function genTOCAsync(folder: string) {
         let author = h(".author").first().text().trim()
         let image = h("img").first().attr("src")
         let flags = h("div[id=gw-meta-flags]").text() || ""
-        if (!image || /no-toc-img/i.test(flags))
+        if (/no-toc-img/i.test(flags))
+            image = null
+        /*
+        if (!image)
              image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8vyL6PwAHswMDJopgsQAAAABJRU5ErkJggg=="
             //image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+        */
         return {
             title,
             author,

@@ -932,11 +932,16 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 let tocTempl = $("#epub-toc-template").html()
                     .replace(/^\s*<!--/, "")
                     .replace(/-->\s*$/, "")
+                
+                let tocTemplNoImg = $("#epub-toc-template-no-img").html()
+                    .replace(/^\s*<!--/, "")
+                    .replace(/-->\s*$/, "")
+
                 if (tocTempl) {
                     addButton("Re-do TOC", () => {
                         status("Generating...")
-                        let inner = tocTempl
                         function repl(vars: any) {
+                            let inner = vars["image"] ? tocTempl : tocTemplNoImg
                             return inner.replace(/@(\w+)@/g, (f, id) => htmlQuote(vars[id] || ""))
                         }
                         getJsonAsync("/api/epubtoc?folder=" + encodeURIComponent(folder))
