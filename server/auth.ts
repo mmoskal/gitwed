@@ -211,6 +211,7 @@ export function initRoutes(app: express.Express) {
 
         let page = req.body.path + ""
         let email = normalizeEmail(req.body.email + "")
+        let repo = gitfs.findRepo(page)
 
         let cfgPath = expander.pageConfigPath(page)
         if (!cfgPath)
@@ -224,7 +225,7 @@ export function initRoutes(app: express.Express) {
         if (!await expander.hasWritePermAsync(req.appuser, page))
             return res.status(402).end()
 
-        await gitfs.main.pokeAsync(true)
+        await repo.pokeAsync(true)
 
         let u = await lookupUserAsync(email)
         if (!u) {
@@ -253,7 +254,7 @@ export function initRoutes(app: express.Express) {
             }, msg, req.appuser)
         } else {
             cfg.users.push(email)
-            await gitfs.main.setJsonFileAsync(cfgPath, cfg, msg, req.appuser)
+            await repo.setJsonFileAsync(cfgPath, cfg, msg, req.appuser)
         }
 
         await mail.sendAsync({

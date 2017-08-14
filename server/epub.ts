@@ -187,7 +187,7 @@ async function genEPubAsync(opts: EPubOptions) {
         if (filePresent[n])
             return "f" + filePresent[n]
         if (data === null)
-            data = await gitfs.main.getFileAsync(folder + "/" + n, "master")
+            data = await gitfs.findRepo(folder).getFileAsync(folder + "/" + n, "master")
         let m = mime.lookup(n)
         if (m == "text/html")
             m = "application/xhtml+xml"

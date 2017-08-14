@@ -126,7 +126,7 @@ app.get("/api/history", (req, res) => {
         tools.throwError(402)
     let p = sanitizePath(req.query["path"] || "/").join("/")
 
-    gitfs.main.logAsync(p || ".")
+    gitfs.findRepo(p).logAsync(p || ".")
         .then(j => res.json(j))
 })
 
@@ -157,7 +157,7 @@ app.post("/api/uploadimg", (req, res) => {
                 return res.status(403).end()
 
             fileLocks(path, () =>
-                gitfs.main.createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
+                gitfs.findRepo(path).createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
                     .then(imgName => {
                         res.json({
                             url: "img/" + imgName
@@ -187,7 +187,7 @@ app.post("/api/replaceimg", (req, res) => {
                 return res.status(403).end()
 
             fileLocks(path, () =>
-                gitfs.main.setBinFileAsync(path, buf, msg, req.appuser)
+                gitfs.findRepo(path).setBinFileAsync(path, buf, msg, req.appuser)
                     .then(() => {
                         res.json({
                         })
@@ -199,7 +199,7 @@ app.post("/api/replaceimg", (req, res) => {
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
-    gitfs.main.pokeAsync(true)
+    gitfs.findRepo(req.query["path"] || "").pokeAsync(true)
         .then(() => {
             res.json({})
         })
@@ -219,6 +219,8 @@ app.post("/api/update", (req, res) => {
     let fn = page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)
         return res.status(402).end()
+
+    let repo = gitfs.findRepo(fn)
 
     let lang: string = req.body.lang
     let cfg: expander.ExpansionConfig = {
@@ -262,13 +264,13 @@ app.post("/api/update", (req, res) => {
 
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
-                    gitfs.main.setTextFileAsync(cfg.langFileName, newCont,
+                    repo.setTextFileAsync(cfg.langFileName, newCont,
                         "Translate " + cfg.langFileName + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else if (desc) {
                     let cont = page.allFiles[desc.filename]
                     let newCont = cont.slice(0, desc.startIdx) + val + cont.slice(desc.startIdx + desc.length)
-                    gitfs.main.setTextFileAsync(desc.filename, newCont,
+                    repo.setTextFileAsync(desc.filename, newCont,
                         "Update " + desc.filename + " / " + id, req.appuser)
                         .then(() => res.end("OK"))
                 } else {
@@ -282,14 +284,17 @@ app.use("/.well-known", express.static("/var/www/html/.well-known"))
 app.use("/map-cache", express.static("map-cache"))
 app.use("/cdn/map-cache", express.static("map-cache"))
 
-app.get(/^\/cdn\/(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
-    let sha = req.params[1]
-    let filename = req.params[2]
+app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
+    let id = req.params[1] || "main"
+    let sha = req.params[3]
+    let filename = req.params[4]
+    let repo = tools.lookup(gitfs.repos, id)
+    if (!repo) repo = gitfs.main
     if (filename[0] == ".") filename = "blob" + filename
     if (tools.etagMatches(req, sha + "-0"))
         return
     tools.allowReqCache(req)
-    gitfs.main.getFileAsync(sha, "SHA")
+    repo.getFileAsync(sha, "SHA")
         .then(buf => {
             res.writeHead(200, {
                 'Content-Type': mime.lookup(filename),
@@ -367,11 +372,13 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
     }
 
+    let repo = gitfs.findRepo(gitFileName)
+
     if (!isHtml) {
-        gitfs.main.getFileAsync(gitFileName, ref)
+        repo.getFileAsync(gitFileName, ref)
             .then(v => v, err =>
                 gitFileName.endsWith("favicon.ico") ?
-                    gitfs.main.getFileAsync("favicon.ico", ref) :
+                    repo.getFileAsync("favicon.ico", ref) :
                     Promise.reject(err))
             .then(buf => {
                 res.writeHead(200, {
@@ -397,15 +404,15 @@ async function genericGet(req: express.Request, res: express.Response) {
         return res.end(cached)
     }
 
-    let str = await gitfs.main.getTextFileAsync(gitFileName, ref)
+    let str = await repo.getTextFileAsync(gitFileName, ref)
         .then(v => v, err =>
-            gitfs.main.getTextFileAsync(cleaned + "/index.html")
+            repo.getTextFileAsync(cleaned + "/index.html")
                 .then(() => res.redirect(req.path + "/"),
                 async (_) => {
                     if (req.appuser) {
                         let base = cleaned.replace(/\/[^/]*$/, "")
                         if (req.query["create"] == "true") {
-                            let t = await gitfs.main.getTextFileAsync(base + "/_new.html", ref)
+                            let t = await repo.getTextFileAsync(base + "/_new.html", ref)
                                 .then(v => v, e => "")
                             if (!t) {
                                 notFound(req, base + "/_new.html is missing!")
@@ -415,7 +422,7 @@ async function genericGet(req: express.Request, res: express.Response) {
                                 if (!hasWritePerm)
                                     notFound(req, "No permission to create a new page here.")
                                 else {
-                                    await gitfs.main.setTextFileAsync(gitFileName, t,
+                                    await repo.setTextFileAsync(gitFileName, t,
                                         "Create based on _new.html", req.appuser)
                                     res.redirect(req.path)
                                 }
@@ -593,9 +600,9 @@ function setupCerts() {
 
 gitfs.initAsync(cfg)
     .then(() => {
-        gitfs.main.onUpdate(() => pageCache.flush())
-        if (gitfs.events)
-            gitfs.events.onUpdate(() => pageCache.flush())
+        for (let r of tools.values(gitfs.repos)) {
+            r.onUpdate(() => pageCache.flush())
+        }
         events.initRoutes(app)
         setupFinalRoutes()
 

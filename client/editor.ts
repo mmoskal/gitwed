@@ -915,7 +915,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 
             addButton("Force server refresh", () => {
                 status("Refreshing...")
-                getJsonAsync("/api/refresh")
+                getJsonAsync("/api/refresh?path=" + encodeURIComponent(window.location.pathname))
                     .then(() => {
                         status("Done.")
                         window.location.reload()

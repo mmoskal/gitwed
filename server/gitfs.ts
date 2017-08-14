@@ -15,6 +15,7 @@ export interface Config {
     justDir?: boolean;
     repoPath?: string;
     eventsRepoPath?: string;
+    sideRepos?: SMap<string>;
     mailgunApiKey?: string;
     gmapsKey?: string;
     mailgunDomain?: string;
@@ -73,10 +74,29 @@ export interface GitFs {
     setBinFileAsync: (name: string, val: Buffer, msg: string, useremail: string) => Promise<void>;
     createBinFileAsync: (dir: string, basename: string, ext: string, buf: Buffer, msg: string, user: string) => Promise<string>;
     onUpdate: (f: (isPull: boolean) => void) => void;
+
+    path: string;
+    id: string;
 }
 
 export let main: GitFs;
 export let events: GitFs;
+export let repos: SMap<GitFs> = {};
+
+const repoByDirCache: SMap<GitFs> = {}
+export function findRepo(path: string): GitFs {
+    let p0 = path.split('/').filter(s => !!s)[0]
+    if (!p0 || p0[0] == '.') return main
+    let curr = tools.lookup(repoByDirCache, p0)
+    if (curr) return curr
+    for (let r of tools.values(repos)) {
+        if (fs.existsSync(r.path + "/" + p0)) {
+            repoByDirCache[p0] = r
+            return r
+        }
+    }
+    return main
+}
 
 function join(a: string, b: string) {
     return a.replace(/\/+$/, "") + "/" + b.replace(/^\/+/, "")
@@ -202,7 +222,7 @@ export function shutdown() {
         })
 }
 
-export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
+export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs> {
     let gitCatFile: child_process.ChildProcess
     let lastUsage = 0
     let gitCatFileBuf = new tools.PromiseBuffer<Buffer>()
@@ -228,7 +248,9 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
         setBinFileAsync,
         createBinFileAsync,
         logAsync,
-        onUpdate: f => onUpdate.push(f)
+        onUpdate: f => onUpdate.push(f),
+        path: repoPath,
+        id: id
     }
 
     shutdownQueue.push(shutdownAsync)
@@ -245,6 +267,8 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
 
     await statusCleanAsync()
     await pullAsync()
+
+    repos[iface.id] = iface
     return iface
 
     async function getTextFileAsync(name: string, ref = "master"): Promise<string> {
@@ -641,7 +665,11 @@ export async function mkGitFsAsync(repoPath: string): Promise<GitFs> {
 
 export async function initAsync(cfg: Config) {
     config = cfg
-    main = await mkGitFsAsync(cfg.repoPath)
+    main = await mkGitFsAsync("main", cfg.repoPath)
     if (cfg.eventsRepoPath)
-        events = await mkGitFsAsync(cfg.eventsRepoPath)
+        events = await mkGitFsAsync("events", cfg.eventsRepoPath)
+    let s = cfg.sideRepos||{}
+    for (let k of Object.keys(s)) {
+        await mkGitFsAsync(k, s[k])
+    }
 }

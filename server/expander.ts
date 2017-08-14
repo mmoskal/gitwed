@@ -228,11 +228,11 @@ function expandAsync(cfg: ExpansionConfig) {
             }
         })
 
-    function getTreeAsync(path: string) {
+    function getTreeAsync(repo: gitfs.GitFs, path: string) {
         if (trees[path])
             return trees[path]
         return (trees[path] =
-            gitfs.main.getTreeAsync(path, cfg.ref)
+            repo.getTreeAsync(path, cfg.ref)
                 .then(ents => {
                     if (!ents)
                         winston.debug("no such tree: " + path + " in " + cfg.ref)
@@ -243,14 +243,17 @@ function expandAsync(cfg: ExpansionConfig) {
     function replUrlAsync(url: string) {
         let resolved = relativePath(cfg.rootFile, url)
         let spl = gitfs.splitName(resolved)
-        return getTreeAsync(spl.parent)
+        let repo = gitfs.findRepo(spl.parent)
+        winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
+        return getTreeAsync(repo, spl.parent)
             .then(ents => {
                 if (!ents)
                     return url
                 let e = ents.find(x => x.name == spl.name)
                 if (e) {
                     let ext = spl.name.replace(/.*\./, ".")
-                    return gitfs.config.cdnPath + "/" + spl.name + "-" + e.sha + ext
+                    let pref = repo.id == "main" ? "" : repo.id + "/"
+                    return gitfs.config.cdnPath + "/" + pref + spl.name + "-" + e.sha + ext
                 } else {
                     winston.debug("no such file: " + resolved + " in " + cfg.ref)
                     return url
@@ -411,7 +414,7 @@ function expandAsync(cfg: ExpansionConfig) {
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         filename = relativePath(ctx.filename, filename)
-        return gitfs.main.getTextFileAsync(filename, cfg.ref)
+        return gitfs.findRepo(filename).getTextFileAsync(filename, cfg.ref)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
@@ -507,7 +510,7 @@ function expandAsync(cfg: ExpansionConfig) {
 function fillContentAsync(cfg: ExpansionConfig) {
     if (cfg.rootFileContent != null)
         return Promise.resolve()
-    return gitfs.main.getTextFileAsync(cfg.rootFile, cfg.ref)
+    return gitfs.findRepo(cfg.rootFile).getTextFileAsync(cfg.rootFile, cfg.ref)
         .then(s => {
             cfg.rootFileContent = s
         })
@@ -530,7 +533,7 @@ export function getPageConfigAsync(page: string): Promise<PageConfig> {
         return Promise.resolve({} as PageConfig)
     // config always takes from master
     return Promise.resolve()
-        .then(() => gitfs.main.getTextFileAsync(path)
+        .then(() => gitfs.findRepo(path).getTextFileAsync(path)
             .then(v => v, e => {
                 winston.info(path + ": " + e.message)
                 return ""
@@ -598,7 +601,7 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     if (cfg.lang != plangs[0]) {
         cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-        cfg.langFileContent = await gitfs.main.getTextFileAsync(cfg.langFileName, cfg.ref)
+        cfg.langFileContent = await gitfs.findRepo(cfg.langFileName).getTextFileAsync(cfg.langFileName, cfg.ref)
             .then(v => v, e => "")
     }
 
