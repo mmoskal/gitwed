@@ -13,6 +13,11 @@ import logs = require('./logs')
 import routing = require('./routing')
 import img = require('./img')
 
+interface EPubOptions {
+    folder: string;
+    isKindle: boolean;
+}
+
 
 const metaInf = `<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -145,7 +150,8 @@ async function genTOCAsync(folder: string) {
     return rr
 }
 
-async function genEPubAsync(folder: string) {
+async function genEPubAsync(opts: EPubOptions) {
+    const folder = opts.folder
     const zip = new JSZip()
     const hash = crypto.createHash("sha256")
     const hashSep = "VtoFQZQyyrpuGVRBiFF3oTxpyDcNO7JBIJyaH"
@@ -230,7 +236,11 @@ async function genEPubAsync(folder: string) {
                 else
                     tt.find(".next").attr("href", subpages[htmlIdx + 1])
                 tt.find(".idx").attr("href", "index.html#toc-pre")
-                h("h1").first().parent().prepend(tt.clone())
+
+                let author = h("h2.author")
+                if (!author.length) author = h("h1")
+                author.first().after(tt.clone())
+
                 //h("h1").first().parent().append(tt.clone())
             }
         }
@@ -249,6 +259,10 @@ async function genEPubAsync(folder: string) {
         let subfiles: string[] = []
         forEach("link[rel=stylesheet]", e => {
             let fn = e.attr("href")
+            if (opts.isKindle) {
+                fn = fn.replace("epub", "kindle")
+                e.attr("href", fn)
+            }
             if (fileOK(fn))
                 subfiles.push(fn)
             else
@@ -390,7 +404,7 @@ async function genEPubAsync(folder: string) {
 }
 
 export function init(app: express.Express) {
-    function getFolder(req: express.Request) {
+    function getFolder(req: express.Request): string {
         if (!req.appuser)
             tools.throwError(402)
         let folder = req.query["folder"]
@@ -412,7 +426,10 @@ export function init(app: express.Express) {
 
     app.get("/api/epub", (req, res) => {
         let folder = getFolder(req)
-        genEPubAsync(folder)
+        genEPubAsync({
+            folder,
+            isKindle: !!req.query["kindle"]
+        })
             .then(buf => {
                 res.contentType("application/epub+zip")
                 res.header("Content-Disposition",

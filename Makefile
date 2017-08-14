@@ -25,6 +25,6 @@ deploy:
 	kill `ps fax | grep "node[ ]gitwed"|awk '{print $$1}'`
 
 e:
-	curl -s 'http://localhost:3000/api/epub?folder=book' > tmp/book.epub
+	curl -s 'http://localhost:3000/api/epub?folder=book&kindle=yes' > tmp/book.epub
 	cd tmp; rm -rf out; mkdir out; cd out; 7z x ../book.epub >/dev/null
 	java -jar ~/src/ebooks-kindle/soft/epubcheck-3.0.jar tmp/book.epub
