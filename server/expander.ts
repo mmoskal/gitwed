@@ -244,7 +244,7 @@ function expandAsync(cfg: ExpansionConfig) {
         let resolved = relativePath(cfg.rootFile, url)
         let spl = gitfs.splitName(resolved)
         let repo = gitfs.findRepo(spl.parent)
-        winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
+        //winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
         return getTreeAsync(repo, spl.parent)
             .then(ents => {
                 if (!ents)

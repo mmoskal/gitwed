@@ -376,16 +376,23 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (!isHtml) {
         repo.getFileAsync(gitFileName, ref)
-            .then(v => v, err =>
-                gitFileName.endsWith("favicon.ico") ?
-                    repo.getFileAsync("favicon.ico", ref) :
-                    Promise.reject(err))
+            .then(v => v, err => {
+                if (gitFileName.endsWith("favicon.ico"))
+                    return repo.getFileAsync("favicon.ico", ref)
+                if (err.code == "EISDIR") {
+                    res.redirect(req.path + "/")
+                    return null
+                }
+                return Promise.reject(err)
+            })
             .then(buf => {
-                res.writeHead(200, {
-                    'Content-Type': mime.lookup(gitFileName),
-                    'Content-Length': buf.length
-                })
-                res.end(buf)
+                if (buf) {
+                    res.writeHead(200, {
+                        'Content-Type': mime.lookup(gitFileName),
+                        'Content-Length': buf.length
+                    })
+                    res.end(buf)
+                }
             }, errHandler)
         return
     }
