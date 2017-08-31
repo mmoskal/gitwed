@@ -924,10 +924,15 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 
             if (gitwedPageInfo.epub) {
                 let folder = window.location.pathname.slice(1).replace(/\/.*/, "")
-                addButton("Download epub", () => {
+                addButton("Get EPUB", () => {
                     modal.hide()
                     dialog.hide()
                     window.location.href = "/api/epub?folder=" + encodeURIComponent(folder)
+                })
+                addButton("Get EPUB for Kindle", () => {
+                    modal.hide()
+                    dialog.hide()
+                    window.location.href = "/api/epub?kindle=1&folder=" + encodeURIComponent(folder)
                 })
                 let tocTempl = $("#epub-toc-template").html()
                     .replace(/^\s*<!--/, "")
