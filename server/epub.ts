@@ -426,14 +426,15 @@ export function init(app: express.Express) {
 
     app.get("/api/epub", (req, res) => {
         let folder = getFolder(req)
+        let isKindle = !!req.query["kindle"]
         genEPubAsync({
             folder,
-            isKindle: !!req.query["kindle"]
+            isKindle
         })
             .then(buf => {
                 res.contentType("application/epub+zip")
                 res.header("Content-Disposition",
-                    `attachment; filename="${folder}.epub"`);
+                    `attachment; filename="${folder}${isKindle ? "-kindle" : ""}.epub"`);
                 res.send(buf)
             })
     })
