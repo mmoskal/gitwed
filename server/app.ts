@@ -326,6 +326,8 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = "/" + cleaned.slice(0, cleaned.length - 5)
+        if (req.appuser)
+            return res.redirect(redirpath)
         return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent(redirpath))
     }
 
