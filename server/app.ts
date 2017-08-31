@@ -88,9 +88,7 @@ app.use((req, res, next) => {
     }
 
     // refresh in background if needed
-    gitfs.main.pokeAsync()
-    if (gitfs.events)
-        gitfs.events.pokeAsync()
+    tools.values(gitfs.repos).forEach(r => r.pokeAsync())
 
     next();
 });

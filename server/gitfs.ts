@@ -257,16 +257,15 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
 
     if (config.production) {
         await getHeadRevAsync()
-        return iface
+    } else {
+        await statusCleanAsync()
+        await pullAsync()
+
+        if (!justDir)
+            setInterval(() => {
+                maybeSyncAsync()
+            }, 15 * 60 * 1000)
     }
-
-    if (!justDir)
-        setInterval(() => {
-            maybeSyncAsync()
-        }, 15 * 60 * 1000)
-
-    await statusCleanAsync()
-    await pullAsync()
 
     repos[iface.id] = iface
     return iface
@@ -668,7 +667,7 @@ export async function initAsync(cfg: Config) {
     main = await mkGitFsAsync("main", cfg.repoPath)
     if (cfg.eventsRepoPath)
         events = await mkGitFsAsync("events", cfg.eventsRepoPath)
-    let s = cfg.sideRepos||{}
+    let s = cfg.sideRepos || {}
     for (let k of Object.keys(s)) {
         await mkGitFsAsync(k, s[k])
     }
