@@ -387,15 +387,20 @@ async function genericGet(req: express.Request, res: express.Response) {
                 }
                 return Promise.reject(err)
             })
-            .then(buf => {
-                if (buf) {
+            .then(async (buf) => {
+                if (!buf) return Promise.resolve()
+                let cfg = await expander.getPageConfigAsync(cleaned)
+                if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
+                    notFound(req, "Private.")
+                } else {
                     res.writeHead(200, {
                         'Content-Type': mime.lookup(gitFileName),
                         'Content-Length': buf.length
                     })
                     res.end(buf)
                 }
-            }, errHandler)
+            })
+            .catch(errHandler)
         return
     }
 
@@ -420,12 +425,12 @@ async function genericGet(req: express.Request, res: express.Response) {
                 async (_) => {
                     if (req.appuser) {
                         let base = cleaned.replace(/\/[^/]*$/, "")
-                        if (req.query["create"] == "true") {
-                            let t = await repo.getTextFileAsync(base + "/_new.html", ref)
-                                .then(v => v, e => "")
-                            if (!t) {
-                                notFound(req, base + "/_new.html is missing!")
-                            } else {
+                        let t = await repo.getTextFileAsync(base + "/_new.html", ref)
+                            .then(v => v, e => "")
+                        if (!t) {
+                            notFound(req, base + "/_new.html is missing!")
+                        } else {
+                            if (req.query["create"] == "true") {
                                 const pcfg = await expander.getPageConfigAsync(base + "/_new.html")
                                 const hasWritePerm = await auth.hasWritePermAsync(req.appuser, pcfg.users)
                                 if (!hasWritePerm)
@@ -435,9 +440,10 @@ async function genericGet(req: express.Request, res: express.Response) {
                                         "Create based on _new.html", req.appuser)
                                     res.redirect(req.path)
                                 }
+
+                            } else {
+                                notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
                             }
-                        } else {
-                            notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
                         }
                     } else
                         notFound(req)
@@ -464,6 +470,10 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
 
         let page = await expander.expandFileAsync(cfg)
+        if (cfg.pageConfig.private && !cfg.hasWritePerm) {
+            return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
+        }
+
         pageCache.set(cacheKey, page.html)
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'

@@ -63,6 +63,7 @@ export interface PageConfig {
     users?: string[];
     center?: string;
     epub?: boolean;
+    private?: boolean;
 }
 
 export interface ExpansionConfig {
@@ -520,7 +521,10 @@ export function pageConfigPath(page: string) {
     let m = /^\/?([^\/]+)/.exec(page)
     if (!m)
         return null
-    return "/" + m[1] + "/config.json"
+    let dir = m[1]
+    if (dir == "favicon.ico")
+        dir = "common"
+    return "/" + dir + "/config.json"
 }
 
 export function getPageConfigAsync(page: string): Promise<PageConfig> {
@@ -530,16 +534,15 @@ export function getPageConfigAsync(page: string): Promise<PageConfig> {
 
     let path = pageConfigPath(page)
     if (!path)
-        return Promise.resolve({} as PageConfig)
-    // config always takes from master
+        return Promise.reject(new Error("Invalid page path."))
+    // config always taken from master
     return Promise.resolve()
         .then(() => gitfs.findRepo(path).getTextFileAsync(path)
             .then(v => v, e => {
-                winston.info(path + ": " + e.message)
-                return ""
+                return Promise.reject(new Error("Missing config.json: " + e.message))
             }))
         .then(async (cfText) => {
-            let cfg = JSON.parse(cfText || "{}") as PageConfig
+            let cfg = JSON.parse(cfText) as PageConfig
             if (cfg.center && gitfs.events) {
                 let c = await events.getCenterAsync(cfg.center)
                 if (c)
