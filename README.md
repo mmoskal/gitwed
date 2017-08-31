@@ -124,44 +124,7 @@ Users are stored in `private/users.json` file.
 
 ## User manual
 
-* there is no auto-save - you need to click the green accept button; you can also use the red reject
-  button to discard changes (the browser will warn you)
-* you can copy-paste one or more paragraphs of formatted text; some formatting will be retained
-* if you copy-paste less than a paragraph, it is pasted as text without any formatting
-* you can copy-paste images - they will be uploaded when you save the page; if images are big
-  pasting them can take a few seconds - just wait a moment after pasting
-* when copy-pasting from different sources of text it's often useful to start selecting from 
-  the end of the paragraph(s), not the beginning
-* after inserting image you can (and should) resize it so it fits the screen
-* you can drag paragraphs around - click **and hold for a second**, then drag; this includes entries
-  in Table of Contents
-* you can also drag some images, by just clicking and dragging
-* when editing, especially translating, links (or other formatted content like headings), 
-  to avoid losing formatting position the cursor in the middle of the link, type the new
-  text for the link, and then remove the bits you don't need; eg. if you have link that
-  says `Home`, then move cursor say between `H` and `ome`, type `Strona Domowa`, getting
-  `HStrona Domowaome` and remove the `H` and `ome`
-* there's a bottom **editor section** of the page, usually on blue background, which is visible only
-  to editors; it lets you edit things like the title of the page that shows on the browser
-  window bar, or description and keywords used by search engines
-* you can replace images by clicking on the `Edit images` in the editor section; this replaces
-  existing images and once your confirm you cannot undo easily (short of uploading the old
-  picture again)
-* you can insert new images in free-flow text sections by clicking the "Image" button;
-  then click `Upload` (and wait a few seconds if nothing shows up); after selecting
-  your image, click `Upload` again
-* you can invite new people to edit by clicking on the orange `...` button and entering their
-  email
-* you can also view historic versions of the page from the `...` button
-* if you do not see the pencil or orange `...` button, try adding `/edit` to the website address;
-  for example if the address is `https://example.com/foo` then enter `https://example.com/foo/edit`,
-  and if the address is `https://example.com/` enter `https://example.com/edit`;
-  also, if the address has `#` in it, remove the `#` and everything after it, for example
-  `https://example.com/#s=something` becomes `https://example.com/edit`
-* to add a new sub-page, first add a link to it - write the link text (eg. `Sleeping hall`),
-  select it, click the "chain-link" button, and enter link, for example `accomodation`;
-  save and follow the link; on the not `Not found` page, click the link `Create page`
-  (note to developers - this will clone `_new.html` file)
+See https://dwbe.org/manual/
 
 ## TODO
 * [x] push (and pull?) in background
