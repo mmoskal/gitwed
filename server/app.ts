@@ -291,9 +291,9 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
     if (filename[0] == ".") filename = "blob" + filename
     if (tools.etagMatches(req, sha + "-0"))
         return
-    tools.allowReqCache(req)
     repo.getFileAsync(sha, "SHA")
         .then(buf => {
+            tools.allowReqCache(req)
             res.writeHead(200, {
                 'Content-Type': mime.lookup(filename),
                 'Content-Length': buf.length
@@ -301,6 +301,7 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
             res.end(buf)
         }, e => {
             winston.info("error (cdn): " + req.path + " " + e.message)
+            res.removeHeader("ETag")
             res.status(404).end('Page not found (CDN)');
         })
 })
@@ -316,7 +317,7 @@ async function genericGet(req: express.Request, res: express.Response) {
     if (/\/$/.test(cleaned))
         cleaned += "index"
 
-    if (!/^\/(common|gw)\//.test(cleaned)) {
+    if (!/^\/(common|gw|gwcdn)\//.test(cleaned)) {
         cleaned = routing.getVHostDir(req) + cleaned
     }
 

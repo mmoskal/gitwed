@@ -244,6 +244,13 @@ function expandAsync(cfg: ExpansionConfig) {
     function replUrlAsync(url: string) {
         let resolved = relativePath(cfg.rootFile, url)
         let spl = gitfs.splitName(resolved)
+        let ext = spl.name.replace(/.*\./, ".")
+        if (spl.parent == "/gwcdn") {
+            let sha = gitfs.gwcdnByName[spl.name]
+            if (!sha)
+                winston.info("no such file (GWCDN): " + resolved + " in " + cfg.ref)
+            return Promise.resolve(!sha ? url : gitfs.config.cdnPath + "/" + spl.name + "-" + sha + ext)
+        }
         let repo = gitfs.findRepo(spl.parent)
         //winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
         return getTreeAsync(repo, spl.parent)
@@ -252,11 +259,10 @@ function expandAsync(cfg: ExpansionConfig) {
                     return url
                 let e = ents.find(x => x.name == spl.name)
                 if (e) {
-                    let ext = spl.name.replace(/.*\./, ".")
                     let pref = repo.id == "main" ? "" : repo.id + "/"
                     return gitfs.config.cdnPath + "/" + pref + spl.name + "-" + e.sha + ext
                 } else {
-                    winston.debug("no such file: " + resolved + " in " + cfg.ref)
+                    winston.info("no such file: " + resolved + " in " + cfg.ref)
                     return url
                 }
             })
@@ -265,7 +271,7 @@ function expandAsync(cfg: ExpansionConfig) {
     function canBeCdned(v: string, canHaveRelativeLinks = false) {
         if (!v) return false
         if (/^[\w-]+:\/\//.test(v)) return false
-        if (/^\/common\//.test(v)) return true
+        if (/^\/(gwcdn|common)\//.test(v)) return true
         if (/\.(png|jpe?g|ico)$/i.test(v)) return true
         if (canHaveRelativeLinks && !/(^|\/)cdn\//.test(v)) return false
         return true
