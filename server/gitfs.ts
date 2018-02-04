@@ -26,6 +26,7 @@ export interface Config {
     production?: boolean;
     vhosts?: SMap<string>;
     certEmail?: string;
+    defaultRedirect?: string; // defaults to /events/
 }
 
 export let config: Config

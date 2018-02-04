@@ -11,6 +11,8 @@ address, and then update the specially marked fragments of HTML
 using [ContentTools](http://getcontenttools.com/), a WYSIWG editor.
 The changes are saved to the git repo.
 
+See https://dwbe.org/manual/ for user manual.
+
 ## How does it work?
 
 GitWEd is written in TypeScript, compiled down to JavaScript and running on the
@@ -30,7 +32,8 @@ rewritten to use browser-cachable URLs on a CDN.
 
 ## Running locally
 
-* checkout https://gitlab.dwbn.org/mmoskal/gitwed-data
+* checkout https://github.com/mmoskal/gitwed-sample
+  (or https://gitlab.dwbn.org/mmoskal/gitwed-data if you have access)
 * go there and run
 ```
 npm install
@@ -39,7 +42,8 @@ npm start
 * this will run a server on http://localhost:3000, serving the current directory
 * if you modify files via web interface, they will be modified in the current directory
 * if you modify files in the current directory, the changes should be visible at http://localhost:3000
-* there is no need to worry about user accounts unless you add `jwtSecret` to `config.json` - everyone connecting will be treated as an admin
+* there is no need to worry about user accounts unless you add `jwtSecret` 
+  to `config.json` - everyone connecting will be treated as an admin
 * in fact, there is no need to worry about `config.json` at all
 
 ## CDN rewriting
@@ -126,7 +130,7 @@ Users are stored in `private/users.json` file.
 
 Example config (remove ``// comments` when you create your own):
 
-```json
+```javascript
 {
     // this is used as signing key for cookies - just generate a long "password" here
     "jwtSecret": "<generate a ~30 character random string here>",

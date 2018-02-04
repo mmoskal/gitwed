@@ -12,6 +12,9 @@ remote:
 local:
 	node gitwed ../gitwed-data
 
+sample:
+	node gitwed ../gitwed-sample
+
 watch:
 	cd client && node ../node_modules/typescript/bin/tsc --watch
 

@@ -332,7 +332,7 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     // asking for root index?
     if (cleaned == "index") {
-        res.redirect("/events/")
+        res.redirect(gitfs.config.defaultRedirect || "/sample/")
         return
     }
 
