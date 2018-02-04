@@ -115,12 +115,64 @@ If it doesn't, only the text can be edited.
 
 ## Admin manual
 
+This section is only relevant if you want to run your own Gitwed server.
+
 You can invite new users from the "..." menu. The invitation is only valid for one subdirectory.
 If you want the user to have write access everywhere, make them an admin.
 
 You can always append `&redirect=/foo/bar` to an authentication link.
 
 Users are stored in `private/users.json` file.
+
+Example config (remove ``// comments` when you create your own):
+
+```json
+{
+    // this is used as signing key for cookies - just generate a long "password" here
+    "jwtSecret": "<generate a ~30 character random string here>",
+    // this you can get from mailgun dashboard
+    "mailgunApiKey": "key-0123456789...abcdef",
+    "mailgunDomain": "mg.example.com",
+    // if you want to generate map images in events, you need a key for Google Maps
+    "gmapsKey": "ABcDe...FgHg",
+    // this is used in subject line of emails
+    "serviceName": "DWB-Edit",
+    // one of your domains; authentication is always handled through that one
+    "authDomain": "https://example.com",
+    // if set to true, we will ask Let's Encrypt for certs; only set to true if your all the domains
+    // are set to your local IP, otherwise Let's Encrypt will fail and they might throttle you
+    "production": true,
+    // email to use for Let's Encrypt
+    "certEmail": "me@example.com",
+    // if set to true, it will listen on localhost:3000 and listen to proxy requests from nginx or apache
+    // otherwise, run standalone
+    "proxy": false,
+    // this CDN endpoint needs to be set to mirror /cdn path on the server; this will usually be either
+    // "https://cdn.example.com" or "https://cdn.example.com/cdn", depending how you set it up
+    // set to "/cdn" if you don't have a separate CDN
+    "cdnPath": "https://cdn.example.com",
+    // relative path to the main content repo
+    "repoPath": "../gitwed-data",
+    // relative path to additional content repos; the format is "short-key": "path"
+    // the short-key will be used in URLs
+    "sideRepos": {
+      "home": "../gitwed-homepage",
+      "foo": "../../other/foo-bar"
+    },
+    // relative path to repo hosting data about events
+    "eventsRepoPath": "../gitwed-events",
+    // virtual hosts; Let's Encrypt will be asked for certs of all of these and the authDomain
+    // the format is: "virtual.host.name": "directory"
+    // the directory can be in main or any of the side repos
+    "vhosts": {
+       "course.example.com": "course2018",
+       // you may want to set directory name and host name the same, but it's not required
+       "something.foobar.net": "something.foobar.net",
+       // an empty directory means "/"; used to force certificate generation for that host 
+       "hosting.example.com": ""
+    }
+}
+```
 
 ## User manual
 
