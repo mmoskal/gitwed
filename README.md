@@ -70,9 +70,9 @@ an inline CSS where there will be rewritten.
 You will most likely want to test this feature before deploying. To do so, make sure
 all your files are checked in (but not necessarily pushed) in `gitwed-data` and
 then run `make cdn`. The URLs will be rewritten to paths like
-`/cdn/img_3834.jpg-b6d3e026697ae54d8749c13167b44239e1409c9b.jpg`.
+`/cdn/img_3834.jpg-2c66e904cab0c00d52a924214880179da395f587.jpg`.
 When deployed, it will be something like:
-`https://dwbe.azureedge.net/img_3834.jpg-b6d3e026697ae54d8749c13167b44239e1409c9b.jpg`.
+`https://mycdn.somewhere.net/img_3834.jpg-2c66e904cab0c00d52a924214880179da395f587.jpg`.
 
 
 ## Macro language
