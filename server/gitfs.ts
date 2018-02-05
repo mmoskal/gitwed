@@ -86,6 +86,7 @@ export let repos: SMap<GitFs> = {};
 
 export let gwcdnByName: SMap<string> = {}
 export let gwcdnBySHA: SMap<string> = {}
+let gwcdnDir = "gwcdn/"
 
 const repoByDirCache: SMap<GitFs> = {}
 export function findRepo(path: string): GitFs {
@@ -387,12 +388,12 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
 
         m = /^gwcdn\/(.*)/.exec(name)
         if (m)
-            return readAsync("gwcdn/" + m[1])
+            return readAsync(gwcdnDir + m[1])
 
         if (ref == "SHA") {
             let fn = tools.lookup(gwcdnBySHA, name)
             if (fn) {
-                return readAsync("gwcdn/" + fn)
+                return readAsync(gwcdnDir + fn)
             }
         }
 
@@ -678,8 +679,11 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
 }
 
 function readGWCDN() {
-    for (let fn of fs.readdirSync("gwcdn")) {
-        let sha = githash(fs.readFileSync("gwcdn/" + fn))
+    let ndir = "node_modules/gitwed/gwcdn/"
+    if (fs.existsSync(ndir))
+        gwcdnDir = ndir
+    for (let fn of fs.readdirSync(gwcdnDir)) {
+        let sha = githash(fs.readFileSync(gwcdnDir + fn))
         gwcdnByName[fn] = sha
         gwcdnBySHA[sha] = fn
     }
