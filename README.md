@@ -203,3 +203,8 @@ See https://dwbe.org/manual/
 * [ ] history restore
 * [x] add cache of expanded pages (based on HEAD rev)
 * [ ] extend /api/logs with file system access
+
+
+## License
+
+MIT
