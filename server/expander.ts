@@ -307,6 +307,19 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         h("meta[http-equiv='Content-Language']").attr("content", cfg.lang)
+
+        if (cfg.lang && cfg.langs.length > 1) {
+            let currPath = cfg.origHref || cfg.rootFile
+            let ht = cfg.langs.map(lang => {
+                let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "lang="
+                let href = setlang + lang
+                return `    <link rel="alternate" href="${href}" hreflang="${lang}" />\n`
+            }).join("") +
+                `    <link rel="alternate" href="${currPath}" hreflang="x-default" />\n`
+            h("head").append(
+                `\n    <!-- links to alternate langauges for search engines -->\n` +
+                ht)
+        }
     }
 
     function cdnRewriteAsync() {
