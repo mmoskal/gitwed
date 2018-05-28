@@ -173,16 +173,6 @@ function expandAsync(cfg: ExpansionConfig) {
             h("group, if-edit").each((i, e) => {
                 h(e).replaceWith(e.childNodes)
             })
-            forEach("li a[href]", ee => {
-                let hr = ee.attr("href")
-                let m = /\/([^\/]+)\.html$/.exec(cfg.rootFile)
-                let here = m ? m[1] : "???"
-                if (hr == here) {
-                    ee.parent().addClass("active")
-                } else {
-                    ee.parent().removeClass("active")
-                }
-            })
             forEach("[gw-pos]", ee => {
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
                 let id = ee.attr("edit") || ee.attr("id")
@@ -216,6 +206,17 @@ function expandAsync(cfg: ExpansionConfig) {
                     }
                 })
             }
+
+            forEach("li a[href]", ee => {
+                let hr = ee.attr("href")
+                let m = /\/([^\/]+)\.html$/.exec(cfg.rootFile)
+                let here = m ? m[1] : "???"
+                if (hr == here) {
+                    ee.parent().addClass("active")
+                } else {
+                    ee.parent().removeClass("active")
+                }
+            })
         })
         .then(cdnRewriteAsync)
         .then(() => {
