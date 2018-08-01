@@ -7,6 +7,7 @@ import * as child_process from "child_process";
 import * as bluebird from "bluebird";
 import express = require('express');
 import winston = require('winston');
+import rest = require('./rest');
 
 const gitRefreshTimeoutSeconds = 120
 
@@ -27,6 +28,7 @@ export interface Config {
     vhosts?: SMap<string>;
     certEmail?: string;
     defaultRedirect?: string; // defaults to /events/
+    services?: rest.ServiceConfig[];
 }
 
 export let config: Config

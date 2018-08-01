@@ -3,6 +3,7 @@ import gitfs = require('./gitfs')
 import auth = require('./auth')
 import events = require('./events')
 import tools = require('./tools')
+import rest = require('./rest')
 import * as bluebird from "bluebird";
 import * as winston from "winston";
 
@@ -329,8 +330,13 @@ function expandAsync(cfg: ExpansionConfig) {
 
         metaRewrite()
 
+        h("rest").each((idx, e) => {
+            promises.push(rest.expandAsync(h(e)))
+        })
+
         if (gitfs.config.justDir && !gitfs.config.cdnPath)
-            return Promise.resolve()
+            return Promise.all(promises).then(() => {
+            })
 
         let repl = (e: CheerioElement, attrName: string, mayHaveRelativeLinks = false) => {
             let ee = h(e)

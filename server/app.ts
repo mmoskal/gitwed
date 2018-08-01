@@ -16,6 +16,7 @@ import winston = require('winston')
 import logs = require('./logs')
 import epub = require('./epub')
 import routing = require('./routing')
+import rest = require('./rest')
 
 bluebird.longStackTraces();
 logs.init()
@@ -504,6 +505,7 @@ function setupFinalRoutes() {
 let cfg: gitfs.Config = {} as any
 if (fs.existsSync("config.json"))
     cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
+rest.init(cfg.services || [])
 cfg.justDir = true
 let args = process.argv.slice(2)
 if (args[0] == "-i") {
