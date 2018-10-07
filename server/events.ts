@@ -114,7 +114,7 @@ function eventFn(id: number) {
     return ("000000" + id).slice(-6) + ".json"
 }
 
-const readdirAsync = bluebird.promisify(fs.readdir)
+const readdirAsync: (fn: string) => Promise<string[]> = bluebird.promisify(fs.readdir) as any
 const readAsync: (fn: string, enc: string) => Promise<string> = bluebird.promisify(fs.readFile) as any
 
 function cachedCenters() {
