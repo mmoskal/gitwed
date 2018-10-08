@@ -1,4 +1,3 @@
-import mime = require('mime');
 import crypto = require('crypto');
 import fs = require('fs');
 import gitfs = require('./gitfs')

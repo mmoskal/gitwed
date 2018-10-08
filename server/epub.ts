@@ -1,5 +1,4 @@
 import express = require('express');
-import mime = require('mime');
 import crypto = require('crypto');
 import fs = require('fs');
 import JSZip = require("jszip");
@@ -188,7 +187,7 @@ async function genEPubAsync(opts: EPubOptions) {
             return "f" + filePresent[n]
         if (data === null)
             data = await gitfs.findRepo(folder).getFileAsync(folder + "/" + n, "master")
-        let m = mime.lookup(n)
+        let m = tools.mimeLookup(n)
         if (m == "text/html")
             m = "application/xhtml+xml"
         fileNo++

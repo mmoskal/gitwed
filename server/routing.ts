@@ -1,5 +1,4 @@
 import express = require('express');
-import mime = require('mime');
 import fs = require('fs');
 import expander = require('./expander')
 import gitfs = require('./gitfs')

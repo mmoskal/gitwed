@@ -1,7 +1,6 @@
 global.Promise = require("bluebird")
 
 import express = require('express');
-import mime = require('mime');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
@@ -296,7 +295,7 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
         .then(buf => {
             tools.allowReqCache(req)
             res.writeHead(200, {
-                'Content-Type': mime.lookup(filename),
+                'Content-Type': tools.mimeLookup(filename),
                 'Content-Length': buf.length
             })
             res.end(buf)
@@ -394,7 +393,7 @@ async function genericGet(req: express.Request, res: express.Response) {
                     notFound(req, "Private.")
                 } else {
                     res.writeHead(200, {
-                        'Content-Type': mime.lookup(gitFileName),
+                        'Content-Type': tools.mimeLookup(gitFileName),
                         'Content-Length': buf.length
                     })
                     res.end(buf)

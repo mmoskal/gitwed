@@ -9,6 +9,7 @@ import * as querystring from 'querystring';
 import * as bluebird from 'bluebird';
 import * as crypto from "crypto";
 import express = require('express');
+import mime = require('mime');
 
 const maxCacheSize = 32 * 1024 * 1024
 const maxCacheEltSize = 256 * 1024
@@ -36,6 +37,12 @@ let localeEn: Locale = {
 export function validateLang(l: string) {
     if (typeof l != "string") return false
     return /^[a-z][a-z](-[A-Z]{2,3})?$/.test(l)
+}
+
+export function mimeLookup(fn: string) {
+    if (mime.getType)
+        return mime.getType(fn)
+    return (mime as any).lookup(fn)
 }
 
 const localeCache: SMap<Locale> = {}
