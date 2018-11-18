@@ -615,8 +615,9 @@ namespace gw {
                 Object.keys(regions).forEach(id => {
                     let r = regions[id]
                     let r2 = r.replace(/<img\s[^<>]*src="(blob:[^"]+)/g, (f, url) => {
+                        let basename = document.location.pathname.replace(/.*\//, "").replace(/\.html/, "")
                         savePromise = savePromise
-                            .then(() => postImageUrlAsync(blobData[url].dataURL, "clip"))
+                            .then(() => postImageUrlAsync(blobData[url].dataURL, basename || "clip"))
                             .then(resp => {
                                 blobData[url].dataURL = ""
                                 blobData[url].serverURL = resp.url
@@ -937,7 +938,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 let tocTempl = $("#epub-toc-template").html()
                     .replace(/^\s*<!--/, "")
                     .replace(/-->\s*$/, "")
-                
+
                 let tocTemplNoImg = $("#epub-toc-template-no-img").html()
                     .replace(/^\s*<!--/, "")
                     .replace(/-->\s*$/, "")
