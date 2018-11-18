@@ -144,7 +144,12 @@ async function genTOCAsync(folder: string) {
     })
     let rr: TocProps[] = []
     for (let fn of subpages) {
-        rr.push(await getPropsAsync(fn))
+        try {
+            rr.push(await getPropsAsync(fn))
+        } catch (e) {
+            if (!/ENOENT/.test(e.message))
+                console.error(e.stack)
+        }
     }
     return rr
 }
