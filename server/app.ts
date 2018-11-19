@@ -212,7 +212,7 @@ app.post("/api/update", (req, res) => {
     page = page.replace(/\.html?$/i, "")
 
     if (page.endsWith("/")) page += "index"
-    page = page.replace(/\d+$/, "_event")
+    page = page.replace(/\/\d+$/, "/_event")
 
     let fn = page.slice(1) + ".html"
     if (fn.indexOf("private") == 0)
