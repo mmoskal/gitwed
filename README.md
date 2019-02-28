@@ -141,6 +141,8 @@ Example config (remove ``// comments` when you create your own):
     "gmapsKey": "ABcDe...FgHg",
     // this is used in subject line of emails
     "serviceName": "DWB-Edit",
+    // default redirect path
+    "defaultRedirect": "sample",
     // you can set that option to 127.0.0.1 or 0.0.0.0, the default value is localhost
     "localhost": "localhost",
     // one of your domains; authentication is always handled through that one
