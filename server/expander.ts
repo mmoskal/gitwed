@@ -362,6 +362,26 @@ function expandAsync(cfg: ExpansionConfig) {
             if (e.tagName != "img")
                 repl(e, "poster")
         })
+        h("source").each((idx, e: CheerioElement) => {
+            // special case for <picture><source srcset="..." /></picture>
+            const ee = h(e)
+            let srcset = ee.attr("srcset")
+            if(!srcset) return
+            const newSrcset: Promise<string>[] = []
+            srcset.split(",").forEach((mediaData: string) => {
+                const mediaParams = mediaData.split(" ")
+                const v = mediaParams[0]
+                if(!canBeCdned(v, false)) return
+                newSrcset.push(replUrlAsync(v).then(r => {
+                    mediaParams[0] = r
+                    return mediaParams.join(" ")
+                }))
+            })
+            promises.push(Promise.all(newSrcset).then(updatedSrcset => {
+                ee.attr("srcset", updatedSrcset.join(","))
+                ee.attr("data-gw-orig-srcset", srcset)
+            }))
+        })
         h("script").each((idx, e) => {
             repl(e, "src", true)
         })
