@@ -144,7 +144,7 @@ Example config (remove ``// comments` when you create your own):
     // default redirect path
     "defaultRedirect": "sample",
     // you can set that option to 127.0.0.1 or 0.0.0.0, the default value is localhost
-    "localhost": "localhost",
+    "networkInterface": "localhost",
     // one of your domains; authentication is always handled through that one
     "authDomain": "https://example.com",
     // if set to true, we will ask Let's Encrypt for certs; only set to true if your all the domains

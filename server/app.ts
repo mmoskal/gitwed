@@ -530,10 +530,10 @@ if (args[0]) {
     console.error(`Usage: gitwed [-i] [-cdn] [DIRECTORY]`)
     process.exit(1)
 }
-if (!cfg.localhost)
-    cfg.localhost = "localhost"
+if (!cfg.networkInterface)
+    cfg.networkInterface = "localhost"
 if (!cfg.authDomain)
-    cfg.authDomain = `http://${cfg.localhost}:3000`
+    cfg.authDomain = `http://${cfg.networkInterface}:3000`
 
 if (!cfg.serviceName)
     cfg.serviceName = "GITwed"
@@ -627,8 +627,8 @@ gitfs.initAsync(cfg)
         setupFinalRoutes()
 
         if (cfg.justDir || cfg.proxy) {
-            winston.info(`listen on http://${cfg.localhost}:${port}`)
-            app.listen(port, cfg.localhost)
+            winston.info(`listen on http://${cfg.networkInterface}:${port}`)
+            app.listen(port, cfg.networkInterface)
         } else {
             if (cfg.production) {
                 winston.info(`setup certs`)
