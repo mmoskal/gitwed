@@ -1,10 +1,13 @@
+BIN=../node_modules/.bin
+TSC=$(BIN)/tsc
+JEST=$(BIN)/jest
 all: build local
 
 r: build remote
 
 build:
-	cd server && node ../node_modules/typescript/bin/tsc
-	cd client && node ../node_modules/typescript/bin/tsc
+	cd server && node $(TSC)
+	cd client && node  $(TSC)
 
 remote:
 	node gitwed -i ../gitwed-data
@@ -14,9 +17,10 @@ local:
 
 sample:
 	node gitwed ../gitwed-sample
-
+test:
+	cd server && $(JEST)
 watch:
-	cd client && node ../node_modules/typescript/bin/tsc --watch
+	cd client && node $(TSC) --watch
 
 cdn: build
 	node gitwed -cdn ../gitwed-data
