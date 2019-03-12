@@ -6,13 +6,15 @@ jest.mock("@sendgrid/mail", () => ({
     send: jest.fn(() => Promise.resolve([{ body: "body" }])),
 }))
 import * as sendgrid from "@sendgrid/mail"
+
 const msgFixture: mail.Message = { to: "to", subject: "subject", text: "text" }
-const configFixture: Partial<gitfs.Config> = {
-    serviceName: "serviceName",
-    mailgunDomain: "mailgunDomain"
-}
+const from = "serviceName <no-reply@mailgunDomain>"
+const configFixture: gitfs.Config = { serviceName: "serviceName", mailgunDomain: "mailgunDomain", jwtSecret: "" }
+const extend = <T>(o: T, delta: Partial<T>): T => ({ ...o, ...delta })
 
 describe("sendAsync()", () => {
+    beforeEach(jest.clearAllMocks)
+
     it("throws an error when given config contains no API key", async () => {
         try {
             expect.assertions(1)
@@ -22,13 +24,10 @@ describe("sendAsync()", () => {
         }
     })
 
-    it("ueses sendgrid", async () => {
-        try {
-            await mail.sendAsync(msgFixture, { ...configFixture, sendgridApiKey: "foo" } as any)
-            expect(sendgrid.setApiKey).toBeCalledWith("foo")
-            expect(sendgrid.send).toBeCalledWith({ ...msgFixture, from: "serviceName <no-reply@mailgunDomain>" }, false)
-        } catch (err) {
-            expect(err.message).toEqual(false)
-        }
+    it("uses sendgrid when only config.sendgridApiKey is set", async () => {
+        expect.assertions(2)
+        await mail.sendAsync(msgFixture, { ...configFixture, sendgridApiKey: "sendgridApiKey" } as any)
+        expect(sendgrid.setApiKey).toBeCalledWith("sendgridApiKey")
+        expect(sendgrid.send).toBeCalledWith(extend(msgFixture, { from }), false)
     })
 })

@@ -22,7 +22,7 @@ const sendgridSend: SendEmailFn = async (msg, config) => {
 
 const mailgunSend: SendEmailFn = (msg, config) => {
     if (!mailgun)
-        mailgun = new MailgunJs({ apiKey: config.mailgunApiKey, domain: config.mailgunDomain })
+        mailgun = MailgunJs({ apiKey: config.mailgunApiKey, domain: config.mailgunDomain })
 
     return new Promise((resolve, reject) =>
         mailgun.messages().send(msg, (err: any, body: any) => err ? reject(err) : resolve(body))
@@ -35,10 +35,13 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
     const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
 
     let send: SendEmailFn
-    if (config.mailgunApiKey)
+    if (config.mailgunApiKey) {
         send = mailgunSend
-    else if (config.sendgridApiKey)
+        winston.info("using mailgun")
+    } else if (config.sendgridApiKey) {
         send = sendgridSend
+        winston.info("using sendgrid")
+    }
 
     return new Promise(async (resolve, reject) => {
         try {
