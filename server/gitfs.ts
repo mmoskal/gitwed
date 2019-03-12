@@ -21,6 +21,7 @@ export interface Config {
     gmapsKey?: string;
     mailgunDomain?: string;
     authDomain?: string;
+    networkInterface?: string;
     serviceName?: string;
     proxy?: boolean;
     cdnPath?: string;

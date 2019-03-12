@@ -421,32 +421,32 @@ async function genericGet(req: express.Request, res: express.Response) {
         .then(v => v, err =>
             repo.getTextFileAsync(cleaned + "/index.html")
                 .then(() => res.redirect(req.path + "/"),
-                async (_) => {
-                    if (req.appuser) {
-                        let base = cleaned.replace(/\/[^/]*$/, "")
-                        let t = await repo.getTextFileAsync(base + "/_new.html", ref)
-                            .then(v => v, e => "")
-                        if (!t) {
-                            notFound(req, base + "/_new.html is missing!")
-                        } else {
-                            if (req.query["create"] == "true") {
-                                const pcfg = await expander.getPageConfigAsync(base + "/_new.html")
-                                const hasWritePerm = await auth.hasWritePermAsync(req.appuser, pcfg.users)
-                                if (!hasWritePerm)
-                                    notFound(req, "No permission to create a new page here.")
-                                else {
-                                    await repo.setTextFileAsync(gitFileName, t,
-                                        "Create based on _new.html", req.appuser)
-                                    res.redirect(req.path)
-                                }
-
+                    async (_) => {
+                        if (req.appuser) {
+                            let base = cleaned.replace(/\/[^/]*$/, "")
+                            let t = await repo.getTextFileAsync(base + "/_new.html", ref)
+                                .then(v => v, e => "")
+                            if (!t) {
+                                notFound(req, base + "/_new.html is missing!")
                             } else {
-                                notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
+                                if (req.query["create"] == "true") {
+                                    const pcfg = await expander.getPageConfigAsync(base + "/_new.html")
+                                    const hasWritePerm = await auth.hasWritePermAsync(req.appuser, pcfg.users)
+                                    if (!hasWritePerm)
+                                        notFound(req, "No permission to create a new page here.")
+                                    else {
+                                        await repo.setTextFileAsync(gitFileName, t,
+                                            "Create based on _new.html", req.appuser)
+                                        res.redirect(req.path)
+                                    }
+
+                                } else {
+                                    notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
+                                }
                             }
-                        }
-                    } else
-                        notFound(req)
-                })
+                        } else
+                            notFound(req)
+                    })
                 .then(() => null as string))
 
     if (str == null) return
@@ -530,9 +530,10 @@ if (args[0]) {
     console.error(`Usage: gitwed [-i] [-cdn] [DIRECTORY]`)
     process.exit(1)
 }
-
+if (!cfg.networkInterface)
+    cfg.networkInterface = "localhost"
 if (!cfg.authDomain)
-    cfg.authDomain = "http://localhost:3000"
+    cfg.authDomain = `http://${cfg.networkInterface}:3000`
 
 if (!cfg.serviceName)
     cfg.serviceName = "GITwed"
@@ -626,8 +627,8 @@ gitfs.initAsync(cfg)
         setupFinalRoutes()
 
         if (cfg.justDir || cfg.proxy) {
-            winston.info(`listen on http://localhost:${port}`)
-            app.listen(port, "localhost")
+            winston.info(`listen on http://${cfg.networkInterface}:${port}`)
+            app.listen(port, cfg.networkInterface)
         } else {
             if (cfg.production) {
                 winston.info(`setup certs`)

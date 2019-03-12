@@ -141,6 +141,10 @@ Example config (remove ``// comments` when you create your own):
     "gmapsKey": "ABcDe...FgHg",
     // this is used in subject line of emails
     "serviceName": "DWB-Edit",
+    // default redirect path
+    "defaultRedirect": "sample",
+    // you can set that option to 127.0.0.1 or 0.0.0.0, the default value is localhost
+    "networkInterface": "localhost",
     // one of your domains; authentication is always handled through that one
     "authDomain": "https://example.com",
     // if set to true, we will ask Let's Encrypt for certs; only set to true if your all the domains
@@ -148,7 +152,7 @@ Example config (remove ``// comments` when you create your own):
     "production": true,
     // email to use for Let's Encrypt
     "certEmail": "me@example.com",
-    // if set to true, it will listen on localhost:3000 and listen to proxy requests from nginx or apache
+    // if set to true, it will listen on ${config.localhost}:3000 and listen to proxy requests from nginx or apache
     // otherwise, run standalone
     "proxy": false,
     // this CDN endpoint needs to be set to mirror /cdn path on the server; this will usually be either
