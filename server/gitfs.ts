@@ -1,11 +1,9 @@
 import fs = require("fs")
-import path = require("path")
 import crypto = require("crypto")
 import tools = require("./tools")
 import logs = require("./logs")
 import * as child_process from "child_process";
 import * as bluebird from "bluebird";
-import express = require('express');
 import winston = require('winston');
 import rest = require('./rest');
 
@@ -18,6 +16,7 @@ export interface Config {
     eventsRepoPath?: string;
     sideRepos?: SMap<string>;
     mailgunApiKey?: string;
+    sendgridApiKey?: string;
     gmapsKey?: string;
     mailgunDomain?: string;
     authDomain?: string;

@@ -137,6 +137,9 @@ Example config (remove ``// comments` when you create your own):
     // this you can get from mailgun dashboard
     "mailgunApiKey": "key-0123456789...abcdef",
     "mailgunDomain": "mg.example.com",
+    // this is your sendGrid Api KEY - you can get one from https://sendgrid.com/docs/ui/account-and-settings/api-keys/
+    // Gitwed uses sendgrid `only` if no mailgunApiKey was provided
+    "sendgridApiKey": "SG.XXXXX-...abcdf"
     // if you want to generate map images in events, you need a key for Google Maps
     "gmapsKey": "ABcDe...FgHg",
     // this is used in subject line of emails
