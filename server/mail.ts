@@ -1,37 +1,56 @@
-import tools = require('./tools')
-import gitfs = require('./gitfs')
-import bluebird = require('bluebird')
+import * as gitfs from "./gitfs"
 import winston = require('winston')
-import logs = require('./logs')
+import * as sendGrid from "@sendgrid/mail"
+import * as MailgunJs from "mailgun-js"
 
-let mailgun: any
+let mailgun: MailgunJs.Mailgun
 
-export interface Message {
+export type Message = {
     from?: string;
     to: string;
     subject: string;
     text: string;
 }
 
-export function sendAsync(msg: Message) {
+type SendEmailFn = (msg: Message & { from: string }, config: gitfs.Config) => Promise<string>
+
+const sendgridSend: SendEmailFn = async (msg, config) => {
+    sendGrid.setApiKey(config.sendgridApiKey)
+    const res = await sendGrid.send(msg, false)
+    return res[0].body
+}
+
+const mailgunSend: SendEmailFn = (msg, config) => {
+    if (!mailgun)
+        mailgun = MailgunJs({ apiKey: config.mailgunApiKey, domain: config.mailgunDomain })
+
+    return new Promise((resolve, reject) =>
+        mailgun.messages().send(msg, (err: any, body: any) => err ? reject(err) : resolve(body))
+    )
+}
+
+export function sendAsync(msg: Message, config?: gitfs.Config) {
     winston.info(`sending email, to: ${msg.to}, subject: ${msg.subject}`)
-    if (!mailgun) {
-        mailgun = require('mailgun-js')({
-            apiKey: gitfs.config.mailgunApiKey,
-            domain: gitfs.config.mailgunDomain
-        });
+    if (!config) config = gitfs.config
+    const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
+
+    let send: SendEmailFn
+    if (config.mailgunApiKey) {
+        send = mailgunSend
+        winston.info("using mailgun")
+    } else if (config.sendgridApiKey) {
+        send = sendgridSend
+        winston.info("using sendgrid")
     }
-    if (!msg.from)
-        msg.from = gitfs.config.serviceName + " <no-reply@" + gitfs.config.mailgunDomain + ">"
-    return new Promise<void>((resolve, reject) => {
-        mailgun.messages().send(msg, (err: any, body: any) => {
-            if (err) {
-                winston.error("email send failed: " + err.message)
-                reject(err)
-            } else {
-                winston.debug('mail:', body)
-                resolve()
-            }
-        });
+
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (!send) throw new Error("no sendmail provider")
+            winston.debug('mail:', await send({ ...msg, from }, config))
+            resolve()
+        } catch (err) {
+            winston.error("email send failed: " + err.message)
+            reject(err)
+        }
     })
 }

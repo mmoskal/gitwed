@@ -151,14 +151,14 @@ export function initRoutes(app: express.Express) {
                     to: email,
                     subject: "Login at " + gitfs.config.serviceName,
                     text: `Please follow the link below to login:\n` +
-                    `    ${link}\n\n` +
-                    `The link will remain valid for 10 minutes.\n`
+                        `    ${link}\n\n` +
+                        `The link will remain valid for 10 minutes.\n`
                 })
                     .then(() => {
                         routing.sendMsg(req,
                             "Email sent",
                             "We have sent you an email with authentication link.")
-                    }, err => {
+                    }, () => {
                         routing.sendError(req,
                             "Failed to send email",
                             "Sorry, we couldn't send email. Contact support.")

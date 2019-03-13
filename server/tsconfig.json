@@ -7,6 +7,16 @@
         "module": "commonjs",
         "rootDir": ".",
         "newLine": "LF",
-        "sourceMap": false
+        "sourceMap": false,
+        "lib": [
+            "es2018",
+            "es2015.promise",
+            "dom"
+        ],
+        "types": [
+            "bluebird",
+            "jquery",
+            "jest"
+        ],
     }
 }
