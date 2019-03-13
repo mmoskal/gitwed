@@ -1,12 +1,10 @@
 import express = require('express');
-import crypto = require("crypto")
 import gitfs = require('./gitfs')
 import mail = require('./mail')
 import tools = require('./tools')
 import routing = require('./routing')
 import expander = require('./expander')
 import events = require('./events')
-import bluebird = require('bluebird')
 import winston = require('winston')
 import * as jwt from "jwt-simple";
 

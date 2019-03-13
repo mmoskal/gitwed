@@ -16,6 +16,8 @@ import logs = require('./logs')
 import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
+import { Message } from './mail';
+import { sendAsync } from "./mail"
 
 bluebird.longStackTraces();
 logs.init()
@@ -126,6 +128,19 @@ app.get("/api/history", (req, res) => {
 
     gitfs.findRepo(p).logAsync(p || ".")
         .then(j => res.json(j))
+})
+
+app.post("/api/send-email", (req, res) => {
+    let data = req.body as Message
+    // TODO validation
+    // TODO check POST headers headers
+    // TODO add config allowedEmailOrigns: [tooploox.com, "localhost"]
+    sendAsync(data)
+        .then(() =>
+            res.send("ok")
+            , () =>
+                res.status(422)
+        )
 })
 
 app.post("/api/uploadimg", (req, res) => {
