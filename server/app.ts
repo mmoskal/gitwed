@@ -130,17 +130,27 @@ app.get("/api/history", (req, res) => {
         .then(j => res.json(j))
 })
 
-app.post("/api/send-email", (req, res) => {
-    let data = req.body as Message
-    // TODO validation
-    // TODO check POST headers headers
-    // TODO add config allowedEmailOrigns: [tooploox.com, "localhost"]
-    sendAsync(data)
-        .then(() =>
-            res.send("ok")
-            , () =>
-                res.status(422)
-        )
+app.post("/api/send-email", async (req, res) => {
+    const msg = req.body as Message
+    // [ ] validation
+    // [x] TODO check POST headers headers
+    // [x] add config allowedEmailOrigns: [tooploox.com, "localhost"]
+    const hostHeaderIndex = req.rawHeaders.indexOf('Host') + 1;
+    const host = hostHeaderIndex ? req.rawHeaders[hostHeaderIndex] : undefined;
+    const allowed = (gitfs.config.allowedEmailOrigns || []).find(o => o.startsWith(host))
+    winston.info("api-send: " + host + " " + allowed + " " + JSON.stringify(msg))
+
+    if (!allowed) {
+        res.status(405).end()
+        return
+    }
+
+    try {
+        await sendAsync(msg)
+        res.json({ status: "sent" })
+    } catch {
+        res.status(422)
+    }
 })
 
 app.post("/api/uploadimg", (req, res) => {
