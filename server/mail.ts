@@ -14,6 +14,22 @@ export type Message = {
 
 type SendEmailFn = (msg: Message & { from: string }, config: gitfs.Config) => Promise<string>
 
+export const validateMessage = (msg: Message) => {
+    // simple regex: at least one character before the @, before the period and after it
+    const emailRegex = /^.+@.+\..+$/
+    const errors = []
+
+    if(msg.from && !emailRegex.test(msg.from))  errors.push("sender")
+    if(!emailRegex.test(msg.to)) errors.push("recipent");
+    if(typeof msg.subject !== "string" || msg.subject.length > 255) errors.push("subject")
+    if(typeof msg.text !== "string") errors.push("content")
+
+    if(errors.length) {
+        return "email message validation failed because of fields: " + errors.join(", ")
+    }
+    return null
+}
+
 const sendgridSend: SendEmailFn = async (msg, config) => {
     sendGrid.setApiKey(config.sendgridApiKey)
     const res = await sendGrid.send(msg, false)
@@ -31,8 +47,15 @@ const mailgunSend: SendEmailFn = (msg, config) => {
 
 export function sendAsync(msg: Message, config?: gitfs.Config) {
     winston.info(`sending email, to: ${msg.to}, subject: ${msg.subject}`)
+
     if (!config) config = gitfs.config
     const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
+
+    const validationError = validateMessage(msg)
+    if(validationError) {
+        winston.error(validationError)
+        return Promise.reject(validationError)
+    }
 
     let send: SendEmailFn
     if (config.mailgunApiKey) {
@@ -53,4 +76,8 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
             reject(err)
         }
     })
+}
+
+export function resetMailgun() {
+    mailgun = null
 }

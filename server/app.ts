@@ -4,7 +4,6 @@ import express = require('express');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
-import crypto = require("crypto")
 import expander = require('./expander')
 import gitfs = require('./gitfs')
 import tools = require('./tools')
@@ -130,14 +129,12 @@ app.get("/api/history", (req, res) => {
         .then(j => res.json(j))
 })
 
-app.post("/api/send-email", async (req, res) => {
+export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg => 
+    async (req, res) => {
     const msg = req.body as Message
-    // [ ] validation
-    // [x] TODO check POST headers headers
-    // [x] add config allowedEmailOrigns: [tooploox.com, "localhost"]
     const hostHeaderIndex = req.rawHeaders.indexOf('Host') + 1;
     const host = hostHeaderIndex ? req.rawHeaders[hostHeaderIndex] : undefined;
-    const allowed = (gitfs.config.allowedEmailOrigns || []).find(o => o.startsWith(host))
+    const allowed = (cfg.allowedEmailOrigns || []).find(o => o.startsWith(host))
     winston.info("api-send: " + host + " " + allowed + " " + JSON.stringify(msg))
 
     if (!allowed) {
@@ -146,12 +143,15 @@ app.post("/api/send-email", async (req, res) => {
     }
 
     try {
-        await sendAsync(msg)
-        res.json({ status: "sent" })
-    } catch {
-        res.status(422)
+        await sendAsync(msg, cfg)
+        res.status(200).end()
+    } catch (err) {
+        winston.error("api-send error:" + err)
+        res.status(422).end()
     }
-})
+}
+
+app.post("/api/send-email", onSendEmail(gitfs.config))
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)

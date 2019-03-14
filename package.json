@@ -63,7 +63,7 @@
     "jest": {
         "globals": {
             "ts-jest": {
-                "tsConfig": "./tsconfig.json"
+                "tsConfig": "<rootDir>/server/tsconfig.json"
             }
         },
         "transform": {
@@ -72,7 +72,6 @@
         "testMatch": [
             "<rootDir>/**/*.spec.ts"
         ],
-
         "moduleFileExtensions": [
             "ts",
             "js",
