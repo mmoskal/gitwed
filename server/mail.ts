@@ -77,3 +77,7 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
         }
     })
 }
+
+export function resetMailgun() {
+    mailgun = null
+}

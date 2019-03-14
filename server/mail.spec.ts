@@ -17,7 +17,7 @@ jest.mock("mailgun-js", () => {
 )})
 import * as MailgunJS from "mailgun-js"
 
-import { validateMessage } from "./mail"
+import { validateMessage, resetMailgun } from "./mail"
 
 const msgFixture: mail.Message = { to: "to@gmail.com", subject: "subject", text: "text" }
 const from = "serviceName <no-reply@mailgunDomain>"
@@ -54,9 +54,9 @@ describe("sendAsync()", () => {
     })
 
     it("uses mailgun when only both apiKeys are set", async () => {
+        resetMailgun()
         await mail.sendAsync(msgFixture, { ...configFixture, mailgunApiKey: "mailgunApiKey", sendgridApiKey: "sendgridApiKey" } as any)
-        // TODO: here, mailgun is already initialized because of previous test. But tests should not be dependent of each other. IDK how to solve that
-        // expect(MailgunJS).toBeCalledWith({ domain: "mailgunDomain", apiKey: "mailgunApiKey"})
+        expect(MailgunJS).toBeCalledWith({ domain: "mailgunDomain", apiKey: "mailgunApiKey"})
         expect(
             //@ts-ignore second call is a function so we can't test that
             MailgunJS({ domain: "mailgunDomain", apiKey: "mailgunApiKey"}).messages().send.mock.calls[0][0]
