@@ -132,7 +132,7 @@ app.get("/api/history", (req, res) => {
 
 app.post("/api/send-email", async (req, res) => {
     const msg = req.body as Message
-    // [ ] validation
+    // [x] validation
     // [x] TODO check POST headers headers
     // [x] add config allowedEmailOrigns: [tooploox.com, "localhost"]
     const hostHeaderIndex = req.rawHeaders.indexOf('Host') + 1;
