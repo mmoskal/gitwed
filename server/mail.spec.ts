@@ -1,5 +1,4 @@
 import * as mail from "./mail"
-import * as gitfs from "./gitfs"
 
 jest.mock("@sendgrid/mail", () => ({
     setApiKey: jest.fn(),
@@ -18,10 +17,10 @@ jest.mock("mailgun-js", () => {
 import * as MailgunJS from "mailgun-js"
 
 import { validateMessage, resetMailgun } from "./mail"
+import { msgFixture, configFixture } from "./fixtures";
 
-const msgFixture: mail.Message = { to: "to@gmail.com", subject: "subject", text: "text" }
+
 const from = "serviceName <no-reply@mailgunDomain>"
-const configFixture: gitfs.Config = { serviceName: "serviceName", mailgunDomain: "mailgunDomain", jwtSecret: "" }
 const extend = <T>(o: T, delta: Partial<T>): T => ({ ...o, ...delta })
 
 describe("sendAsync()", () => {
@@ -30,7 +29,7 @@ describe("sendAsync()", () => {
     it("throws an error when given config contains no API key", async () => {
         try {
             expect.assertions(1)
-            await mail.sendAsync(msgFixture, {} as any)
+            await mail.sendAsync(msgFixture(), {} as any)
         } catch (err) {
             expect(err.message).toEqual("no sendmail provider")
         }
@@ -38,29 +37,29 @@ describe("sendAsync()", () => {
 
     it("uses sendgrid when only config.sendgridApiKey is set", async () => {
         expect.assertions(2)
-        await mail.sendAsync(msgFixture, { ...configFixture, sendgridApiKey: "sendgridApiKey" } as any)
+        await mail.sendAsync(msgFixture(), configFixture({ sendgridApiKey: "sendgridApiKey" }))
         expect(sendgrid.setApiKey).toBeCalledWith("sendgridApiKey")
-        expect(sendgrid.send).toBeCalledWith(extend(msgFixture, { from }), false)
+        expect(sendgrid.send).toBeCalledWith(msgFixture({ from }), false)
     })
 
     it("uses mailgun when only config.mailgunApiKey is set", async () => {
         expect.assertions(2)
-        await mail.sendAsync(msgFixture, { ...configFixture, mailgunApiKey: "mailgunApiKey" } as any)
+        await mail.sendAsync(msgFixture(), configFixture({ mailgunApiKey: "mailgunApiKey" }))
         expect(MailgunJS).toBeCalledWith({ domain: "mailgunDomain", apiKey: "mailgunApiKey"})
         expect(
             //@ts-ignore second call is a function so we can't test that
             MailgunJS({ domain: "mailgunDomain", apiKey: "mailgunApiKey"}).messages().send.mock.calls[0][0]
-        ).toMatchObject(extend(msgFixture, { from }))
+        ).toMatchObject(msgFixture({ from }))
     })
 
-    it("uses mailgun when only both apiKeys are set", async () => {
+    it("uses mailgun when both apiKeys are set", async () => {
         resetMailgun()
-        await mail.sendAsync(msgFixture, { ...configFixture, mailgunApiKey: "mailgunApiKey", sendgridApiKey: "sendgridApiKey" } as any)
+        await mail.sendAsync(msgFixture(), configFixture({ mailgunApiKey: "mailgunApiKey", sendgridApiKey: "sendgridApiKey" }))
         expect(MailgunJS).toBeCalledWith({ domain: "mailgunDomain", apiKey: "mailgunApiKey"})
         expect(
             //@ts-ignore second call is a function so we can't test that
             MailgunJS({ domain: "mailgunDomain", apiKey: "mailgunApiKey"}).messages().send.mock.calls[0][0]
-        ).toMatchObject(extend(msgFixture, { from }))
+        ).toMatchObject(msgFixture({ from }))
         expect(sendgrid.setApiKey).not.toBeCalled()
         expect(sendgrid.send).not.toBeCalled()
     })
@@ -69,29 +68,23 @@ describe("sendAsync()", () => {
 
 describe("validateEmail()", () => {
     it("validates correct email", () => {
-        const validationResult = validateMessage({ ...msgFixture })
-        expect(validationResult).toBeNull()
+        expect(validateMessage(msgFixture())).toBeNull()
     })
 
     it("validates incorrect email recipent", () => {
-        const validationResult = validateMessage({ ...msgFixture, to: "incorrect" })
-        expect(validationResult).toContain("recipent")
+        expect(validateMessage(msgFixture({ to: "incorrect" }))).toContain("recipent")
     })
 
     it("validates incorrect email sender", () => {
-        const validationResult = validateMessage({ ...msgFixture, from: "incorrect" })
-        expect(validationResult).toContain("sender")
+        expect(validateMessage(msgFixture({ from: "incorrect" }))).toContain("sender")
     })
 
     it("validates incorrect subject", () => {
-        let validationResult = validateMessage({ ...msgFixture, subject: "a".repeat(300) })
-        expect(validationResult).toContain("subject")
-        validationResult = validateMessage({ ...msgFixture, subject: 5 as unknown as string })
-        expect(validationResult).toContain("subject")
+        expect(validateMessage(msgFixture({ subject: "a".repeat(300) }))).toContain("subject")
+        expect(validateMessage(msgFixture({ subject: 5 as unknown as string }))).toContain("subject")
     })
 
     it("validates incorrect text", () => {
-        const validationResult = validateMessage({ ...msgFixture, text: 5 as unknown as string })
-        expect(validationResult).toContain("content")
+        expect(validateMessage({ ...msgFixture(), text: 5 as unknown as string })).toContain("content")
     })
 })
