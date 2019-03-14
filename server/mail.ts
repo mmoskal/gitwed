@@ -15,7 +15,8 @@ export type Message = {
 type SendEmailFn = (msg: Message & { from: string }, config: gitfs.Config) => Promise<string>
 
 export const validateMessage = (msg: Message) => {
-    const emailRegex = /^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/
+    // simple regex: at least one character before the @, before the period and after it
+    const emailRegex = /^.+@.+\..+$/
     const errors = []
 
     if(msg.from && !emailRegex.test(msg.from))  errors.push("sender")
