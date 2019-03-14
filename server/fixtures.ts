@@ -25,3 +25,7 @@ export const requestFixture = fixtureFactory<express.Request>({
 
 export const responseFixture = fixtureFactory<express.Response>({
 } as express.Response)
+
+export const cheerioFixture = (attr: Function) => ({
+  attr
+}) as Cheerio
