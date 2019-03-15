@@ -20,7 +20,6 @@ export const configFixture = fixtureFactory<gitfs.Config>({
 
 export const requestFixture = fixtureFactory<express.Request>({
   body: {},
-  rawHeaders: [],
 } as express.Request)
 
 export const responseFixture = fixtureFactory<express.Response>({
