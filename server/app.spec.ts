@@ -15,33 +15,31 @@ jest.mock("mailgun-js", () => {
   }));
 });
 
+
 describe("API", () => {
   describe("/api/send-email", () => {
     const config = configFixture({
       mailgunApiKey: "mailgunApiKey",
-      mailgunDomain: "mailgunDomain",
       sendgridApiKey: "sendgridApiKey",
-      allowedEmailOrigns: ["allowed.com"]
+      allowedEmailRecipients: ["allowed@email.com"]
     });
 
     const responseMock = responseFixture({
       status: jest.fn(() => ({ end: jest.fn() })) as any
     });
 
-    it("accepts requests from allowed origins", async () => {
+    it("accepts requests with allowed recipients", async () => {
       const request = requestFixture({
-        rawHeaders: ["Host", "allowed.com"],
-        body: msgFixture()
+        body: msgFixture({ to: "allowed@email.com" })
       });
       await onSendEmail(config)(request, responseMock, null);
 
       expect(responseMock.status).toBeCalledWith(200);
     });
 
-    it("doesnt accept requests from disallowed origins", async () => {
+    it("doesnt accept requests with unknown recipients", async () => {
       const request = requestFixture({
-        rawHeaders: ["Host", "disallowed.com"],
-        body: msgFixture()
+        body: msgFixture({ to: "disallowed@email.com" })
       });
       await onSendEmail(config)(request, responseMock, null);
 
@@ -50,8 +48,7 @@ describe("API", () => {
 
     it("doesnt accept incorrect body payloads", async () => {
       const request = requestFixture({
-        rawHeaders: ["Host", "allowed.com"],
-        body: msgFixture({ to: "fake email" })
+        body: msgFixture({ to: "allowed@email.com", from: "fake email" })
       });
       await onSendEmail(config)(request, responseMock, null);
 

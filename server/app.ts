@@ -4,6 +4,8 @@ import express = require('express');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
+import RateLimit = require("express-rate-limit");
+
 import expander = require('./expander')
 import gitfs = require('./gitfs')
 import tools = require('./tools')
@@ -15,6 +17,7 @@ import logs = require('./logs')
 import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
+
 import { Message } from './mail';
 import { sendAsync } from "./mail"
 
@@ -37,6 +40,10 @@ const pageCache = new tools.StringCache()
 const fileLocks = tools.promiseQueue()
 
 let ownSSL = false
+
+if(gitfs.config && gitfs.config.proxy){
+    app.enable("trust proxy"); // Rate limiter - only if you're behind a reverse proxy (Heroku, Bluemix, AWS ELB, Nginx, etc)
+}
 
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
@@ -132,10 +139,8 @@ app.get("/api/history", (req, res) => {
 export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg => 
     async (req, res) => {
     const msg = req.body as Message
-    const hostHeaderIndex = req.rawHeaders.indexOf('Host') + 1;
-    const host = hostHeaderIndex ? req.rawHeaders[hostHeaderIndex] : undefined;
-    const allowed = (cfg.allowedEmailOrigns || []).find(o => o.startsWith(host))
-    winston.info("api-send: " + host + " " + allowed + " " + JSON.stringify(msg))
+    const allowed = (cfg.allowedEmailRecipients || []).find(o => o === req.body.to)
+    winston.info("api-send allowed: " + allowed + " " + JSON.stringify(msg))
 
     if (!allowed) {
         res.status(405).end()
@@ -151,6 +156,12 @@ export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
     }
 }
 
+
+const limiter = new RateLimit({
+    max: 3 // limit each IP to 3 requests per one minute
+  });
+  
+app.use("/api/send-email", limiter)
 app.post("/api/send-email", onSendEmail(gitfs.config))
 
 app.post("/api/uploadimg", (req, res) => {

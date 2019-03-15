@@ -71,8 +71,8 @@ describe("validateEmail()", () => {
         expect(validateMessage(msgFixture())).toBeNull()
     })
 
-    it("validates incorrect email recipent", () => {
-        expect(validateMessage(msgFixture({ to: "incorrect" }))).toContain("recipent")
+    it("validates incorrect email recipient", () => {
+        expect(validateMessage(msgFixture({ to: "incorrect" }))).toContain("recipient")
     })
 
     it("validates incorrect email sender", () => {
