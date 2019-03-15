@@ -158,7 +158,7 @@ export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
 
 
 const limiter = new RateLimit({
-    max: 3 // limit each IP to 2 requests per one minute
+    max: 3 // limit each IP to 3 requests per one minute
   });
   
 app.use("/api/send-email", limiter)
