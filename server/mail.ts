@@ -20,7 +20,7 @@ export const validateMessage = (msg: Message) => {
     const errors = []
 
     if(msg.from && (!emailRegex.test(msg.from) || msg.subject.length > 254)) errors.push("sender")
-    if(!emailRegex.test(msg.to) || msg.subject.length > 254) errors.push("recipent");
+    if(!emailRegex.test(msg.to) || msg.subject.length > 254) errors.push("recipient");
     if(typeof msg.subject !== "string" || msg.subject.length > 255) errors.push("subject")
     if(typeof msg.text !== "string") errors.push("content")
 

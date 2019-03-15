@@ -139,7 +139,7 @@ app.get("/api/history", (req, res) => {
 export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg => 
     async (req, res) => {
     const msg = req.body as Message
-    const allowed = (cfg.allowedEmailRecipents || []).find(o => o === req.body.to)
+    const allowed = (cfg.allowedEmailRecipients || []).find(o => o === req.body.to)
     winston.info("api-send allowed: " + allowed + " " + JSON.stringify(msg))
 
     if (!allowed) {

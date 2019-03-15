@@ -21,14 +21,14 @@ describe("API", () => {
     const config = configFixture({
       mailgunApiKey: "mailgunApiKey",
       sendgridApiKey: "sendgridApiKey",
-      allowedEmailRecipents: ["allowed@email.com"]
+      allowedEmailRecipients: ["allowed@email.com"]
     });
 
     const responseMock = responseFixture({
       status: jest.fn(() => ({ end: jest.fn() })) as any
     });
 
-    it("accepts requests with allowed recipents", async () => {
+    it("accepts requests with allowed recipients", async () => {
       const request = requestFixture({
         body: msgFixture({ to: "allowed@email.com" })
       });
@@ -37,7 +37,7 @@ describe("API", () => {
       expect(responseMock.status).toBeCalledWith(200);
     });
 
-    it("doesnt accept requests with unknown recipents", async () => {
+    it("doesnt accept requests with unknown recipients", async () => {
       const request = requestFixture({
         body: msgFixture({ to: "disallowed@email.com" })
       });
