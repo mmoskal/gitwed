@@ -4,7 +4,8 @@ import express = require('express');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
-import crypto = require("crypto")
+import RateLimit = require("express-rate-limit");
+
 import expander = require('./expander')
 import gitfs = require('./gitfs')
 import tools = require('./tools')
@@ -16,6 +17,9 @@ import logs = require('./logs')
 import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
+
+import { Message } from './mail';
+import { sendAsync } from "./mail"
 
 bluebird.longStackTraces();
 logs.init()
@@ -36,6 +40,10 @@ const pageCache = new tools.StringCache()
 const fileLocks = tools.promiseQueue()
 
 let ownSSL = false
+
+if (gitfs.config && gitfs.config.proxy) {
+    app.enable("trust proxy"); // Rate limiter - only if you're behind a reverse proxy (Heroku, Bluemix, AWS ELB, Nginx, etc)
+}
 
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.url);
@@ -127,6 +135,34 @@ app.get("/api/history", (req, res) => {
     gitfs.findRepo(p).logAsync(p || ".")
         .then(j => res.json(j))
 })
+
+export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
+    async (req, res) => {
+        const msg = req.body as Message
+        const allowed = (cfg.allowedEmailRecipients || []).find(o => o === req.body.to)
+        winston.info("api-send allowed: " + allowed + " " + JSON.stringify(msg))
+
+        if (!allowed) {
+            res.status(405).end()
+            return
+        }
+
+        try {
+            await sendAsync(msg, cfg)
+            res.status(200).end()
+        } catch (err) {
+            winston.error("api-send error:" + err)
+            res.status(422).end()
+        }
+    }
+
+
+const limiter = new RateLimit({
+    max: 3 // limit each IP to 3 requests per one minute
+});
+
+app.use("/api/send-email", limiter)
+app.post("/api/send-email", onSendEmail(gitfs.config))
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)

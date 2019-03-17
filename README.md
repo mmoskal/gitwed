@@ -141,6 +141,8 @@ Example config (remove ``// comments` when you create your own):
     // this is your sendGrid Api KEY - you can get one from https://sendgrid.com/docs/ui/account-and-settings/api-keys/
     // Gitwed uses sendgrid `only` if no mailgunApiKey was provided
     "sendgridApiKey": "SG.XXXXX-...abcdf"
+    // list of email recipients that gitwed is allowed to send emails to on `/api/send-email`
+    "allowedEmailRecipients" : ["me@example.com"],
     // if you want to generate map images in events, you need a key for Google Maps
     "gmapsKey": "ABcDe...FgHg",
     // this is used in subject line of emails
@@ -182,7 +184,7 @@ Example config (remove ``// comments` when you create your own):
        "something.foobar.net": "something.foobar.net",
        // an empty directory means "/"; used to force certificate generation for that host 
        "hosting.example.com": ""
-    }
+    },
 }
 ```
 

@@ -28,6 +28,7 @@ export interface Config {
     vhosts?: SMap<string>;
     certEmail?: string;
     defaultRedirect?: string; // defaults to /events/
+    allowedEmailRecipients?: string[];
     services?: rest.ServiceConfig[];
 }
 

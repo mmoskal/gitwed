@@ -149,6 +149,38 @@ export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
     return toHTML(h)
 }
 
+
+function canBeCdned(v: string, canHaveRelativeLinks = false) {
+    if (!v) return false
+    if (/^[\w-]+:\/\//.test(v)) return false
+    if (/^\/(gwcdn|common)\//.test(v)) return true
+    if (/\.(png|jpe?g|ico)$/i.test(v)) return true
+    if (canHaveRelativeLinks && !/(^|\/)cdn\//.test(v)) return false
+    return true
+}
+
+export const replicatePictureSource = (ee: Cheerio, replicate: (url: string) => Promise<string>): Promise<void>[] => {
+    // special case for <picture><source srcset="..." /></picture>
+    const srcset = ee.attr("srcset")
+    if(!srcset) return []
+    const newSrcset = srcset.split(",").reduce((acc, mediaData) => {
+        const mediaParams = mediaData.trim().split(" ")
+        const v = mediaParams[0]
+        if(!canBeCdned(v, false)) return acc
+        
+        acc.push(replicate(v).then(r => {
+            mediaParams[0] = r
+            return mediaParams.join(" ")
+        }))
+        return acc
+    }, [])
+   
+    return [Promise.all(newSrcset).then(updatedSrcset => {
+        ee.attr("srcset", updatedSrcset.join(", "))
+        ee.attr("data-gw-orig-srcset", srcset)
+    })]
+}
+
 function expandAsync(cfg: ExpansionConfig) {
     let filename = cfg.rootFile
     let fileContent = cfg.rootFileContent
@@ -270,15 +302,6 @@ function expandAsync(cfg: ExpansionConfig) {
             })
     }
 
-    function canBeCdned(v: string, canHaveRelativeLinks = false) {
-        if (!v) return false
-        if (/^[\w-]+:\/\//.test(v)) return false
-        if (/^\/(gwcdn|common)\//.test(v)) return true
-        if (/\.(png|jpe?g|ico)$/i.test(v)) return true
-        if (canHaveRelativeLinks && !/(^|\/)cdn\//.test(v)) return false
-        return true
-    }
-
     function metaRewrite() {
         let clean = (s: string) => (s || "").replace(/\s+/g, " ").trim()
         let metas: SMap<string> = {
@@ -361,6 +384,9 @@ function expandAsync(cfg: ExpansionConfig) {
             repl(e, "src")
             if (e.tagName != "img")
                 repl(e, "poster")
+        })
+        h("source").each((_, e) => {
+            replicatePictureSource(h(e), replUrlAsync).forEach(res => promises.push(res))
         })
         h("script").each((idx, e) => {
             repl(e, "src", true)
