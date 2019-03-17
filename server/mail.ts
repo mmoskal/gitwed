@@ -6,7 +6,7 @@ import * as MailgunJs from "mailgun-js"
 let mailgun: MailgunJs.Mailgun
 
 export type Message = {
-    from?: string;
+    from: string;
     to: string;
     subject: string;
     text: string;
@@ -14,18 +14,28 @@ export type Message = {
 
 type SendEmailFn = (msg: Message & { from: string }, config: gitfs.Config) => Promise<string>
 
-export const validateMessage = (msg: Message) => {
-    if (!msg || typeof msg !== "object") msg = {} as any
-    const emailRegex = /^.+@.+\..+$/
+export const isValidString = (str: any, len = 254, regex: RegExp = null): str is String =>
+    typeof str === "string" && str.length < len && (regex ? regex.test(str) : true)
+
+export const isValidEmail = (str: any): str is string => isValidString(str, 128, /^.+@.+\..+$/)
+export const Err = <T>(error: T): Err<T> => ({ type: "Err", error })
+export const Ok = <T>(value: T): Ok<T> => ({ type: "Ok", value })
+type Ok<T> = { type: "Ok"; value: T }
+type Err<T> = { type: "Err"; error: T }
+export type Result<Value, Error> = Ok<Value> | Err<Error>
+
+export const validateMessage = (msg: any): Result<Message, string> => {
+    if (!msg || typeof msg !== "object") return Err("Invalid msg object")
     const errors = []
+    const { from, to, subject, text } = msg
+    if (!isValidEmail(from)) errors.push("from")
+    if (!isValidEmail(to)) errors.push("to")
+    if (!isValidString(subject)) errors.push("subject");
+    if (!isValidString(text, 1024)) errors.push("text");
 
-    if (msg.from && (!emailRegex.test(msg.from) || msg.subject.length > 254)) errors.push("sender")
-    if (!emailRegex.test(msg.to) || msg.subject.length > 254) errors.push("recipient");
-    if (typeof msg.subject !== "string" || msg.subject.length > 255) errors.push("subject")
-    if (typeof msg.text !== "string" || msg.text.length > 1024) errors.push("text")
-
-    return errors.length ?
-        `email message validation failed, invalid fields: ${errors.join(", ")}` : null
+    return errors.length
+        ? Err(`message validation failed, invalid fields: ${errors.join(", ")}`)
+        : Ok({ from, to, subject, text })
 }
 
 const sendgridSend: SendEmailFn = async (msg, config) => {
@@ -47,12 +57,16 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
     winston.info(`sending email, to: ${msg.to}, subject: ${msg.subject}`)
 
     if (!config) config = gitfs.config
-    const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
+    if (!msg || typeof msg !== "object") {
+        winston.error("Invalid msg ", msg)
+        return Promise.reject("Invalid msg")
+    }
 
-    const validationError = validateMessage(msg)
-    if (validationError) {
-        winston.error(validationError)
-        return Promise.reject(validationError)
+    const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
+    const validationResult = validateMessage({ ...msg, from })
+    if (validationResult.type === "Err") {
+        winston.error(validationResult.error)
+        return Promise.reject(validationResult.error)
     }
 
     let send: SendEmailFn
@@ -67,7 +81,7 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
     return new Promise(async (resolve, reject) => {
         try {
             if (!send) throw new Error("no sendmail provider")
-            winston.debug('mail:', await send({ ...msg, from }, config))
+            winston.debug('mail:', await send(validationResult.value, config))
             resolve()
         } catch (err) {
             winston.error("email send failed: " + err.message)
