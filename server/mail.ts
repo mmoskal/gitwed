@@ -15,19 +15,17 @@ export type Message = {
 type SendEmailFn = (msg: Message & { from: string }, config: gitfs.Config) => Promise<string>
 
 export const validateMessage = (msg: Message) => {
-    // simple regex: at least one character before the @, before the period and after it
+    if (!msg || typeof msg !== "object") msg = {} as any
     const emailRegex = /^.+@.+\..+$/
     const errors = []
 
-    if(msg.from && (!emailRegex.test(msg.from) || msg.subject.length > 254)) errors.push("sender")
-    if(!emailRegex.test(msg.to) || msg.subject.length > 254) errors.push("recipient");
-    if(typeof msg.subject !== "string" || msg.subject.length > 255) errors.push("subject")
-    if(typeof msg.text !== "string") errors.push("content")
+    if (msg.from && (!emailRegex.test(msg.from) || msg.subject.length > 254)) errors.push("sender")
+    if (!emailRegex.test(msg.to) || msg.subject.length > 254) errors.push("recipient");
+    if (typeof msg.subject !== "string" || msg.subject.length > 255) errors.push("subject")
+    if (typeof msg.text !== "string" || msg.text.length > 1024) errors.push("text")
 
-    if(errors.length) {
-        return "email message validation failed because of fields: " + errors.join(", ")
-    }
-    return null
+    return errors.length ?
+        `email message validation failed, invalid fields: ${errors.join(", ")}` : null
 }
 
 const sendgridSend: SendEmailFn = async (msg, config) => {
@@ -52,7 +50,7 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
     const from = msg.from || config.serviceName + " <no-reply@" + config.mailgunDomain + ">"
 
     const validationError = validateMessage(msg)
-    if(validationError) {
+    if (validationError) {
         winston.error(validationError)
         return Promise.reject(validationError)
     }
