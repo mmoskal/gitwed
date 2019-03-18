@@ -162,19 +162,19 @@ function canBeCdned(v: string, canHaveRelativeLinks = false) {
 export const replicatePictureSource = (ee: Cheerio, replicate: (url: string) => Promise<string>): Promise<void>[] => {
     // special case for <picture><source srcset="..." /></picture>
     const srcset = ee.attr("srcset")
-    if(!srcset) return []
+    if (!srcset) return []
     const newSrcset = srcset.split(",").reduce((acc, mediaData) => {
         const mediaParams = mediaData.trim().split(" ")
         const v = mediaParams[0]
-        if(!canBeCdned(v, false)) return acc
-        
+        if (!canBeCdned(v, false)) return acc
+
         acc.push(replicate(v).then(r => {
             mediaParams[0] = r
             return mediaParams.join(" ")
         }))
         return acc
     }, [])
-   
+
     return [Promise.all(newSrcset).then(updatedSrcset => {
         ee.attr("srcset", updatedSrcset.join(", "))
         ee.attr("data-gw-orig-srcset", srcset)
@@ -275,8 +275,9 @@ function expandAsync(cfg: ExpansionConfig) {
                 }))
     }
 
-    function replUrlAsync(url: string) {
-        let resolved = relativePath(cfg.rootFile, url)
+    function replUrlAsync(url: string, rootFile: string = null) {
+        if (!rootFile) rootFile = cfg.rootFile
+        let resolved = relativePath(rootFile, url)
         let spl = gitfs.splitName(resolved)
         let ext = spl.name.replace(/.*\./, ".")
         if (spl.parent == "/gwcdn") {
@@ -285,6 +286,7 @@ function expandAsync(cfg: ExpansionConfig) {
                 winston.info("no such file (GWCDN): " + resolved + " in " + cfg.ref)
             return Promise.resolve(!sha ? url : gitfs.config.cdnPath + "/" + spl.name + "-" + sha + ext)
         }
+
         let repo = gitfs.findRepo(spl.parent)
         //winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
         return getTreeAsync(repo, spl.parent)
@@ -361,16 +363,26 @@ function expandAsync(cfg: ExpansionConfig) {
             return Promise.all(promises).then(() => {
             })
 
+        const rewriteAttr = (ee: Cheerio, attrName: string, oldone: string, newone: string) => {
+            ee.attr("data-gw-orig-" + attrName, oldone)
+            ee.attr(attrName, newone)
+        }
+
         let repl = (e: CheerioElement, attrName: string, mayHaveRelativeLinks = false) => {
             let ee = h(e)
             let v = ee.attr(attrName)
             if (!v) return
             if (!canBeCdned(v, mayHaveRelativeLinks)) return
-            promises.push(replUrlAsync(v).then(r => {
+            promises.push(replUrlAsync(v).then((r: string) => {
+
                 //winston.debug("repl: " + v + " -> " + r)
                 if (r != v) {
-                    ee.attr(attrName, r)
-                    ee.attr("data-gw-orig-" + attrName, v)
+                    rewriteAttr(ee, attrName, v, r)
+                } else {
+                    replUrlAsync(v, "/events/").then((r2: string) => {
+                        if (r2 != v)
+                            rewriteAttr(ee, attrName, v, r2)
+                    })
                 }
             }))
         }
