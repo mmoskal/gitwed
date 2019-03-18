@@ -452,38 +452,76 @@ async function genericGet(req: express.Request, res: express.Response) {
         })
         return res.end(cached)
     }
+    type Template = { name: string, content: string }
+    const templatesMap: SMap<string> = { "_new.html": "Standard page", "_new-ai.html": "AI page" }
+    const initTemplatesCache = async (base: string): Promise<SMap<string>> => {
+        const templateArray: Promise<Template>[] = []
+
+        Object.keys(templatesMap || {}).forEach(async name =>
+            templateArray.push(new Promise<Template>(async (res) => {
+                try {
+                    const content = await repo.getTextFileAsync(base + "/" + name, ref)
+                    res({ name, content })
+                } catch {
+                }
+            })))
+
+        const templatesContentByName: SMap<string> = {};
+        (await Promise.all(templateArray)).forEach(({ name, content }) => templatesContentByName[name] = content)
+        return templatesContentByName
+    }
 
     let str = await repo.getTextFileAsync(gitFileName, ref)
         .then(v => v, err =>
             repo.getTextFileAsync(cleaned + "/index.html")
                 .then(() => res.redirect(req.path + "/"),
-                    async (_) => {
-                        if (req.appuser) {
-                            let base = cleaned.replace(/\/[^/]*$/, "")
-                            let t = await repo.getTextFileAsync(base + "/_new.html", ref)
-                                .then(v => v, e => "")
-                            if (!t) {
-                                notFound(req, base + "/_new.html is missing!")
-                            } else {
-                                if (req.query["create"] == "true") {
-                                    const pcfg = await expander.getPageConfigAsync(base + "/_new.html")
-                                    const hasWritePerm = await auth.hasWritePermAsync(req.appuser, pcfg.users)
-                                    if (!hasWritePerm)
-                                        notFound(req, "No permission to create a new page here.")
-                                    else {
-                                        await repo.setTextFileAsync(gitFileName, t,
-                                            "Create based on _new.html", req.appuser)
-                                        res.redirect(req.path)
-                                    }
-
-                                } else {
-                                    notFound(req, ` <a href="${req.path + "?create=true"}">Create page</a>`)
-                                }
-                            }
-                        } else
+                    async _ => {
+                        if (!req.appuser) {
                             notFound(req)
-                    })
-                .then(() => null as string))
+                            return
+                        }
+
+                        let base = cleaned.replace(/\/[^/]*$/, "")
+                        try {
+                            const templatesContentByName = await initTemplatesCache(base)
+
+                            if (!Object.keys(templatesContentByName).length) {
+                                notFound(req, base + JSON.stringify(templatesMap) + " files are missing!")
+                                return
+                            }
+
+                            if (req.query["create"] !== "true") {
+                                notFound(req,
+                                    "<ul>" +
+                                    Object.keys(templatesContentByName).map(n =>
+                                        `<li><a href="${req.path}?create=true&template=${n}">Create ${templatesMap[n]}</a></li>`).join('') +
+                                    "</ul>"
+                                )
+                                return
+                            }
+                            const template = req.query["template"]
+                            if (!/[a-zA-Z-]+.html/.test(template) || !templatesContentByName[template]) {
+                                notFound(req, base + `/${template} is missing!`)
+                                return
+                            }
+
+
+                            const pcfg = await expander.getPageConfigAsync(base + "/" + template)
+
+                            if (!await auth.hasWritePermAsync(req.appuser, pcfg.users)) {
+                                notFound(req, "No permission to create a new page here.")
+                                return
+                            }
+
+                            await repo.setTextFileAsync(gitFileName, templatesContentByName[template], `Create based on ${template}`, req.appuser)
+                            res.redirect(req.path)
+                        } catch (err) {
+                            notFound(req, err)
+                            return
+                        }
+
+
+                    }).then(() => null as string))
 
     if (str == null) return
 
@@ -524,7 +562,7 @@ function notFound(req: express.Request, msg = "") {
     let res = req._response as express.Response
     res.status(404)
     routing.sendError(req, "Page not found",
-        "Whoops! We couldn't find the page your were looking for. " + msg)
+        "Whoops! We couldn't find the page your were looking for! " + msg)
 }
 
 function setupFinalRoutes() {
