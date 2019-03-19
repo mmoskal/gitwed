@@ -452,23 +452,25 @@ async function genericGet(req: express.Request, res: express.Response) {
         })
         return res.end(cached)
     }
-    type Template = { name: string, content: string }
-    const templatesMap: SMap<string> = { "_new.html": "Standard page", "_new-ai.html": "AI page" }
-    const initTemplatesCache = async (base: string): Promise<SMap<string>> => {
+
+    type Template = { name: string, content: string, filename: string }
+    const defaultTemplates: SMap<string> = { "_new.html": "Standard page" }
+
+    const getTemplatesContent = async (base: string, templates: SMap<string>): Promise<Template[]> => {
         const templateArray: Promise<Template>[] = []
 
-        Object.keys(templatesMap || {}).forEach(async name =>
-            templateArray.push(new Promise<Template>(async (res) => {
+        Object.keys(templates || {}).forEach(filename =>
+            templateArray.push(new Promise<Template>(async res => {
+                let content = null
                 try {
-                    const content = await repo.getTextFileAsync(base + "/" + name, ref)
-                    res({ name, content })
-                } catch {
-                }
+                    content = await repo.getTextFileAsync(base + "/" + filename, ref)
+                } catch { }
+                res({ name: templates[filename], content, filename })
             })))
 
-        const templatesContentByName: SMap<string> = {};
-        (await Promise.all(templateArray)).forEach(({ name, content }) => templatesContentByName[name] = content)
-        return templatesContentByName
+        const ts: Template[] = [];
+        (await Promise.all(templateArray)).forEach((p => p.content ? ts.push(p) : null))
+        return ts
     }
 
     let str = await repo.getTextFileAsync(gitFileName, ref)
@@ -482,38 +484,36 @@ async function genericGet(req: express.Request, res: express.Response) {
                         }
 
                         let base = cleaned.replace(/\/[^/]*$/, "")
+                        const pcfg = await expander.getPageConfigAsync(base)
                         try {
-                            const templatesContentByName = await initTemplatesCache(base)
+                            const templates = await getTemplatesContent(base, pcfg.templates || defaultTemplates)
 
-                            if (!Object.keys(templatesContentByName).length) {
-                                notFound(req, base + JSON.stringify(templatesMap) + " files are missing!")
+                            if (!templates.length) {
+                                notFound(req, base + JSON.stringify(templates) + " files are missing!")
                                 return
                             }
 
                             if (req.query["create"] !== "true") {
                                 notFound(req,
                                     "<ul>" +
-                                    Object.keys(templatesContentByName).map(n =>
-                                        `<li><a href="${req.path}?create=true&template=${n}">Create ${templatesMap[n]}</a></li>`).join('') +
+                                    templates.map(t =>
+                                        `<li><a href="${req.path}?create=true&template=${t.filename.replace(".html", "")}">Create ${t.name}</a></li>`).join('') +
                                     "</ul>"
                                 )
                                 return
                             }
-                            const template = req.query["template"]
-                            if (!/[a-zA-Z-]+.html/.test(template) || !templatesContentByName[template]) {
-                                notFound(req, base + `/${template} is missing!`)
+                            const templateFilename = req.query["template"] + ".html"
+                            if (!/[a-zA-Z_-]+.html/.test(templateFilename) || !templates.find(t => t.filename === templateFilename)) {
+                                notFound(req, base + `/${templateFilename} is missing!`)
                                 return
                             }
-
-
-                            const pcfg = await expander.getPageConfigAsync(base + "/" + template)
 
                             if (!await auth.hasWritePermAsync(req.appuser, pcfg.users)) {
                                 notFound(req, "No permission to create a new page here.")
                                 return
                             }
 
-                            await repo.setTextFileAsync(gitFileName, templatesContentByName[template], `Create based on ${template}`, req.appuser)
+                            await repo.setTextFileAsync(gitFileName, templates.find(t => t.filename === templateFilename).content, `Create based on ${templateFilename}`, req.appuser)
                             res.redirect(req.path)
                         } catch (err) {
                             notFound(req, err)
@@ -524,7 +524,6 @@ async function genericGet(req: express.Request, res: express.Response) {
                     }).then(() => null as string))
 
     if (str == null) return
-
     try {
         let cfg: expander.ExpansionConfig = {
             rootFile: gitFileName,
@@ -541,8 +540,8 @@ async function genericGet(req: express.Request, res: express.Response) {
             if (!cfg.eventInfo)
                 return notFound(req, "No such event.")
         }
-
         let page = await expander.expandFileAsync(cfg)
+
         if (cfg.pageConfig.private && !cfg.hasWritePerm) {
             return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
         }
@@ -562,7 +561,7 @@ function notFound(req: express.Request, msg = "") {
     let res = req._response as express.Response
     res.status(404)
     routing.sendError(req, "Page not found",
-        "Whoops! We couldn't find the page your were looking for! " + msg)
+        "Whoops! We couldn't find the page your were looking for!! " + msg)
 }
 
 function setupFinalRoutes() {
