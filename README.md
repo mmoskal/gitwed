@@ -184,11 +184,6 @@ Example config (remove ``// comments` when you create your own):
        "something.foobar.net": "something.foobar.net",
        // an empty directory means "/"; used to force certificate generation for that host 
        "hosting.example.com": ""
-    },
-    // templates can be specified as below - default value of that dict is { "_new.html" : "Standard page" }
-    "templates": {
-        "subpage1-template.html": "1st kind of subpage",
-        "subpage2-template.html": "2nd kind of subpage"
     }
 }
 ```
