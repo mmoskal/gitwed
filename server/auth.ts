@@ -147,6 +147,7 @@ export function initRoutes(app: express.Express) {
 
                 mail.sendAsync({
                     to: email,
+                    from: null,
                     subject: "Login at " + gitfs.config.serviceName,
                     text: `Please follow the link below to login:\n` +
                         `    ${link}\n\n` +
@@ -257,6 +258,7 @@ export function initRoutes(app: express.Express) {
 
         await mail.sendAsync({
             to: email,
+            from: null,
             subject: "Invitation to edit " + editUrl,
             text: `${req.appuser} has invited you to edit ${editUrl}. To accept, please follow the link below:\n\n    ${acceptLink}\n`
         })
