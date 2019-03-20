@@ -503,7 +503,7 @@ async function genericGet(req: express.Request, res: express.Response) {
                                 return
                             }
                             const templateFilename = req.query["template"] + ".html"
-                            if (!/[a-zA-Z_-]+.html/.test(templateFilename) || !templates.find(t => t.filename === templateFilename)) {
+                            if (!/[a-zA-Z0-9_-]+.html/.test(templateFilename) || !templates.find(t => t.filename === templateFilename)) {
                                 notFound(req, base + `/${templateFilename} is missing!`)
                                 return
                             }
