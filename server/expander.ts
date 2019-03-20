@@ -62,6 +62,7 @@ export interface Pos {
 export interface PageConfig {
     langs?: string[];
     users?: string[];
+    templates?: SMap<string>
     center?: string;
     epub?: boolean;
     private?: boolean;
@@ -162,19 +163,19 @@ function canBeCdned(v: string, canHaveRelativeLinks = false) {
 export const replicatePictureSource = (ee: Cheerio, replicate: (url: string) => Promise<string>): Promise<void>[] => {
     // special case for <picture><source srcset="..." /></picture>
     const srcset = ee.attr("srcset")
-    if(!srcset) return []
+    if (!srcset) return []
     const newSrcset = srcset.split(",").reduce((acc, mediaData) => {
         const mediaParams = mediaData.trim().split(" ")
         const v = mediaParams[0]
-        if(!canBeCdned(v, false)) return acc
-        
+        if (!canBeCdned(v, false)) return acc
+
         acc.push(replicate(v).then(r => {
             mediaParams[0] = r
             return mediaParams.join(" ")
         }))
         return acc
     }, [])
-   
+
     return [Promise.all(newSrcset).then(updatedSrcset => {
         ee.attr("srcset", updatedSrcset.join(", "))
         ee.attr("data-gw-orig-srcset", srcset)

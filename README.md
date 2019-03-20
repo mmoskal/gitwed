@@ -184,7 +184,7 @@ Example config (remove ``// comments` when you create your own):
        "something.foobar.net": "something.foobar.net",
        // an empty directory means "/"; used to force certificate generation for that host 
        "hosting.example.com": ""
-    },
+    }
 }
 ```
 
