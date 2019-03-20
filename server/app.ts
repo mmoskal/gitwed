@@ -136,10 +136,9 @@ app.get("/api/history", (req, res) => {
         .then(j => res.json(j))
 })
 
-export const onSendEmail: (cfg?: gitfs.Config) => express.RequestHandler = cfg => 
+export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg => 
     async (req, res) => {
     const msg = req.body as Message
-    if(!cfg) cfg = gitfs.config
     const allowed = (cfg.allowedEmailRecipients || []).find(o => o === req.body.to)
     winston.info("api-send allowed: " + allowed + " " + JSON.stringify(msg))
 
@@ -163,7 +162,7 @@ const limiter = new RateLimit({
   });
   
 app.use("/api/send-email", limiter)
-app.post("/api/send-email", onSendEmail())
+app.post("/api/send-email", onSendEmail(gitfs.config))
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)
