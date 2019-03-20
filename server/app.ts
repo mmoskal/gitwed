@@ -561,7 +561,7 @@ function notFound(req: express.Request, msg = "") {
     let res = req._response as express.Response
     res.status(404)
     routing.sendError(req, "Page not found",
-        "Whoops! We couldn't find the page your were looking for!! " + msg)
+        "Whoops! We couldn't find the page your were looking for. " + msg)
 }
 
 function setupFinalRoutes() {
