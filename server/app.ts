@@ -561,11 +561,6 @@ async function genericGet(req: express.Request, res: express.Response) {
 
 function notFound(req: express.Request, msg = "") {
     let res = req._response as express.Response
-
-    if(gitfs.config.custom404Redirect){
-        res.redirect(gitfs.config.custom404Redirect)
-        return
-    }
     res.status(404)
     routing.sendError(req, "Page not found",
         "Whoops! We couldn't find the page your were looking for. " + msg)
