@@ -478,13 +478,15 @@ async function genericGet(req: express.Request, res: express.Response) {
             repo.getTextFileAsync(cleaned + "/index.html")
                 .then(() => res.redirect(req.path + "/"),
                     async _ => {
+                        let base = cleaned.replace(/\/[^/]*$/, "")
+                        const pcfg = await expander.getPageConfigAsync(base)
+
                         if (!req.appuser) {
-                            notFound(req)
+                            if(pcfg.custom404) res.redirect(pcfg.custom404)
+                            else notFound(req)
                             return
                         }
 
-                        let base = cleaned.replace(/\/[^/]*$/, "")
-                        const pcfg = await expander.getPageConfigAsync(base)
                         try {
                             const templates = await getTemplatesContent(base, pcfg.templates || defaultTemplates)
 

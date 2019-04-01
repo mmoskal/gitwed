@@ -63,6 +63,7 @@ export interface PageConfig {
     langs?: string[];
     users?: string[];
     templates?: SMap<string>
+    custom404?: string;
     center?: string;
     epub?: boolean;
     private?: boolean;
