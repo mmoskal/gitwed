@@ -149,8 +149,6 @@ Example config (remove ``// comments` when you create your own):
     "serviceName": "DWB-Edit",
     // default redirect path
     "defaultRedirect": "sample",
-    //default redirect when path is not found
-    "custom404Redirect": "",
     // you can set that option to 127.0.0.1 or 0.0.0.0, the default value is localhost
     "networkInterface": "localhost",
     // one of your domains; authentication is always handled through that one
