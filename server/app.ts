@@ -162,7 +162,7 @@ const limiter = new RateLimit({
 });
 
 app.use("/api/send-email", limiter)
-app.post("/api/send-email", onSendEmail(gitfs.config))
+app.post("/api/send-email", (...args) => onSendEmail(gitfs.config)(...args))
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)
