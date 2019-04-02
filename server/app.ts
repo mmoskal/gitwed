@@ -363,7 +363,7 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 
     if(!isConfiguredPage(cleaned, gitfs.config)) 
-        cleaned = `/${gitfs.config.rootDirectory}/` + cleaned
+        cleaned = `/${gitfs.config.rootDirectory}/${cleaned}` 
 
     if (/\/$/.test(cleaned))
         cleaned += "index"
@@ -372,14 +372,15 @@ async function genericGet(req: express.Request, res: express.Response) {
         cleaned = routing.getVHostDir(req) + cleaned
     }
 
-    cleaned = cleaned.slice(1)
 
     if (cleaned.endsWith("/edit")) {
-        let redirpath = "/" + cleaned.slice(0, cleaned.length - 5)
+        let redirpath = cleaned.slice(0, cleaned.length - 5).replace(`/${gitfs.config.rootDirectory}`, "")
         if (req.appuser)
             return res.redirect(redirpath)
         return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent(redirpath))
     }
+
+    cleaned = cleaned.slice(1)
 
     let ref = "master"
     if (/^[0-9a-f]{40}\//.test(cleaned)) {
