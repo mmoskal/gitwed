@@ -87,6 +87,21 @@ describe("API", () => {
             expect(isConfiguredPage("/?baz=1", config)).toEqual(false)
             expect(isConfiguredPage("/", config)).toEqual(false)
         })
+
+
+        it("recogizes pages when no config applied", () => {
+            const config = configFixture({
+                rootDirectory: "foo",
+            });
+
+            expect(isConfiguredPage("/bar", config)).toEqual(false)
+            expect(isConfiguredPage("/bar?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/bar/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/bara/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/foo/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/", config)).toEqual(false)
+        })
     })
 });
 

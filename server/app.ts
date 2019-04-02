@@ -343,7 +343,7 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
 })
 
 export const isConfiguredPage = (url: string, config: gitfs.Config) => {
-    const pages = config.pages.filter(e => e !== config.rootDirectory) || []
+    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
     let isConfig = false
     pages.forEach(page => {
         if(!url.startsWith(`/${page}`)) return
