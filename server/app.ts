@@ -367,10 +367,9 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (!/^\/(common|gw|gwcdn)\//.test(cleaned)) {
         cleaned = routing.getVHostDir(req) + cleaned
-    }
-
-    if(!isConfiguredPage(cleaned, gitfs.config)) 
-        cleaned = `/${gitfs.config.rootDirectory}/${cleaned}` 
+        if(!isConfiguredPage(cleaned, gitfs.config)) 
+            cleaned = `/${gitfs.config.rootDirectory}${cleaned}`
+    } 
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = cleaned.slice(0, cleaned.length - 5).replace(`/${gitfs.config.rootDirectory}`, "")
