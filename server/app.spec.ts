@@ -1,4 +1,4 @@
-import { onSendEmail } from "./app";
+import { onSendEmail, isConfiguredPage } from "./app";
 import {
     configFixture,
     requestFixture,
@@ -55,4 +55,53 @@ describe("API", () => {
             expect(responseMock.status).toBeCalledWith(422);
         });
     });
+
+
+    describe("Redirects", () => {
+        it("recognizes configured pages", () => {
+            const config = configFixture({
+                rootDirectory: "foo",
+                pages: ["bar"],
+            });
+
+            expect(isConfiguredPage("/bar", config)).toEqual(true)
+            expect(isConfiguredPage("/bar?baz=1", config)).toEqual(true)
+            expect(isConfiguredPage("/bar/?baz=1", config)).toEqual(true)
+            expect(isConfiguredPage("/bara/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/foo/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/", config)).toEqual(false)
+        })
+
+        it("recognizes configured pages with root included", () => {
+            const config = configFixture({
+                rootDirectory: "foo",
+                pages: ["bar", "foo"],
+            });
+
+            expect(isConfiguredPage("/bar", config)).toEqual(true)
+            expect(isConfiguredPage("/bar?baz=1", config)).toEqual(true)
+            expect(isConfiguredPage("/bar/?baz=1", config)).toEqual(true)
+            expect(isConfiguredPage("/bara/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/foo/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/", config)).toEqual(false)
+        })
+
+
+        it("recogizes pages when no config applied", () => {
+            const config = configFixture({
+                rootDirectory: "foo",
+            });
+
+            expect(isConfiguredPage("/bar", config)).toEqual(false)
+            expect(isConfiguredPage("/bar?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/bar/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/bara/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/foo/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/?baz=1", config)).toEqual(false)
+            expect(isConfiguredPage("/", config)).toEqual(false)
+        })
+    })
 });
+

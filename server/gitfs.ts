@@ -27,7 +27,8 @@ export interface Config {
     production?: boolean;
     vhosts?: SMap<string>;
     certEmail?: string;
-    defaultRedirect?: string; // defaults to /events/
+    rootDirectory?: string; // defaults to /events/
+    pages?: string[],
     allowedEmailRecipients?: string[];
     services?: rest.ServiceConfig[];
 }

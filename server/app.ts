@@ -342,6 +342,18 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
         })
 })
 
+export const isConfiguredPage = (url: string, config: gitfs.Config) => {
+    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
+    let isConfig = false
+    pages.forEach(page => {
+        if(!url.startsWith(`/${page}`)) return
+        let nextChar = url.charAt(page.length + 1)
+        if(nextChar && !["/", "?", "#"].includes(nextChar)) return
+        isConfig = true
+    })
+    return isConfig
+}
+
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
@@ -350,6 +362,9 @@ async function genericGet(req: express.Request, res: express.Response) {
         return res.redirect(cleaned + req.url.slice(req.path.length + 1))
     }
 
+    if(!isConfiguredPage(cleaned, gitfs.config)) 
+        cleaned = `/${gitfs.config.rootDirectory}/${cleaned}` 
+
     if (/\/$/.test(cleaned))
         cleaned += "index"
 
@@ -357,20 +372,15 @@ async function genericGet(req: express.Request, res: express.Response) {
         cleaned = routing.getVHostDir(req) + cleaned
     }
 
-    cleaned = cleaned.slice(1)
 
     if (cleaned.endsWith("/edit")) {
-        let redirpath = "/" + cleaned.slice(0, cleaned.length - 5)
+        let redirpath = cleaned.slice(0, cleaned.length - 5).replace(`/${gitfs.config.rootDirectory}`, "")
         if (req.appuser)
             return res.redirect(redirpath)
         return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent(redirpath))
     }
 
-    // asking for root index?
-    if (cleaned == "index") {
-        res.redirect(gitfs.config.defaultRedirect || "/sample/")
-        return
-    }
+    cleaned = cleaned.slice(1)
 
     let ref = "master"
     if (/^[0-9a-f]{40}\//.test(cleaned)) {
@@ -612,6 +622,9 @@ if (!cfg.authDomain)
 
 if (!cfg.serviceName)
     cfg.serviceName = "GITwed"
+
+if (!cfg.rootDirectory)
+    cfg.rootDirectory = "sample"
 
 if (!cfg.justDir && !cfg.cdnPath)
     cfg.cdnPath = "/cdn"

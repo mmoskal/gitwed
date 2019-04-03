@@ -148,7 +148,9 @@ Example config (remove ``// comments` when you create your own):
     // this is used in subject line of emails
     "serviceName": "DWB-Edit",
     // default redirect path
-    "defaultRedirect": "sample",
+    "rootDirectory": "sample",
+    // pages available as directories including default
+    "pages": ["sample"],
     // you can set that option to 127.0.0.1 or 0.0.0.0, the default value is localhost
     "networkInterface": "localhost",
     // one of your domains; authentication is always handled through that one
