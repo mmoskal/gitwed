@@ -239,6 +239,18 @@ app.get("/api/refresh", (req, res) => {
         })
 })
 
+export const isConfiguredPage = (url: string, config: gitfs.Config) => {
+    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
+    let isConfig = false
+    pages.forEach(page => {
+        if(!url.startsWith(`/${page}`)) return
+        let nextChar = url.charAt(page.length + 1)
+        if(nextChar && !["/", "?", "#"].includes(nextChar)) return
+        isConfig = true
+    })
+    return isConfig
+}
+
 app.post("/api/update", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
@@ -248,6 +260,10 @@ app.post("/api/update", (req, res) => {
     page = page.replace(/\.html?$/i, "")
 
     if (page.endsWith("/")) page += "index"
+    
+    if(!isConfiguredPage(page, gitfs.config)) 
+        page = `/${gitfs.config.rootDirectory}${page}`
+
     page = page.replace(/\/\d+$/, "/_event")
 
     let fn = page.slice(1) + ".html"
@@ -341,18 +357,6 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
             res.status(404).end('Page not found (CDN)');
         })
 })
-
-export const isConfiguredPage = (url: string, config: gitfs.Config) => {
-    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
-    let isConfig = false
-    pages.forEach(page => {
-        if(!url.startsWith(`/${page}`)) return
-        let nextChar = url.charAt(page.length + 1)
-        if(nextChar && !["/", "?", "#"].includes(nextChar)) return
-        isConfig = true
-    })
-    return isConfig
-}
 
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
