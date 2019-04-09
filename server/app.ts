@@ -4,6 +4,7 @@ import express = require('express');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
+import stream = require('stream');
 import RateLimit = require("express-rate-limit");
 
 import expander = require('./expander')
@@ -440,11 +441,36 @@ async function genericGet(req: express.Request, res: express.Response) {
                 if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
                     notFound(req, "Private.")
                 } else {
-                    res.writeHead(200, {
-                        'Content-Type': tools.mimeLookup(gitFileName),
-                        'Content-Length': buf.length
-                    })
-                    res.end(buf)
+                    var rangeRequest = tools.readRangeHeader(req.headers['range'] as string, buf.byteLength);
+                    if(!rangeRequest) {
+                        res.writeHead(200, {
+                            'Content-Type': tools.mimeLookup(gitFileName),
+                            'Content-Length': buf.length
+                        })
+                        res.end(buf)
+                    } else {
+                        // Indicate the current range.
+                        const start = rangeRequest.Start;
+                        const end = rangeRequest.End;
+
+                        if (start >= buf.byteLength || end >= buf.byteLength) {
+                            res.writeHead(416, {
+                                'Content-Range': 'bytes */' + buf.byteLength,
+                            })
+                            res.end()
+                            return
+                        }
+                        res.writeHead(206, {
+                            'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`,
+                            'Content-Length': start == end ? 0 : (end - start + 1),
+                            'Content-Type': tools.mimeLookup(gitFileName),
+                            'Accept-Ranges': 'bytes',
+                            'Cache-Control': 'no-cache'
+                        })
+                        const bufferStream = new stream.PassThrough();
+                        bufferStream.end(buf.slice(start))
+                        bufferStream.pipe(res);
+                    }
                 }
             })
             .catch(errHandler)
