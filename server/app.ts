@@ -4,6 +4,7 @@ import express = require('express');
 import fs = require('fs');
 import http = require('http');
 import https = require('https');
+import stream = require('stream');
 import RateLimit = require("express-rate-limit");
 
 import expander = require('./expander')
@@ -239,6 +240,18 @@ app.get("/api/refresh", (req, res) => {
         })
 })
 
+export const isConfiguredPage = (url: string, config: gitfs.Config) => {
+    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
+    let isConfig = false
+    pages.forEach(page => {
+        if(!url.startsWith(`/${page}`)) return
+        let nextChar = url.charAt(page.length + 1)
+        if(nextChar && !["/", "?", "#"].includes(nextChar)) return
+        isConfig = true
+    })
+    return isConfig
+}
+
 app.post("/api/update", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
@@ -248,6 +261,10 @@ app.post("/api/update", (req, res) => {
     page = page.replace(/\.html?$/i, "")
 
     if (page.endsWith("/")) page += "index"
+    
+    if(!isConfiguredPage(page, gitfs.config)) 
+        page = `/${gitfs.config.rootDirectory}${page}`
+
     page = page.replace(/\/\d+$/, "/_event")
 
     let fn = page.slice(1) + ".html"
@@ -342,18 +359,6 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
         })
 })
 
-export const isConfiguredPage = (url: string, config: gitfs.Config) => {
-    const pages = (config.pages || []).filter(e => e !== config.rootDirectory)
-    let isConfig = false
-    pages.forEach(page => {
-        if(!url.startsWith(`/${page}`)) return
-        let nextChar = url.charAt(page.length + 1)
-        if(nextChar && !["/", "?", "#"].includes(nextChar)) return
-        isConfig = true
-    })
-    return isConfig
-}
-
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
@@ -367,10 +372,9 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (!/^\/(common|gw|gwcdn)\//.test(cleaned)) {
         cleaned = routing.getVHostDir(req) + cleaned
-    }
-
-    if(!isConfiguredPage(cleaned, gitfs.config)) 
-        cleaned = `/${gitfs.config.rootDirectory}/${cleaned}` 
+        if(!isConfiguredPage(cleaned, gitfs.config)) 
+            cleaned = `/${gitfs.config.rootDirectory}${cleaned}`
+    } 
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = cleaned.slice(0, cleaned.length - 5).replace(`/${gitfs.config.rootDirectory}`, "")
@@ -437,11 +441,36 @@ async function genericGet(req: express.Request, res: express.Response) {
                 if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
                     notFound(req, "Private.")
                 } else {
-                    res.writeHead(200, {
-                        'Content-Type': tools.mimeLookup(gitFileName),
-                        'Content-Length': buf.length
-                    })
-                    res.end(buf)
+                    var rangeRequest = tools.readRangeHeader(req.headers['range'] as string, buf.byteLength);
+                    if(!rangeRequest) {
+                        res.writeHead(200, {
+                            'Content-Type': tools.mimeLookup(gitFileName),
+                            'Content-Length': buf.length
+                        })
+                        res.end(buf)
+                    } else {
+                        // Indicate the current range.
+                        const start = rangeRequest.Start;
+                        const end = rangeRequest.End;
+
+                        if (start >= buf.byteLength || end >= buf.byteLength) {
+                            res.writeHead(416, {
+                                'Content-Range': 'bytes */' + buf.byteLength,
+                            })
+                            res.end()
+                            return
+                        }
+                        res.writeHead(206, {
+                            'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`,
+                            'Content-Length': start == end ? 0 : (end - start + 1),
+                            'Content-Type': tools.mimeLookup(gitFileName),
+                            'Accept-Ranges': 'bytes',
+                            'Cache-Control': 'no-cache'
+                        })
+                        const bufferStream = new stream.PassThrough();
+                        bufferStream.end(buf.slice(start))
+                        bufferStream.pipe(res);
+                    }
                 }
             })
             .catch(errHandler)
