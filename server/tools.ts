@@ -534,3 +534,36 @@ export function reqSetup(req: express.Request) {
 }
 
 
+export function readRangeHeader(range: string, totalLength: number) {
+    /*
+     * Example of the method 'split' with regular expression.
+     * 
+     * Input: bytes=100-200
+     * Output: [null, 100, 200, null]
+     * 
+     * Input: bytes=-200
+     * Output: [null, null, 200, null]
+     */
+if (range == null || range.length == 0)
+    return null;
+
+var array = range.split(/bytes=([0-9]*)-([0-9]*)/);
+var start = parseInt(array[1]);
+var end = parseInt(array[2]);
+var result = {
+    Start: isNaN(start) ? 0 : start,
+    End: isNaN(end) ? (totalLength - 1) : end
+};
+
+if (!isNaN(start) && isNaN(end)) {
+    result.Start = start;
+    result.End = totalLength - 1;
+}
+
+if (isNaN(start) && !isNaN(end)) {
+    result.Start = totalLength - end;
+    result.End = totalLength - 1;
+}
+
+return result;
+}
