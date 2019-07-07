@@ -160,6 +160,10 @@ async function genEPubAsync(opts: EPubOptions) {
     const hash = crypto.createHash("sha256")
     const hashSep = "VtoFQZQyyrpuGVRBiFF3oTxpyDcNO7JBIJyaH"
 
+    const cfg = await expander.getPageConfigAsync(folder)
+
+    // winston.info("epub: " + JSON.stringify(cfg))
+
     zip.file("mimetype", "application/epub+zip", { compression: "STORE" })
     zip.file("META-INF/container.xml", metaInf, { compression: "DEFLATE" })
 
@@ -278,14 +282,16 @@ async function genEPubAsync(opts: EPubOptions) {
         forEach("sup", e => {
             let par = e.parent()
             let t = e.text().trim()
-            let m = /^\s*(\d+)\s*$/.exec(t)
+            let m = /^\s*([\*\d]+)\s*$/.exec(t)
             if (m) {
-                let id = parseInt(m[1])
+                let id = "" + parseInt(m[1])
+                if (id == "NaN")
+                    id = m[1].replace(/\*/g, "S")
                 if (par.is("p") && /^\s*<sup>/.test(par.html())) {
                     par.attr("id", "foot" + id)
-                    e.replaceWith(`<a epub:type="footnote" class="footback" href="#footback${id}"><sup>${id}</sup></a>`)
+                    e.replaceWith(`<a epub:type="footnote" class="footback" href="#footback${id}"><sup>${m[1]}</sup></a>`)
                 } else {
-                    e.replaceWith(`<a epub:type="noteref" class="foot" id="footback${id}" href="#foot${id}"><sup>${id}</sup></a>`)
+                    e.replaceWith(`<a epub:type="noteref" class="foot" id="footback${id}" href="#foot${id}"><sup>${m[1]}</sup></a>`)
                 }
             } else {
                 t = t.toLowerCase()
