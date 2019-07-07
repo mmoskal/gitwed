@@ -290,6 +290,7 @@ async function genEPubAsync(opts: EPubOptions) {
                 }
                 if (par.is("p") && /^\s*<sup>/.test(par.html())) {
                     par.attr("id", "foot" + id)
+                    par.addClass("footdef")
                     e.replaceWith(`<a epub:type="footnote" class="footback" href="#footback${id}"><sup>${m[1]}</sup></a>`)
                 } else {
                     e.replaceWith(`<a epub:type="noteref" class="foot" id="footback${id}" href="#foot${id}"><sup>${m[1]}</sup></a>`)
