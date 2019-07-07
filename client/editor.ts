@@ -736,6 +736,9 @@ namespace gw {
                 } else if (inlineTags.hasOwnProperty(tag)) {
                     tag = inlineTags[tag]
                     addInline(`<${tag}>`)
+                } else if (tag == "div" && /^\s*<div [^>]*>\s*<img [^>]*>\s*<\/div>\s*$/.test(ee.innerHTML)) {
+                    addInline("<p class=\"text-center\">* * *</p>\n")
+                    return
                 } else {
                     tag = ""
                 }
@@ -947,7 +950,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                     addButton("Re-do TOC", () => {
                         status("Generating...")
                         function repl(vars: any) {
-                            let inner = vars["image"] ? tocTempl : tocTemplNoImg
+                            let inner = vars["image"] ? tocTempl : (tocTemplNoImg || tocTempl)
                             return inner.replace(/@(\w+)@/g, (f, id) => htmlQuote(vars[id] || ""))
                         }
                         getJsonAsync("/api/epubtoc?folder=" + encodeURIComponent(folder))
