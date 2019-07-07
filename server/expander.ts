@@ -65,6 +65,8 @@ export interface PageConfig {
     templates?: SMap<string>
     center?: string;
     epub?: boolean;
+    epubEndNotes?: string; // file name where numbered notes are
+    epubSeparator?: string;
     private?: boolean;
 }
 

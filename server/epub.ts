@@ -162,8 +162,6 @@ async function genEPubAsync(opts: EPubOptions) {
 
     const cfg = await expander.getPageConfigAsync(folder)
 
-    // winston.info("epub: " + JSON.stringify(cfg))
-
     zip.file("mimetype", "application/epub+zip", { compression: "STORE" })
     zip.file("META-INF/container.xml", metaInf, { compression: "DEFLATE" })
 
@@ -285,8 +283,11 @@ async function genEPubAsync(opts: EPubOptions) {
             let m = /^\s*([\*\d]+)\s*$/.exec(t)
             if (m) {
                 let id = "" + parseInt(m[1])
-                if (id == "NaN")
+                if (id == "NaN") {
                     id = m[1].replace(/\*/g, "S")
+                } else if (cfg.epubEndNotes) {
+                    e.replaceWith(`<a class="foot" href="${cfg.epubEndNotes}#note${id}"><sup>${m[1]}</sup></a>`)
+                }
                 if (par.is("p") && /^\s*<sup>/.test(par.html())) {
                     par.attr("id", "foot" + id)
                     e.replaceWith(`<a epub:type="footnote" class="footback" href="#footback${id}"><sup>${m[1]}</sup></a>`)
@@ -300,6 +301,51 @@ async function genEPubAsync(opts: EPubOptions) {
                 }
             }
         })
+
+        if (htmlName == cfg.epubEndNotes) {
+            const used: SMap<boolean> = {}
+            forEach("figcaption", e => {
+                const m = /^\s*(\d+)\./.exec(e.text())
+                if (m) {
+                    let id = parseInt(m[1])
+                    if (used[id])
+                        return
+                    used[id] = true
+                    let mark = e.prev()
+                    for (; ;) {
+                        if (mark.is("img"))
+                            break
+                        if (mark.is("p")) {
+                            let p = mark.prev()
+                            if (!p.is("p"))
+                                break
+                            mark = p
+                        }
+                        break
+                    }
+                    mark.attr("id", "note" + id)
+                }
+            })
+            forEach("div.end-note-list p", e => {
+                const m = /^\s*(\d+)\./.exec(e.text())
+                if (m) {
+                    let id = parseInt(m[1])
+                    let link = h(`<a href="#note${id}"></a>`)
+                    link.text(e.text())
+                    let dv = h(`<div></div>`)
+                    dv.append(link)
+                    e.replaceWith(dv)
+                }
+            })
+        }
+
+        if (cfg.epubSeparator)
+            forEach("p", e => {
+                if (e.text().trim() != "* * *")
+                    return
+                let img = h(`<img class="separator" src="${cfg.epubSeparator}" alt="* * *" />`)
+                e.replaceWith(img)
+            })
 
         forEach("img", e => {
             let fn = e.attr("src")
@@ -324,7 +370,7 @@ async function genEPubAsync(opts: EPubOptions) {
             e.removeAttr("width")
             e.removeAttr("height")
             let par = e.parent()
-            if (!par.is("div"))
+            if (!par.is("div") || e.hasClass("separator"))
                 return
 
             let n = e.next("*")
