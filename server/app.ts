@@ -484,8 +484,8 @@ async function genericGet(req: express.Request, res: express.Response) {
                         }
 
                         let base = cleaned.replace(/\/[^/]*$/, "")
-                        const pcfg = await expander.getPageConfigAsync(base)
                         try {
+                            const pcfg = await expander.getPageConfigAsync(base)
                             const templates = await getTemplatesContent(base, pcfg.templates || defaultTemplates)
 
                             if (!templates.length) {
