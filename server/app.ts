@@ -314,9 +314,20 @@ app.post("/api/update", (req, res) => {
 })
 
 // support let's encrypt cert renewal (when hidden behind apache)
-app.use("/.well-known", express.static("/var/www/html/.well-known"))
+//app.use("/.well-known", express.static("/var/www/html/.well-known"))
 app.use("/map-cache", express.static("map-cache"))
 app.use("/cdn/map-cache", express.static("map-cache"))
+
+const wellKnowns: any = {}
+app.get(/^\/\.well-known\/(.*)/, (req, res) => {
+    console.log("wellknown", req.params)
+    if (wellKnowns.hasOwnProperty(req.params[0])) {
+        res.contentType("text/plain")
+        res.send(wellKnowns[req.params[0]])
+    } else {
+        res.status(404).end('Not well known.');
+    }
+})
 
 app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
     let id = req.params[1] || "main"
@@ -638,7 +649,7 @@ process.on('SIGTERM', () => {
     gitfs.shutdown()
 });
 
-function setupCerts() {
+function setupCertsGL() {
     let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
     let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
 
@@ -691,6 +702,46 @@ function setupCerts() {
         });
 }
 
+async function setupCertsAsync() {
+    const mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
+    const domains = Object.keys(cfg.vhosts || {})
+
+    const acme = require('acme-client');
+
+    const client = new acme.Client({
+        directoryUrl: acme.directory.letsencrypt.staging,
+        accountKey: await acme.forge.createPrivateKey()
+    });
+
+    const [key, csr] = await acme.forge.createCsr({
+        commonName: mainDomain,
+        altNames: domains
+    });
+
+    http.createServer(app)
+        .listen(80, function () {
+            winston.info("Listening for ACME http-01 challenges on: " + this.address());
+        });
+
+    /* Certificate */
+    const cert = await client.auto({
+        csr,
+        email: cfg.certEmail,
+        termsOfServiceAgreed: true,
+        challengeCreateFn: (authz: any, challenge: any, keyAuthorization: any) => {
+            if (challenge.type === 'http-01') {
+                wellKnowns[`acme-challenge/${challenge.token}`] = keyAuthorization;
+                winston.info(`Creating challenge response for ${authz.identifier.value} at path: ${challenge.token}}`);
+            }
+            return Promise.resolve()
+        },
+        challengeRemoveFn: () => Promise.resolve()
+    });
+
+    console.log("CERT", cert)
+    console.log("KEY", key)
+}
+
 gitfs.initAsync(cfg)
     .then(() => {
         for (let r of tools.values(gitfs.repos)) {
@@ -705,7 +756,7 @@ gitfs.initAsync(cfg)
         } else {
             if (cfg.production) {
                 winston.info(`setup certs`)
-                setupCerts()
+                setupCertsAsync()
             } else {
                 winston.info(`listen on http://*:${port}`)
                 app.listen(port)
