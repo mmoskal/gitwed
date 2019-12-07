@@ -32,6 +32,7 @@
         "express-rate-limit": "^3.4.0",
         "greenlock": "2.8.8",
         "greenlock-express": "2.7.18",
+        "greenlock-store-fs": "3.2.2",
         "htmlparser2": "^3.9.2",
         "jszip": "^3.1.3",
         "jwt-simple": "^0.5.1",

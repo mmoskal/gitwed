@@ -663,13 +663,19 @@ function setupCerts() {
         // Only one domain is listed with *automatic* registration via SNI
         // (it's an array because managed registration allows for multiple domains,
         //                                which was the case in the simple example)
-        console.log(opts.domains);
+        console.log(opts, certs);
+
+        if (domains.indexOf( opts.domains[0]) < 0)
+            return cb(new Error("not allowed: " + opts.domains[0]))
+
+        opts.domains = domains
+        opts.domain = domains[0]
 
         // The domains being approved for the first time are listed in opts.domains
         // Certs being renewed are listed in certs.altnames
-        if (certs) {
-            opts.domains = [certs.subject].concat(certs.altnames);
-        }
+        // if (certs) {
+        //    opts.domains = [certs.subject].concat(certs.altnames);
+        // }
 
         opts.agreeTos = true;
         opts.email = cfg.certEmail;
@@ -684,6 +690,7 @@ function setupCerts() {
 
             configDir: ledir,
             version: 'draft-11',
+            store: require('greenlock-store-fs'),
 
             // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
             // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
