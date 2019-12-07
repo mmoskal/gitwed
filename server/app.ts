@@ -320,7 +320,6 @@ app.use("/cdn/map-cache", express.static("map-cache"))
 
 const wellKnowns: any = {}
 app.get(/^\/\.well-known\/(.*)/, (req, res) => {
-    console.log("wellknown", req.params)
     if (wellKnowns.hasOwnProperty(req.params[0])) {
         res.contentType("text/plain")
         res.send(wellKnowns[req.params[0]])
@@ -724,7 +723,7 @@ async function setupCertsAsync() {
         });
 
     /* Certificate */
-    const cert = await client.auto({
+    const cert: string = await client.auto({
         csr,
         email: cfg.certEmail,
         termsOfServiceAgreed: true,
@@ -738,8 +737,17 @@ async function setupCertsAsync() {
         challengeRemoveFn: () => Promise.resolve()
     });
 
-    console.log("CERT", cert)
-    console.log("KEY", key)
+    const forge = require('node-forge');
+
+    const pemCerts = cert.split("\n\n").filter(s => !!s && !!s.trim())
+    const privateKey = forge.pki.privateKeyFromPem(key);
+    const asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, 
+            pemCerts.map(pem => forge.pki.certificateFromPem(pem)));
+    const pfx = forge.asn1.toDer(asn1).getBytes();
+
+    console.log(pfx)
+    fs.writeFileSync("cert.pfx", pfx)
+//    let p12b64 = forge.util.encode64(p12Der);
 }
 
 gitfs.initAsync(cfg)
