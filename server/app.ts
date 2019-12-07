@@ -742,12 +742,13 @@ async function setupCertsAsync() {
     const pemCerts = cert.split("\n\n").filter(s => !!s && !!s.trim())
     const privateKey = forge.pki.privateKeyFromPem(key);
     const asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, 
-            pemCerts.map(pem => forge.pki.certificateFromPem(pem)));
+            pemCerts.map(pem => forge.pki.certificateFromPem(pem)), "");
     const pfx = forge.asn1.toDer(asn1).getBytes();
+    const b64 = forge.util.encode64(pfx);
 
-    console.log(pfx)
-    fs.writeFileSync("cert.pfx", pfx)
-//    let p12b64 = forge.util.encode64(p12Der);
+    console.log(pfx.length, typeof pfx)
+    console.log(b64)
+    fs.writeFileSync("cert2.pfx", new Buffer(b64, "base64"))
 }
 
 gitfs.initAsync(cfg)
