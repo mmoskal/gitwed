@@ -642,7 +642,7 @@ function setupCerts() {
     let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
     let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
 
-    let ledir = process.env["HOME"] + "/letsencrypt/etc/"
+    let ledir = process.env["HOME"] + "/letsencrypt-v02/"
     let confPath = ledir + "renewal/" + mainDomain + ".conf"
     let keyOK = false
     if (fs.existsSync(confPath)) {
@@ -659,27 +659,51 @@ function setupCerts() {
         fs.unlinkSync(keyPath)
     }
 
+    function approveDomains(opts: any, certs: any, cb: any) {
+        // Only one domain is listed with *automatic* registration via SNI
+        // (it's an array because managed registration allows for multiple domains,
+        //                                which was the case in the simple example)
+        console.log(opts.domains);
+
+        // The domains being approved for the first time are listed in opts.domains
+        // Certs being renewed are listed in certs.altnames
+        if (certs) {
+            opts.domains = [certs.subject].concat(certs.altnames);
+        }
+
+        opts.agreeTos = true;
+        opts.email = cfg.certEmail;
+        cb(null, { options: opts, certs: certs });
+    }
+
     // returns an instance of node-greenlock with additional helper methods
-    let lex = require('greenlock-express').create({
-        // set to 'staging'
-        server: 'https://acme-v01.api.letsencrypt.org/directory',
-        //server: 'staging',
+    let lex = require('greenlock-express')
+        .create({
+            server: "https://acme-staging-v02.api.letsencrypt.org/directory",
+            // server: "https://acme-v02.api.letsencrypt.org/directory",
 
-        // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
-        // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
+            configDir: ledir,
+            version: 'draft-11',
 
-        // You probably wouldn't need to replace the default sni handler
-        // See https://git.daplie.com/Daplie/le-sni-auto if you think you do
-        //, sni: require('le-sni-auto').create({})
-        email: cfg.certEmail,
-        agreeTos: true,
-        agreeToTerms: true,
-        approveDomains: domains,
-        debug: true,
-    });
+            // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
+            // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
+
+            // You probably wouldn't need to replace the default sni handler
+            // See https://git.daplie.com/Daplie/le-sni-auto if you think you do
+            //, sni: require('le-sni-auto').create({})
+            email: cfg.certEmail,
+            agreeTos: true,
+            agreeToTerms: true,
+            approveDomains,
+            debug: true,
+            app: app
+        });
 
     ownSSL = true
 
+    lex.listen(80, 443)
+
+    /*
     http.createServer(lex.middleware(app))
         .listen(80, function () {
             winston.info("Listening for ACME http-01 challenges on: " + this.address());
@@ -689,6 +713,7 @@ function setupCerts() {
         .listen(443, function () {
             winston.info("Listening for ACME tls-sni-01 challenges and serve app on: " + this.address());
         });
+        */
 }
 
 gitfs.initAsync(cfg)
