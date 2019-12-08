@@ -510,7 +510,7 @@ export function reqSetup(req: express.Request) {
 
     let langs: string[] = []
     let addLang = (s: string) => {
-        if (!s) return
+        if (typeof s != "string" || !s) return
         s = s.toLowerCase()
         let m = /^([a-z]+)(-[a-z]+)?/.exec(s)
         if (m) {

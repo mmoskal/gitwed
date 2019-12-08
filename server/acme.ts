@@ -54,6 +54,12 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
             winston.info("renewing cert for " + domains.join(", "))
             await renewAsync(domains, cfg);
             savedCert = JSON.parse(fs.readFileSync(certPath, "utf8"))
+            await mail.sendAsync({
+                to: cfg.certEmail,
+                from: null,
+                subject: "cert renewed for " + domains[0],
+                text: "All domains: " + domains.join(", ")
+            })
         } catch (e) {
             console.error(e)
             winston.error(e.stack)
@@ -63,6 +69,11 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
                 subject: "failure to renew certs",
                 text: e.message + "\n" + e.stack,
             })
+            if (savedCert) {
+                // don't try to renew for another 24h
+                savedCert.renewTime = Date.now() + 24 * 3600 * 1000
+                fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4));
+            }
         }
     } else {
         winston.info("not renewing cert")
@@ -75,7 +86,7 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
         passphrase: "",
         pfx: new Buffer(savedCert.cert, "base64")
     }, app)
-        .listen(80, function () {
+        .listen(443, function () {
             winston.info("Starting HTTPS server");
         });
 }
@@ -83,7 +94,7 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
 async function renewAsync(domains: string[], cfg: gitfs.Config) {
     const acme = require('acme-client');
     const client = new acme.Client({
-        directoryUrl: acme.directory.letsencrypt.staging,
+        directoryUrl: acme.directory.letsencrypt.production,
         accountKey: await acme.forge.createPrivateKey()
     });
 
