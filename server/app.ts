@@ -544,8 +544,17 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
         let page = await expander.expandFileAsync(cfg)
 
-        if (cfg.pageConfig.private && !cfg.hasWritePerm) {
-            return res.redirect(gitfs.config.authDomain + "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
+        if (cfg.pageConfig.private) {
+            let isOK = false
+            if (cfg.hasWritePerm)
+                isOK = true
+            if (gitfs.config.roSecret) {
+                if (req.header("x-gitwed-key").trim() == gitfs.config.roSecret)
+                    isOK = true
+            }
+            if (!isOK)
+                return res.redirect(gitfs.config.authDomain +
+                    "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
         }
 
         pageCache.set(cacheKey, page.html)
@@ -654,6 +663,7 @@ gitfs.initAsync(cfg)
         } else {
             if (cfg.production) {
                 winston.info(`setup certs`)
+                ownSSL = true
                 acme.setupCertsAndListen(app, cfg)
             } else {
                 winston.info(`listen on http://*:${port}`)

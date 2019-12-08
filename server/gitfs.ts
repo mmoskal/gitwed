@@ -30,6 +30,7 @@ export interface Config {
     defaultRedirect?: string; // defaults to /events/
     allowedEmailRecipients?: string[];
     services?: rest.ServiceConfig[];
+    roSecret?: string;
 }
 
 export let config: Config
