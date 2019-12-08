@@ -740,15 +740,24 @@ async function setupCertsAsync() {
     const forge = require('node-forge');
 
     const pemCerts = cert.split("\n\n").filter(s => !!s && !!s.trim())
+    const forgeCerts = pemCerts.map(pem => forge.pki.certificateFromPem(pem))
     const privateKey = forge.pki.privateKeyFromPem(key);
-    const asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, 
-            pemCerts.map(pem => forge.pki.certificateFromPem(pem)), "");
+    const asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, forgeCerts, "");
     const pfx = forge.asn1.toDer(asn1).getBytes();
     const b64 = forge.util.encode64(pfx);
 
-    console.log(pfx.length, typeof pfx)
-    console.log(b64)
-    fs.writeFileSync("cert2.pfx", new Buffer(b64, "base64"))
+    const notBefore: number = forgeCerts[0].validity.notBefore.getTime()
+    const notAfter: number = forgeCerts[0].validity.notAfter.getTime()
+    const duration = notAfter - notBefore
+    const renewTime = notBefore + duration * 2 / 3
+
+    fs.writeFileSync("cert.json", JSON.stringify({
+        duration: duration / 1000 / 3600 / 24,
+        renewTime,
+        mainDomain,
+        domains,
+        cert: b64,
+    }, null, 4))
 }
 
 gitfs.initAsync(cfg)
