@@ -36,7 +36,7 @@ let lastUse = startTime
 
 const app = express();
 const bodyParser = require('body-parser')
-const pageCache = new tools.StringCache()
+const pageCache = new tools.HtmlCache()
 
 const fileLocks = tools.promiseQueue()
 
@@ -446,13 +446,21 @@ async function genericGet(req: express.Request, res: express.Response) {
     let cacheKey = ref + ":" + cleaned + ":" + JSON.stringify(req.query) + req.langs.join(",")
     if (req.appuser || gitfs.config.justDir) cacheKey = null
 
+    let hasRoPerm = false
+    if (gitfs.config.roSecret) {
+        if (req.header("x-gitwed-secret") == gitfs.config.roSecret)
+            hasRoPerm = true
+    }
+
     let cached = pageCache.get(cacheKey)
+    if (cached && cached.isPrivate && !hasRoPerm)
+        cached = null
     if (cached != null) {
         winston.debug(`cache hit at ${cacheKey}`)
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'
         })
-        return res.end(cached)
+        return res.end(cached.html)
     }
 
     type Template = { name: string, content: string, filename: string }
@@ -544,20 +552,15 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
         let page = await expander.expandFileAsync(cfg)
 
-        if (cfg.pageConfig.private) {
-            let isOK = false
-            if (cfg.hasWritePerm)
-                isOK = true
-            if (gitfs.config.roSecret) {
-                if (req.header("x-gitwed-key").trim() == gitfs.config.roSecret)
-                    isOK = true
-            }
-            if (!isOK)
-                return res.redirect(gitfs.config.authDomain +
-                    "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
+        if (cfg.pageConfig.private && !cfg.hasWritePerm && !hasRoPerm) {
+            return res.redirect(gitfs.config.authDomain +
+                "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
         }
 
-        pageCache.set(cacheKey, page.html)
+        pageCache.set(cacheKey, {
+            html: page.html,
+            isPrivate: cfg.pageConfig.private
+        })
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'
         })

@@ -487,10 +487,14 @@ export class Cache<T> {
     }
 }
 
+export interface CachedEntry {
+    html: string;
+    isPrivate?: boolean;
+}
 
-export class StringCache extends Cache<string> {
-    set(key: string, v: string, sz?: number) {
-        if (!sz) sz = 100 + v.length * 2
+export class HtmlCache extends Cache<CachedEntry> {
+    set(key: string, v: CachedEntry, sz?: number) {
+        if (!sz) sz = 100 + v.html.length * 2
         super.set(key, v, sz)
     }
 }
