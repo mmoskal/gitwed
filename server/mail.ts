@@ -31,7 +31,7 @@ export const validateMessage = (msg: any): Result<Message, string> => {
     if (!isValidEmail(from)) errors.push("from")
     if (!isValidEmail(to)) errors.push("to")
     if (!isValidString(subject)) errors.push("subject");
-    if (!isValidString(text, 1024)) errors.push("text");
+    if (!isValidString(text, 10000)) errors.push("text");
 
     return errors.length
         ? Err(`message validation failed, invalid fields: ${errors.join(", ")}`)

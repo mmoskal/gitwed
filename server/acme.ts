@@ -72,6 +72,7 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
             if (savedCert) {
                 // don't try to renew for another 24h
                 savedCert.renewTime = Date.now() + 24 * 3600 * 1000
+                savedCert.domains = domains
                 fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4));
             }
         }
