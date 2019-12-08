@@ -17,6 +17,7 @@ import logs = require('./logs')
 import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
+import acme = require('./acme')
 
 import { Message } from './mail';
 import { sendAsync } from "./mail"
@@ -104,6 +105,7 @@ app.use((req, res, next) => {
 auth.initCheck(app)
 auth.initRoutes(app)
 epub.init(app)
+acme.init(app)
 
 interface ImgData {
     page: string;
@@ -317,16 +319,6 @@ app.post("/api/update", (req, res) => {
 //app.use("/.well-known", express.static("/var/www/html/.well-known"))
 app.use("/map-cache", express.static("map-cache"))
 app.use("/cdn/map-cache", express.static("map-cache"))
-
-const wellKnowns: any = {}
-app.get(/^\/\.well-known\/(.*)/, (req, res) => {
-    if (wellKnowns.hasOwnProperty(req.params[0])) {
-        res.contentType("text/plain")
-        res.send(wellKnowns[req.params[0]])
-    } else {
-        res.status(404).end('Not well known.');
-    }
-})
 
 app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) => {
     let id = req.params[1] || "main"
@@ -648,118 +640,6 @@ process.on('SIGTERM', () => {
     gitfs.shutdown()
 });
 
-function setupCertsGL() {
-    let mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
-    let domains = [mainDomain].concat(Object.keys(cfg.vhosts || {}))
-
-    let ledir = process.env["HOME"] + "/letsencrypt/etc/"
-    let confPath = ledir + "renewal/" + mainDomain + ".conf"
-    let keyOK = false
-    if (fs.existsSync(confPath)) {
-        let s = fs.readFileSync(confPath, "utf8")
-        let m = /^domains\s*=\s*(.*)/m.exec(s)
-        if (m && m[1].replace(/\s+/g, "") == domains.join(",")) {
-            keyOK = true
-            winston.info("certificate OK")
-        }
-    }
-    let keyPath = ledir + "live/" + mainDomain + "/privkey.pem"
-    if (!keyOK && fs.existsSync(keyPath)) {
-        winston.warn("removing outdated cert: " + keyPath)
-        fs.unlinkSync(keyPath)
-    }
-
-    // returns an instance of node-greenlock with additional helper methods
-    let lex = require('greenlock-express').create({
-        // set to 'staging'
-        server: 'https://acme-v01.api.letsencrypt.org/directory',
-        //server: 'staging',
-
-        // , challenges: { 'http-01': require('le-challenge-fs').create({ webrootPath: '/tmp/acme-challenges' }) }
-        // , store: require('le-store-certbot').create({ webrootPath: '/tmp/acme-challenges' })
-
-        // You probably wouldn't need to replace the default sni handler
-        // See https://git.daplie.com/Daplie/le-sni-auto if you think you do
-        //, sni: require('le-sni-auto').create({})
-        email: cfg.certEmail,
-        agreeTos: true,
-        agreeToTerms: true,
-        approveDomains: domains,
-        debug: true,
-    });
-
-    ownSSL = true
-
-    http.createServer(lex.middleware(app))
-        .listen(80, function () {
-            winston.info("Listening for ACME http-01 challenges on: " + this.address());
-        });
-
-    https.createServer(lex.httpsOptions, lex.middleware(app))
-        .listen(443, function () {
-            winston.info("Listening for ACME tls-sni-01 challenges and serve app on: " + this.address());
-        });
-}
-
-async function setupCertsAsync() {
-    const mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
-    const domains = Object.keys(cfg.vhosts || {})
-
-    const acme = require('acme-client');
-
-    const client = new acme.Client({
-        directoryUrl: acme.directory.letsencrypt.staging,
-        accountKey: await acme.forge.createPrivateKey()
-    });
-
-    const [key, csr] = await acme.forge.createCsr({
-        commonName: mainDomain,
-        altNames: domains
-    });
-
-    http.createServer(app)
-        .listen(80, function () {
-            winston.info("Listening for ACME http-01 challenges on: " + this.address());
-        });
-
-    /* Certificate */
-    const cert: string = await client.auto({
-        csr,
-        email: cfg.certEmail,
-        termsOfServiceAgreed: true,
-        challengeCreateFn: (authz: any, challenge: any, keyAuthorization: any) => {
-            if (challenge.type === 'http-01') {
-                wellKnowns[`acme-challenge/${challenge.token}`] = keyAuthorization;
-                winston.info(`Creating challenge response for ${authz.identifier.value} at path: ${challenge.token}}`);
-            }
-            return Promise.resolve()
-        },
-        challengeRemoveFn: () => Promise.resolve()
-    });
-
-    const forge = require('node-forge');
-
-    const pemCerts = cert.split("\n\n").filter(s => !!s && !!s.trim())
-    const forgeCerts = pemCerts.map(pem => forge.pki.certificateFromPem(pem))
-    const privateKey = forge.pki.privateKeyFromPem(key);
-    const asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, forgeCerts, "");
-    const pfx = forge.asn1.toDer(asn1).getBytes();
-    const b64 = forge.util.encode64(pfx);
-
-    const notBefore: number = forgeCerts[0].validity.notBefore.getTime()
-    const notAfter: number = forgeCerts[0].validity.notAfter.getTime()
-    const duration = notAfter - notBefore
-    const renewTime = notBefore + duration * 2 / 3
-
-    fs.writeFileSync("cert.json", JSON.stringify({
-        duration: duration / 1000 / 3600 / 24,
-        renewTime,
-        mainDomain,
-        domains,
-        cert: b64,
-    }, null, 4))
-}
-
 gitfs.initAsync(cfg)
     .then(() => {
         for (let r of tools.values(gitfs.repos)) {
@@ -774,7 +654,7 @@ gitfs.initAsync(cfg)
         } else {
             if (cfg.production) {
                 winston.info(`setup certs`)
-                setupCertsAsync()
+                acme.setupCertsAndListen(app, cfg)
             } else {
                 winston.info(`listen on http://*:${port}`)
                 app.listen(port)
