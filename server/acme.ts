@@ -41,15 +41,22 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
     domains.unshift(mainDomain)
 
     let savedCert: SavedCert
+    let needsRenew = true
     try {
         savedCert = JSON.parse(fs.readFileSync(certPath, "utf8"))
+        needsRenew = false
     } catch (e) { }
 
-    // if domains changed, ignore the cert
-    if (savedCert && JSON.stringify(domains) != JSON.stringify(savedCert.domains))
-        savedCert = null
+    if (savedCert) {
+        // if domains changed, ignore the cert
+        if (JSON.stringify(domains) != JSON.stringify(savedCert.domains))
+            needsRenew = true
 
-    if (!savedCert || savedCert.renewTime < Date.now()) {
+        if (savedCert.renewTime < Date.now())
+            needsRenew = true
+    }
+
+    if (needsRenew) {
         try {
             winston.info("renewing cert for " + domains.join(", "))
             await renewAsync(domains, cfg);
@@ -59,7 +66,7 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
                 from: null,
                 subject: "cert renewed for " + domains[0],
                 text: "All domains: " + domains.join(", ")
-            })
+            }).then(() => { }, () => { })
         } catch (e) {
             console.error(e)
             winston.error(e.stack)
