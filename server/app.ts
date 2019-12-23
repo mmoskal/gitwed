@@ -74,6 +74,8 @@ app.use(bodyParser.urlencoded({
     extended: false
 }))
 
+acme.init(app)
+
 app.use((req, res, next) => {
     res.setHeader("X-XSS-Protection", "1");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -105,7 +107,6 @@ app.use((req, res, next) => {
 auth.initCheck(app)
 auth.initRoutes(app)
 epub.init(app)
-acme.init(app)
 
 interface ImgData {
     page: string;
