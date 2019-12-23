@@ -74,11 +74,14 @@ app.use(bodyParser.urlencoded({
     extended: false
 }))
 
-acme.init(app)
-
 app.use((req, res, next) => {
     res.setHeader("X-XSS-Protection", "1");
     res.setHeader("X-Content-Type-Options", "nosniff");
+
+    if (req.url.startsWith("/.well-known/")) {
+        next()
+        return
+    }
 
     if (gitfs.config.proxy) {
         let hts = "https://" + (req.header("x-forwarded-host") || req.header("host"))
@@ -107,6 +110,7 @@ app.use((req, res, next) => {
 auth.initCheck(app)
 auth.initRoutes(app)
 epub.init(app)
+acme.init(app)
 
 interface ImgData {
     page: string;
