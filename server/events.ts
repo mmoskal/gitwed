@@ -220,7 +220,14 @@ function loadOrCreateIndex() {
     let idx = path.join(currEventsPath, "index.json")
     if (fs.existsSync(idx)) {
         index = readJson("index.json")
-        return
+        try {
+            // this file should not exists if the index is correct
+            readJson(eventFn(index.nextId))
+        } catch {
+            // if we fail to read the nextId file, it means it doesn't exists
+            // and the index looks all right, just return
+            return
+        }
     }
 
     winston.info("creating events index...")
