@@ -12,6 +12,7 @@ import tools = require('./tools')
 import bluebird = require('bluebird')
 import auth = require('./auth')
 import events = require('./events')
+import events2 = require('./events2')
 import winston = require('winston')
 import logs = require('./logs')
 import epub = require('./epub')
@@ -663,6 +664,7 @@ gitfs.initAsync(cfg)
             r.onUpdate(() => pageCache.flush())
         }
         events.initRoutes(app)
+        events2.initRoutes(app)
         setupFinalRoutes()
 
         if (cfg.justDir || cfg.proxy) {

@@ -31,6 +31,7 @@ export interface Config {
     allowedEmailRecipients?: string[];
     services?: rest.ServiceConfig[];
     roSecret?: string;
+    eventSecret?: string;
 }
 
 export let config: Config
