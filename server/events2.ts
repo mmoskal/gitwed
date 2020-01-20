@@ -233,7 +233,7 @@ function augmentEvent(r: EventListEntry, lang: string) {
     r.weekdayRange = tools.weekDay(r.startDate, lang)
     r.dateRange = tools.monthPlusDay(r.startDate, lang)
     r.combinedRange = tools.fullDate(r.startDate, lang)
-    if (r.endDate) {
+    if (r.endDate && r.endDate != r.startDate) {
         r.weekdayRange += " - " + tools.weekDay(r.endDate, lang)
         if (tools.monthName(r.startDate, lang) != tools.monthName(r.endDate, lang)) {
             r.dateRange += " - " + tools.monthPlusDay(r.endDate, lang)
@@ -299,15 +299,6 @@ async function setMapImgAsync(
     addrObj: PostalAddress,
     cfg: expander.ExpansionConfig
 ) {
-    if (!cfg.contentOverride)
-        cfg.contentOverride = {}
-
-    let base = addrObj as any
-    for (let k of Object.keys(addrObj)) {
-        let v = base[k]
-        cfg.contentOverride[pref + k] = v + ""
-    }
-
     let addr = gmaps.cleanAddress(addrObj.streetAddress + ", " + addrObj.addressLocality + " " + addrObj.postalCode)
     if (!cfg.vars) cfg.vars = {}
     cfg.vars[pref + "mapurl"] = "https://maps.google.com/?q=" + encodeURI(addr)
@@ -342,6 +333,16 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
     if (cfg.eventInfo) {
         const ei = cfg.eventInfo as FullEvent
         augmentEvent(ei, cfg.lang)
+
+        if (!cfg.contentOverride)
+            cfg.contentOverride = {}
+
+        let base = tools.jsonFlatten(ei)
+        for (let k of Object.keys(base)) {
+            let v = base[k]
+            cfg.contentOverride["ev_" + k] = v + ""
+        }
+
         await setMapImgAsync("ev_", ei.location, cfg)
     }
 }

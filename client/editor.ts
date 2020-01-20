@@ -1029,7 +1029,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
 
         ContentTools.IMAGE_UPLOADER = imgUploader;
 
-        if (evInfo && !evInfo.id) {
+        if (evInfo && !evInfo.id && !evInfo) {
             setTimeout(() => {
                 $(".ct-ignition__button--edit").click()
             }, 100)

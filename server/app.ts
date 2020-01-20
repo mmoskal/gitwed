@@ -552,11 +552,6 @@ async function genericGet(req: express.Request, res: express.Response) {
             eventId,
         }
 
-        if (eventId) {
-            cfg.eventInfo = await events.readEventAsync(eventId)
-            if (!cfg.eventInfo)
-                return notFound(req, "No such event.")
-        }
         let page = await expander.expandFileAsync(cfg)
 
         if (cfg.pageConfig.private && !cfg.hasWritePerm && !hasRoPerm) {

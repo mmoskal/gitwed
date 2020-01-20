@@ -447,8 +447,27 @@ export function htmlQuote(s: string) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
+export function jsonFlatten(v: any) {
+    const res: any = {}
+    const loop = (pref: string, v: any) => {
+        if (v !== null && typeof v == "object") {
+            if (Array.isArray(v))
+                throw new Error("arrays unsupported")
+            if (pref) pref += "."
+            for (let k of Object.keys(v)) {
+                loop(pref + k, v[k])
+            }
+        } else {
+            res[pref] = v
+        }
+    }
+    loop("", v)
+    return res
+}
+
 export function expandTemplate(templ: string, vars: any) {
-    return templ.replace(/@@(\w+)@@/g, (f, v) =>
+    vars = jsonFlatten(vars)
+    return templ.replace(/@@([\w\.]+)@@/g, (f, v) =>
         htmlQuote((vars[v] || "") + ""))
 }
 

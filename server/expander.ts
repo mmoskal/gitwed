@@ -645,6 +645,8 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     const evmod = evversion == "v2" ? events2 : events
     if (cfg.eventId) {
         cfg.eventInfo = await evmod.readEventAsync(cfg.eventId)
+        if (!cfg.eventInfo)
+            throw new Error("ENOENT, events " + evversion)
     }
 
     if (cfg.eventInfo) centerId = (cfg.eventInfo as events.FullEvent).center
@@ -709,6 +711,10 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         center: pcfg.center,
         epub: !!cfg.pageConfig.epub,
     }
+    if (evversion != "v1") {
+        pageInfo.eventInfo = null
+        pageInfo.centerInfo = null
+    }
     cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
         JSON.stringify(pageInfo, null, 4) + ";\n"
     cfg.vars["gw_lang"] = cfg.lang
@@ -718,7 +724,7 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     if (!cfg.contentOverride) cfg.contentOverride = {}
 
-    r.html = r.html.replace(/@@(\w+)@@/g, (f, v) =>
+    r.html = r.html.replace(/@@([\w\.]+)@@/g, (f, v) =>
         cfg.vars[v] || cfg.contentOverride[v] || "")
 
     return r
