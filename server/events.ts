@@ -517,9 +517,10 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
         await setMapImgAsync("cnt_", cfg.centerInfo, cfg)
     }
     if (cfg.eventInfo) {
-        augmentEvent(cfg.eventInfo, cfg.lang)
-        await setEventAddressAsync(cfg.eventInfo, cfg.lang)
-        await setMapImgAsync("ev_", cfg.eventInfo, cfg)
+        const ei = cfg.eventInfo as FullEvent
+        augmentEvent(ei, cfg.lang)
+        await setEventAddressAsync(ei, cfg.lang)
+        await setMapImgAsync("ev_", ei, cfg)
     }
 }
 

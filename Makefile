@@ -6,8 +6,12 @@ all: build local
 r: build remote
 
 build:
+	$(MAKE) -j4 build-client build-server
+
+build-server:
 	cd server && node $(TSC)
-	cd client && node  $(TSC)
+build-client:
+	cd client && node $(TSC)
 
 remote:
 	node gitwed -i ../gitwed-data

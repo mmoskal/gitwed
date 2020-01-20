@@ -549,6 +549,7 @@ async function genericGet(req: express.Request, res: express.Response) {
             rootFileContent: str,
             langs: req.langs,
             appuser: req.appuser,
+            eventId,
         }
 
         if (eventId) {

@@ -338,14 +338,13 @@ function validateEvent(ev: FullEvent) {
     return null
 }
 
-/*
 export async function addVarsAsync(cfg: expander.ExpansionConfig) {
     if (cfg.eventInfo) {
-        augmentEvent(cfg.eventInfo, cfg.lang)
-        await setMapImgAsync("ev_", cfg.eventInfo, cfg)
+        const ei = cfg.eventInfo as FullEvent
+        augmentEvent(ei, cfg.lang)
+        await setMapImgAsync("ev_", ei.location, cfg)
     }
 }
-*/
 
 export function initRoutes(app: express.Express) {
     if (!gitfs.events)

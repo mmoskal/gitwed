@@ -2,6 +2,7 @@ import cheerio = require("cheerio")
 import gitfs = require('./gitfs')
 import auth = require('./auth')
 import events = require('./events')
+import events2 = require('./events2')
 import tools = require('./tools')
 import rest = require('./rest')
 import * as bluebird from "bluebird";
@@ -68,6 +69,7 @@ export interface PageConfig {
     epubEndNotes?: string; // file name where numbered notes are
     epubSeparator?: string;
     private?: boolean;
+    events?: "v1" | "v2";
 }
 
 export interface ExpansionConfig {
@@ -85,8 +87,9 @@ export interface ExpansionConfig {
     hasWritePerm?: boolean;
     vars?: SMap<string>;
     contentOverride?: SMap<string>;
-    eventInfo?: events.FullEvent;
+    eventInfo?: events.FullEvent | events2.FullEvent;
     centerInfo?: events.Center;
+    eventId?: number;
 }
 
 export function relativePath(curr: string, newpath: string) {
@@ -531,6 +534,16 @@ function expandAsync(cfg: ExpansionConfig) {
                 })
         }
 
+        if (tag == "event-list2") {
+            let q = tools.clone(cfg.origQuery || {})
+            tools.copyFields(q, elt[0].attribs)
+            return events2.queryEventsAsync(q, cfg.lang)
+                .then(r => {
+                    let html = tools.expandTemplateList(elt.html(), r.events)
+                    elt.replaceWith(html)
+                })
+        }
+
         if (tag == "lang-list") {
             let deflTempl: string = null
             let templ = elt.html().replace(/<current>([^]*)<\/current>/, (f, c) => {
@@ -627,7 +640,14 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     let avlangs = plangs
 
     let centerId = pcfg.center
-    if (cfg.eventInfo) centerId = cfg.eventInfo.center
+
+    const evversion = pcfg.events || "v1"
+    const evmod = evversion == "v2" ? events2 : events
+    if (cfg.eventId) {
+        cfg.eventInfo = await evmod.readEventAsync(cfg.eventId)
+    }
+
+    if (cfg.eventInfo) centerId = (cfg.eventInfo as events.FullEvent).center
 
     if (centerId)
         cfg.centerInfo = await events.getCenterAsync(centerId)
@@ -666,11 +686,12 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     cfg.hasWritePerm = await auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
     if (!cfg.vars) cfg.vars = {}
 
-    await events.addVarsAsync(cfg)
+    await evmod.addVarsAsync(cfg)
 
-    if (cfg.eventInfo) {
-        pcfg.center = cfg.eventInfo.center
-        let cent = await events.getCenterAsync(cfg.eventInfo.center)
+    if (evversion == "v1" && cfg.eventInfo) {
+        const einfo = cfg.eventInfo as events.FullEvent
+        pcfg.center = einfo.center
+        let cent = await events.getCenterAsync(einfo.center)
         cfg.hasWritePerm = cfg.hasWritePerm || await auth.hasWritePermAsync(cfg.appuser, cent.users)
     }
 
