@@ -17,6 +17,8 @@ export interface Config {
     sideRepos?: SMap<string>;
     mailgunApiKey?: string;
     sendgridApiKey?: string;
+    hubspotPortalId?: number;
+    hubspotFormId?: string;
     gmapsKey?: string;
     mailgunDomain?: string;
     authDomain?: string;

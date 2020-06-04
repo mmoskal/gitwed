@@ -142,6 +142,10 @@ Example config (remove ``// comments` when you create your own):
     // Gitwed uses sendgrid `only` if no mailgunApiKey was provided
     "sendgridApiKey": "SG.XXXXX-...abcdf"
     // list of email recipients that gitwed is allowed to send emails to on `/api/send-email`
+    // Hubspot portal ID, can be obtained from Hubspot dashboard
+    "hubspotPortalId": 1234567,
+    // Hubspot specific form ID related to the mail form, can be obtained from Hubspot dashboard
+    "hubspotFormId": "ab12cd34-46...abcdef",
     "allowedEmailRecipients" : ["me@example.com"],
     // if you want to generate map images in events, you need a key for Google Maps
     "gmapsKey": "ABcDe...FgHg",

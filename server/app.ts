@@ -6,6 +6,7 @@ import http = require('http');
 import https = require('https');
 import stream = require('stream');
 import RateLimit = require("express-rate-limit");
+import request = require('request');
 
 import expander = require('./expander')
 import gitfs = require('./gitfs')
@@ -164,6 +165,21 @@ const limiter = new RateLimit({
 
 app.use("/api/send-email", limiter)
 app.post("/api/send-email", (...args) => onSendEmail(gitfs.config)(...args))
+
+app.use("/api/send-email-hubspot-middleware", limiter)
+app.post("/api/send-email-hubspot-middleware", async (req, res) => {
+    const { hubspotFormId, hubspotPortalId } = cfg;
+    if (!hubspotFormId || !hubspotPortalId) {
+        res.status(500).send("Missing hubspot identification numbers")
+    }
+
+    const HUBSPOT_URL = `https://api.hsforms.com/submissions/v3/integration/submit/${hubspotPortalId}/${hubspotFormId}`
+    const body = JSON.stringify(req.body)
+
+    request.post(HUBSPOT_URL, { body, headers: { 'Content-Type': 'application/json' } }, (_, response) => {
+        res.status(200).send(response.body);
+    })
+})
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser)
