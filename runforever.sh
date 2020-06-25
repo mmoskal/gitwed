@@ -1,4 +1,4 @@
 #!/bin/sh
 while : ; do
-  node gitwed -i ../gitwed-data
+  node gitwed -i ../tooploox.com
 done

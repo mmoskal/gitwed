@@ -138,6 +138,11 @@ app.get("/api/history", (req, res) => {
         .then(j => res.json(j))
 })
 
+// Handle moved permanently pages
+app.get("/our-work", (_req, res) => {
+    res.status(301).redirect("clients")
+})
+
 export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
     async (req, res) => {
         const msg = req.body as Message
