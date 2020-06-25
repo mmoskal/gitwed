@@ -10,10 +10,10 @@ build:
 	cd client && node  $(TSC)
 
 remote:
-	node gitwed -i ../tooploox.com
+	node gitwed -i ../gitwed-data
 
 local:
-	node gitwed ../tooploox.com
+	node gitwed ../gitwed-data
 
 sample:
 	node gitwed ../gitwed-sample
@@ -23,7 +23,7 @@ watch:
 	cd client && node $(TSC) --watch
 
 cdn: build
-	node gitwed -cdn ../tooploox.com
+	node gitwed -cdn ../gitwed-data
 
 d: deploy
 deploy:
