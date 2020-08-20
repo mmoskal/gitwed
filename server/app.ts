@@ -282,8 +282,8 @@ app.post("/api/update", (req, res) => {
     page = page.replace(/\.html?$/i, "")
 
     if (page.endsWith("/")) page += "index"
-    
-    if(!isConfiguredPage(page, gitfs.config)) 
+
+    if(!isConfiguredPage(page, gitfs.config))
         page = `/${gitfs.config.rootDirectory}${page}`
 
     page = page.replace(/\/\d+$/, "/_event")
@@ -393,9 +393,9 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     if (!/^\/(common|gw|gwcdn)\//.test(cleaned)) {
         cleaned = routing.getVHostDir(req) + cleaned
-        if(!isConfiguredPage(cleaned, gitfs.config)) 
+        if(!isConfiguredPage(cleaned, gitfs.config))
             cleaned = `/${gitfs.config.rootDirectory}${cleaned}`
-    } 
+    }
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = cleaned.slice(0, cleaned.length - 5).replace(`/${gitfs.config.rootDirectory}`, "")
@@ -608,7 +608,8 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
 
         pageCache.set(cacheKey, page.html)
-        res.writeHead(200, {
+        const status = req.url === ("/" + cfg.pageConfig.custom404) ? 404 : 200
+        res.writeHead(status, {
             'Content-Type': 'text/html; charset=utf8'
         })
         res.end(page.html)
@@ -674,6 +675,7 @@ if (!cfg.serviceName)
 
 if (!cfg.rootDirectory)
     cfg.rootDirectory = "sample"
+// cfg.rootDirectory = "new"
 
 if (!cfg.justDir && !cfg.cdnPath)
     cfg.cdnPath = "/cdn"
