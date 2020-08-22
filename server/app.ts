@@ -138,7 +138,7 @@ function sanitizePath(p: string) {
 app.get("/api/history", (req, res) => {
     if (!req.appuser)
         tools.throwError(402)
-    let p = sanitizePath(req.query["path"] || "/").join("/")
+    let p = sanitizePath(tools.getQuery(req, "path", "/")).join("/")
 
     gitfs.findRepo(p).logAsync(p || ".")
         .then(j => res.json(j))
@@ -165,7 +165,7 @@ export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
     }
 
 
-const limiter = new RateLimit({
+const limiter = RateLimit({
     max: 3 // limit each IP to 3 requests per one minute
 });
 
@@ -241,7 +241,7 @@ app.post("/api/replaceimg", (req, res) => {
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
-    gitfs.findRepo(req.query["path"] || "").pokeAsync(true)
+    gitfs.findRepo(tools.getQuery(req, "path")).pokeAsync(true)
         .then(() => {
             res.json({})
         })
@@ -544,7 +544,7 @@ async function genericGet(req: express.Request, res: express.Response) {
         let cfg: expander.ExpansionConfig = {
             rootFile: gitFileName,
             origHref: req.url,
-            origQuery: req.query,
+            origQuery: tools.convertQuery(req.query),
             ref,
             rootFileContent: str,
             langs: req.langs,

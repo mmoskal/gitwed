@@ -1,5 +1,5 @@
 interface CheerioElement {
-    startIndex: number;
+ //   startIndex: number;
 }
 
 interface Cheerio {

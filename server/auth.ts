@@ -92,7 +92,7 @@ export function throttle(req: express.Request, seconds: number) {
 export function initRoutes(app: express.Express) {
     app.get("/gw/logout", (req, res, next) => {
         res.clearCookie("GWAUTH")
-        res.redirect(req.query["redirect"] || "/")
+        res.redirect(tools.getQuery(req, "redirect", "/"))
     })
 
     function vhost(req: express.Request) {
@@ -108,7 +108,7 @@ export function initRoutes(app: express.Express) {
     app.all("/gw/login", (req, res, next) => {
         if (vhost(req)) return
 
-        let redir: string = (req.query["redirect"] || "").slice(0, 200)
+        let redir: string = tools.getQuery(req, "redirect", "/").slice(0, 200)
         let email: string = (req.body ? req.body["email"] || "" : "") || req.query["email"] || ""
         email = email.trim().toLowerCase()
         if (!email) {
@@ -168,7 +168,7 @@ export function initRoutes(app: express.Express) {
     app.get("/gw/auth", (req, res, next) => {
         if (vhost(req)) return
 
-        let tok: string = req.query["tok"] || ""
+        let tok: string = tools.getQuery(req, "tok")
         try {
             let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
             if (dwauth.iss == "GITwed-email") {

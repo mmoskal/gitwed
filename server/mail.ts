@@ -41,7 +41,7 @@ export const validateMessage = (msg: any): Result<Message, string> => {
 const sendgridSend: SendEmailFn = async (msg, config) => {
     sendGrid.setApiKey(config.sendgridApiKey)
     const res = await sendGrid.send(msg, false)
-    return res[0].body
+    return res[0].body as unknown as string
 }
 
 const mailgunSend: SendEmailFn = (msg, config) => {

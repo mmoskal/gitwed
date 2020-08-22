@@ -316,7 +316,7 @@ namespace gw {
     }
 
 
-    function stopEvent(e: JQueryEventObject) {
+    function stopEvent(e: JQuery.Event) {
         e.preventDefault();
         e.stopPropagation();
     }
@@ -984,7 +984,7 @@ All languages: ${gitwedPageInfo.availableLangs.map(l =>
                 let sub = $("<button>Send invite</button>")
                 root.append(inp).append(" ").append(sub)
                 sub.click(() => {
-                    let e = inp.val() || ""
+                    let e = (inp.val() || "") + ""
                     e = e.trim()
                     if (!/^\S+@\S+/.test(e)) {
                         root.append("Invalid email")

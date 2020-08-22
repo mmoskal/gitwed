@@ -464,7 +464,7 @@ export function init(app: express.Express) {
     function getFolder(req: express.Request): string {
         if (!req.appuser)
             tools.throwError(402)
-        let folder = req.query["folder"]
+        let folder = tools.getQuery(req, "folder")
         if (!folder || !/^[\w\.\-]+$/i.test(folder))
             tools.throwError(400)
         if (folder.indexOf("private") >= 0)
