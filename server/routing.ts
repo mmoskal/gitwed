@@ -23,6 +23,7 @@ export function sendTemplate(req: express.Request, cleaned: string, vars: SMap<s
                 ref: "master",
                 rootFileContent: str,
                 appuser: req.appuser,
+                oauthuser: req.oauthuser,
                 vars
             }
             expander.expandFileAsync(cfg)

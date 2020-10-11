@@ -63,7 +63,7 @@ export function earlyInit(app: express.Application) {
                 const dwauth = jwt.decode(tok, jwtKey)
                 if (Date.now() / 1000 - dwauth.iat < cookieValidity) {
                     req.oauthuser = dwauth.sub
-                    winston.info("oauth: " + req.oauthuser)
+                    // winston.info("oauth: " + req.oauthuser)
                 }
             } catch (e) {
                 winston.error("error verifying token: " + tok + ": " + e.message)
@@ -82,12 +82,12 @@ export function init(app: express.Application) {
     jwtKey = "oauth:" + gitfs.config.jwtSecret
 
     // TODO this should be 'POST'
-    app.get("/logout", (req, res) => {
+    app.get("/oauth/logout", (req, res) => {
         res.clearCookie(cookieName)
         res.redirect("/")
     })
 
-    app.get("/login", (req, res) => {
+    app.get("/oauth/login", (req, res) => {
         let st = tools.createRandomId(12);
         if (isLocal) st = "0" + st;
         const qs = querystring.stringify({
@@ -144,7 +144,7 @@ export function init(app: express.Application) {
             return showError(res, "cannot get access token")
         }
 
-        console.log(tokenresp.json)
+        // console.log(tokenresp.json)
 
         let userValid = true
 
@@ -152,13 +152,15 @@ export function init(app: express.Application) {
         let userid = "user"
         if (idToken) {
             const decoded = jwt.decode(idToken, "", true)
-            console.log(decoded)
+            // console.log(decoded)
             userid = decoded.sub || userid
             if (config.idTokenValidField) {
                 userValid = false
                 const v = decoded[config.idTokenValidField]
                 if (v && v != "0")
                     userValid = true
+                else
+                    winston.error("user not valid: " + userid, decoded)
             }
         }
 
@@ -179,7 +181,7 @@ export function init(app: express.Application) {
             }
 
             const me: any = meresp.json
-            console.log(me)
+            // console.log(me)
             userid = me.id || userid
 
             if (config.userValidUntil) {
@@ -190,6 +192,8 @@ export function init(app: express.Application) {
                     if (Date.now() < validity)
                         userValid = true
                 }
+                if (!userValid)
+                    winston.error("user not valid (via /me): " + userid, me)
             }
         }
 

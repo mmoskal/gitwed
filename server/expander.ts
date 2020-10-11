@@ -69,6 +69,7 @@ export interface PageConfig {
     epubEndNotes?: string; // file name where numbered notes are
     epubSeparator?: string;
     private?: boolean;
+    oauth?: boolean;
     events?: "v1" | "v2";
 }
 
@@ -78,6 +79,7 @@ export interface ExpansionConfig {
     origQuery?: SMap<string>;
     ref?: string;
     appuser?: string;
+    oauthuser?: string;
     rootFileContent?: string;
     lang?: string;
     langs?: string[];
@@ -698,7 +700,7 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     }
 
     let pageInfo = {
-        user: cfg.appuser || null,
+        user: cfg.appuser || cfg.oauthuser || null,
         lang: cfg.lang,
         langFileCreated: !!cfg.langFileContent,
         availableLangs: avlangs,

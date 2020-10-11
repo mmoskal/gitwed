@@ -2,6 +2,7 @@ global.Promise = require("bluebird")
 
 import express = require('express');
 import fs = require('fs');
+import url = require('url');
 import http = require('http');
 import https = require('https');
 import RateLimit = require("express-rate-limit");
@@ -437,6 +438,8 @@ async function genericGet(req: express.Request, res: express.Response) {
                 let cfg = await expander.getPageConfigAsync(cleaned)
                 if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
                     notFound(req, "Private.")
+                } else if (cfg.oauth && !req.oauthuser) {
+                    notFound(req, "OAuth required.")
                 } else {
                     res.writeHead(200, {
                         'Content-Type': tools.mimeLookup(gitFileName),
@@ -551,6 +554,7 @@ async function genericGet(req: express.Request, res: express.Response) {
             rootFileContent: str,
             langs: req.langs,
             appuser: req.appuser,
+            oauthuser: req.oauthuser,
             eventId,
         }
 
@@ -559,6 +563,16 @@ async function genericGet(req: express.Request, res: express.Response) {
         if (cfg.pageConfig.private && !cfg.hasWritePerm && !hasRoPerm) {
             return res.redirect(gitfs.config.authDomain +
                 "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
+        }
+
+        if (cfg.pageConfig.oauth && !req.oauthuser) {
+            const here = url.format({
+                protocol: req.protocol,
+                host: req.header("host"),
+                pathname: cleaned
+            })
+            return res.redirect(gitfs.config.authDomain +
+                "/oauth/login?redirect=" + encodeURIComponent(here))
         }
 
         pageCache.set(cacheKey, {

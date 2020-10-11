@@ -473,6 +473,7 @@ async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionCo
 
     cfg.ref = "master"
     cfg.appuser = req.appuser
+    cfg.oauthuser = req.oauthuser
     cfg.langs = req.langs
 
     let page = await expander.expandFileAsync(cfg)
