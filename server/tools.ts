@@ -93,7 +93,7 @@ export function readResAsync(g: events.EventEmitter) {
         let bufs: Buffer[] = []
         g.on('data', (c: any) => {
             if (typeof c === "string")
-                bufs.push(new Buffer(c, "utf8"))
+                bufs.push(Buffer.from(c, "utf8"))
             else
                 bufs.push(c)
         });
@@ -164,10 +164,10 @@ function httpRequestCoreAsync(options: HttpRequestOptions): Promise<HttpResponse
         if (Buffer.isBuffer(data)) {
             buf = data;
         } else if (typeof data == "object") {
-            buf = new Buffer(JSON.stringify(data), "utf8")
+            buf = Buffer.from(JSON.stringify(data), "utf8")
             u.headers["content-type"] = "application/json; charset=utf8"
         } else if (typeof data == "string") {
-            buf = new Buffer(data, "utf8")
+            buf = Buffer.from(data, "utf8")
         } else {
             throw new Error("bad data");
         }

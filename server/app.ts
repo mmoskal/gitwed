@@ -187,7 +187,7 @@ app.post("/api/uploadimg", (req, res) => {
         .replace(/\.[a-z]+$/, "")
         .replace(/[^\w\-]+/g, "_")
     let ext = "." + data.format
-    let buf = new Buffer(data.full, "base64")
+    let buf = Buffer.from(data.full, "base64")
     if (buf.length > maxImageSize)
         return res.status(413).end()
 
@@ -217,7 +217,7 @@ app.post("/api/replaceimg", (req, res) => {
     let pathElts = sanitizePath(data.filename)
     let path = pathElts.join("/")
 
-    let buf = new Buffer(data.full, "base64")
+    let buf = Buffer.from(data.full, "base64")
     if (buf.length > maxImageSize)
         return res.status(413).end()
 
