@@ -19,6 +19,7 @@ import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
 import acme = require('./acme')
+import oauth = require('./oauth')
 
 import { Message } from './mail';
 import { sendAsync } from "./mail"
@@ -109,6 +110,7 @@ app.use((req, res, next) => {
 });
 
 auth.initCheck(app)
+oauth.earlyInit(app)
 auth.initRoutes(app)
 epub.init(app)
 acme.init(app)
@@ -659,6 +661,7 @@ gitfs.initAsync(cfg)
         for (let r of tools.values(gitfs.repos)) {
             r.onUpdate(() => pageCache.flush())
         }
+        oauth.init(app)
         events.initRoutes(app)
         events2.initRoutes(app)
         setupFinalRoutes()
