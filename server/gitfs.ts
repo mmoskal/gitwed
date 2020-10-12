@@ -21,6 +21,9 @@ export interface OAuthConfig {
     userValidUntil: string
     idTokenValidField: string // check for this field in id_token
     userInvalidPage: string // send user here, if the user account is invalid
+
+    secondaryRedirs: string[]
+    secondaryKey: string
 }
 
 export interface Config {

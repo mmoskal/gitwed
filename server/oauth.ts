@@ -17,6 +17,7 @@ export function setLocal() {
 
 interface LoginState {
     redirect: string;
+    secondary?: boolean;
     user_state?: string;
 }
 
@@ -87,7 +88,7 @@ export function init(app: express.Application) {
         res.redirect("/")
     })
 
-    app.get("/oauth/login", (req, res) => {
+    function initiateLogin(req: express.Request, redirect: string, secondary = false) {
         let st = tools.createRandomId(12);
         if (isLocal) st = "0" + st;
         const qs = querystring.stringify({
@@ -99,14 +100,35 @@ export function init(app: express.Application) {
             display: "popup",
             state: st,
         })
-        const redirect = rewriteRedir(tools.getQuery(req, "redirect", "/"))
         const state = {
             redirect,
-            appkey: tools.getQuery(req, "appkey"),
+            secondary,
             user_state: tools.getQuery(req, "state"),
         }
         states[st] = state
-        res.redirect(config.auth_uri + "?" + qs)
+        req.res.redirect(config.auth_uri + "?" + qs)
+    }
+
+    app.get("/oauth/secondary", (req, res) => {
+        let redir = tools.getQuery(req, "redirect", "")
+        const parsed = url.parse(redir)
+        let settoken = ""
+        for (const tokurl of config.secondaryRedirs) {
+            const pp = url.parse(tokurl)
+            if (parsed.host.toLowerCase() == pp.host) {
+                settoken = tokurl
+                break
+            }
+        }
+        if (!settoken)
+            return showError(res, "Invalid secondary domain");
+        redir = settoken + "?redirect=" + encodeURIComponent(parsed.pathname)
+        initiateLogin(req, redir, true)
+    })
+
+    app.get("/oauth/login", (req, res) => {
+        const redirect = rewriteRedir(tools.getQuery(req, "redirect", "/"))
+        initiateLogin(req, redirect)
     })
 
     app.get("/oauth", async (req, res) => {
@@ -204,10 +226,17 @@ export function init(app: express.Application) {
                 return showError(res, "user invalid")
         }
 
-
+        if (st.secondary) {
+            const secondaryToken = jwt.encode({
+                iss: "GW",
+                sub: userid,
+                iat: Math.floor(Date.now() / 1000)
+            }, config.secondaryKey)
+            return res.redirect(st.redirect + "&token=" + secondaryToken)
+        }
 
         // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
-        let jwtToken = jwt.encode({
+        const jwtToken = jwt.encode({
             iss: "GW",
             sub: userid,
             iat: Math.floor(Date.now() / 1000)
