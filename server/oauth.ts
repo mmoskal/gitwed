@@ -95,8 +95,7 @@ export function init(app: express.Application) {
             response_type: "code",
             client_id: config.client_id,
             redirect_uri: config.redirect_uris[0],
-            //scope: "openid",
-            scope: "openid profile email role",
+            scope: config.scopes || "openid",
             display: "popup",
             state: st,
         })
@@ -174,16 +173,8 @@ export function init(app: express.Application) {
         let userid = "user"
         if (idToken) {
             const decoded = jwt.decode(idToken, "", true)
-            // console.log(decoded)
+            //console.log(decoded)
             userid = decoded.sub || userid
-            if (config.idTokenValidField) {
-                userValid = false
-                const v = decoded[config.idTokenValidField]
-                if (v && v != "0")
-                    userValid = true
-                else
-                    winston.error("user not valid: " + userid, decoded)
-            }
         }
 
         const token = tokenresp.json.access_token + ""
@@ -202,20 +193,14 @@ export function init(app: express.Application) {
                 return showError(res, "cannot get user info")
             }
 
-            const me: any = meresp.json
-            // console.log(me)
-            userid = me.id || userid
 
-            if (config.userValidUntil) {
-                userValid = false
-                const validUntil = me[config.userValidUntil]
-                if (validUntil) {
-                    const validity = new Date(validUntil).getTime()
-                    if (Date.now() < validity)
-                        userValid = true
-                }
-                if (!userValid)
-                    winston.error("user not valid (via /me): " + userid, me)
+            const me: any = meresp.json
+            userid = me.id || userid
+            console.log(JSON.stringify(me, null, 1))
+            if (config.userinfo_condition) {
+                const check = "(function (me) { 'use strict';\nreturn " + config.userinfo_condition + " })"
+                userValid = (eval(check))(me)
+                winston.info(`userValid: ${userid} -> ${userValid}`)
             }
         }
 

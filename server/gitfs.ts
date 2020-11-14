@@ -17,9 +17,9 @@ export interface OAuthConfig {
     "token_uri": string // URL for swapping code for token; "https://example.com/oauth2/token/",
     "redirect_uris": string[] // list of URLs on current domain; first one will be used; "https://here.com/oauth"
     "userinfo_uri": string // URL to get info about the user; "https://example.com/api/v1/users/me/"
+    userinfo_condition?: string // JS boolean expression taking 'me' as free variable argument
+    scopes?: string
 
-    userValidUntil: string
-    idTokenValidField: string // check for this field in id_token
     userInvalidPage: string // send user here, if the user account is invalid
 
     secondaryRedirs: string[]
