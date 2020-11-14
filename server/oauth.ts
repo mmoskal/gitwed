@@ -196,7 +196,7 @@ export function init(app: express.Application) {
 
             const me: any = meresp.json
             userid = me.id || userid
-            console.log(JSON.stringify(me, null, 1))
+            // console.log(JSON.stringify(me, null, 1))
             if (config.userinfo_condition) {
                 const check = "(function (me) { 'use strict';\nreturn " + config.userinfo_condition + " })"
                 userValid = (eval(check))(me)
