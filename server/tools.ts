@@ -522,6 +522,7 @@ export class Cache<T> {
 export interface CachedEntry {
     html: string;
     isPrivate?: boolean;
+    isOAuth?: boolean;
 }
 
 export class HtmlCache extends Cache<CachedEntry> {

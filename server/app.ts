@@ -466,6 +466,8 @@ async function genericGet(req: express.Request, res: express.Response) {
     let cached = pageCache.get(cacheKey)
     if (cached && cached.isPrivate && !hasRoPerm)
         cached = null
+    if (cached && cached.isOAuth && !req.oauthuser)
+        cached = null
     if (cached != null) {
         winston.debug(`cache hit at ${cacheKey}`)
         res.writeHead(200, {
@@ -577,7 +579,8 @@ async function genericGet(req: express.Request, res: express.Response) {
 
         pageCache.set(cacheKey, {
             html: page.html,
-            isPrivate: cfg.pageConfig.private
+            isPrivate: cfg.pageConfig.private,
+            isOAuth: cfg.pageConfig.oauth
         })
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'
