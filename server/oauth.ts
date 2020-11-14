@@ -82,10 +82,9 @@ export function init(app: express.Application) {
 
     jwtKey = "oauth:" + gitfs.config.jwtSecret
 
-    // TODO this should be 'POST'
     app.get("/oauth/logout", (req, res) => {
         res.clearCookie(cookieName)
-        res.redirect("/")
+        res.redirect(config.logout_uri || "/")
     })
 
     function initiateLogin(req: express.Request, redirect: string, secondary = false) {
