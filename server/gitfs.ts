@@ -9,6 +9,24 @@ import rest = require('./rest');
 
 const gitRefreshTimeoutSeconds = 120
 
+
+export interface OAuthConfig {
+    "client_id": string
+    "client_secret": string
+    "auth_uri": string // URL for initiating the login process; "https://example.com/oauth2/authorize/",
+    "token_uri": string // URL for swapping code for token; "https://example.com/oauth2/token/",
+    "redirect_uris": string[] // list of URLs on current domain; first one will be used; "https://here.com/oauth"
+    "userinfo_uri": string // URL to get info about the user; "https://example.com/api/v1/users/me/"
+    logout_uri?: string
+    userinfo_condition?: string // JS boolean expression taking 'me' as free variable argument
+    scopes?: string
+
+    userInvalidPage: string // send user here, if the user account is invalid
+
+    secondaryRedirs: string[]
+    secondaryKey: string
+}
+
 export interface Config {
     jwtSecret: string;
     justDir?: boolean;
@@ -32,6 +50,7 @@ export interface Config {
     services?: rest.ServiceConfig[];
     roSecret?: string;
     eventSecret?: string;
+    oauth?: OAuthConfig;
 }
 
 export let config: Config
@@ -286,11 +305,11 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
     }
 
     function setTextFileAsync(name: string, val: string, msg: string, user: string) {
-        return setBinFileAsync(name, new Buffer(val, "utf8"), msg, user)
+        return setBinFileAsync(name, Buffer.from(val, "utf8"), msg, user)
     }
 
     function setJsonFileAsync(name: string, val: {}, msg: string, user: string) {
-        return setBinFileAsync(name, new Buffer(JSON.stringify(val, null, 4), "utf8"), msg, user)
+        return setBinFileAsync(name, Buffer.from(JSON.stringify(val, null, 4), "utf8"), msg, user)
     }
 
     function logAsync(path = ".") {

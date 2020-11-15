@@ -29,7 +29,7 @@ export async function getMapsPictureAsync(opts: MapOptions) {
     if (!opts.size) opts.size = "280x200"
     opts.markers = "color:red|" + cleanAddress(opts.address)
     delete opts.address
-    let qs = querystring.stringify(opts)
+    let qs = querystring.stringify(opts as any)
     let hash = tools.sha256(qs)
     let fn = "map-cache/" + hash + ".png"
     if (!fs.existsSync(fn)) {

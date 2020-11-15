@@ -85,7 +85,7 @@ export async function resizeAsync(img: Buffer, opts: ImgOptions): Promise<ImgRes
         return res
     } else {
         let res: ImgResult = JSON.parse(fs.readFileSync(fn, "utf8"))
-        res.buffer = new Buffer(res.buffer as any, "base64")
+        res.buffer = Buffer.from(res.buffer as any, "base64")
         return res
     }
 }

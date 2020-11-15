@@ -2,6 +2,7 @@ global.Promise = require("bluebird")
 
 import express = require('express');
 import fs = require('fs');
+import url = require('url');
 import http = require('http');
 import https = require('https');
 import RateLimit = require("express-rate-limit");
@@ -19,6 +20,7 @@ import epub = require('./epub')
 import routing = require('./routing')
 import rest = require('./rest')
 import acme = require('./acme')
+import oauth = require('./oauth')
 
 import { Message } from './mail';
 import { sendAsync } from "./mail"
@@ -109,6 +111,7 @@ app.use((req, res, next) => {
 });
 
 auth.initCheck(app)
+oauth.earlyInit(app)
 auth.initRoutes(app)
 epub.init(app)
 acme.init(app)
@@ -138,7 +141,7 @@ function sanitizePath(p: string) {
 app.get("/api/history", (req, res) => {
     if (!req.appuser)
         tools.throwError(402)
-    let p = sanitizePath(req.query["path"] || "/").join("/")
+    let p = sanitizePath(tools.getQuery(req, "path", "/")).join("/")
 
     gitfs.findRepo(p).logAsync(p || ".")
         .then(j => res.json(j))
@@ -165,7 +168,7 @@ export const onSendEmail: (cfg: gitfs.Config) => express.RequestHandler = cfg =>
     }
 
 
-const limiter = new RateLimit({
+const limiter = RateLimit({
     max: 3 // limit each IP to 3 requests per one minute
 });
 
@@ -187,7 +190,7 @@ app.post("/api/uploadimg", (req, res) => {
         .replace(/\.[a-z]+$/, "")
         .replace(/[^\w\-]+/g, "_")
     let ext = "." + data.format
-    let buf = new Buffer(data.full, "base64")
+    let buf = Buffer.from(data.full, "base64")
     if (buf.length > maxImageSize)
         return res.status(413).end()
 
@@ -217,7 +220,7 @@ app.post("/api/replaceimg", (req, res) => {
     let pathElts = sanitizePath(data.filename)
     let path = pathElts.join("/")
 
-    let buf = new Buffer(data.full, "base64")
+    let buf = Buffer.from(data.full, "base64")
     if (buf.length > maxImageSize)
         return res.status(413).end()
 
@@ -241,7 +244,7 @@ app.post("/api/replaceimg", (req, res) => {
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser)
         return res.status(403).end()
-    gitfs.findRepo(req.query["path"] || "").pokeAsync(true)
+    gitfs.findRepo(tools.getQuery(req, "path")).pokeAsync(true)
         .then(() => {
             res.json({})
         })
@@ -435,6 +438,8 @@ async function genericGet(req: express.Request, res: express.Response) {
                 let cfg = await expander.getPageConfigAsync(cleaned)
                 if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
                     notFound(req, "Private.")
+                } else if (cfg.oauth && !req.oauthuser) {
+                    notFound(req, "OAuth required.")
                 } else {
                     res.writeHead(200, {
                         'Content-Type': tools.mimeLookup(gitFileName),
@@ -460,6 +465,8 @@ async function genericGet(req: express.Request, res: express.Response) {
 
     let cached = pageCache.get(cacheKey)
     if (cached && cached.isPrivate && !hasRoPerm)
+        cached = null
+    if (cached && cached.isOAuth && !req.oauthuser)
         cached = null
     if (cached != null) {
         winston.debug(`cache hit at ${cacheKey}`)
@@ -544,11 +551,12 @@ async function genericGet(req: express.Request, res: express.Response) {
         let cfg: expander.ExpansionConfig = {
             rootFile: gitFileName,
             origHref: req.url,
-            origQuery: req.query,
+            origQuery: tools.convertQuery(req.query),
             ref,
             rootFileContent: str,
             langs: req.langs,
             appuser: req.appuser,
+            oauthuser: req.oauthuser,
             eventId,
         }
 
@@ -559,9 +567,20 @@ async function genericGet(req: express.Request, res: express.Response) {
                 "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
         }
 
+        if (cfg.pageConfig.oauth && !req.oauthuser) {
+            const here = url.format({
+                protocol: req.protocol,
+                host: req.header("host"),
+                pathname: cleaned
+            })
+            return res.redirect(gitfs.config.authDomain +
+                "/oauth/login?redirect=" + encodeURIComponent(here))
+        }
+
         pageCache.set(cacheKey, {
             html: page.html,
-            isPrivate: cfg.pageConfig.private
+            isPrivate: cfg.pageConfig.private,
+            isOAuth: cfg.pageConfig.oauth
         })
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'
@@ -659,6 +678,7 @@ gitfs.initAsync(cfg)
         for (let r of tools.values(gitfs.repos)) {
             r.onUpdate(() => pageCache.flush())
         }
+        oauth.init(app)
         events.initRoutes(app)
         events2.initRoutes(app)
         setupFinalRoutes()

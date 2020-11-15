@@ -473,6 +473,7 @@ async function sendTemplateAsync(req: express.Request, cfg: expander.ExpansionCo
 
     cfg.ref = "master"
     cfg.appuser = req.appuser
+    cfg.oauthuser = req.oauthuser
     cfg.langs = req.langs
 
     let page = await expander.expandFileAsync(cfg)
@@ -564,7 +565,7 @@ export function initRoutes(app: express.Express) {
             return
         }
         if (req.query["clone"]) {
-            ev = await readEventAsync(parseInt(req.query["clone"]))
+            ev = await readEventAsync(parseInt(tools.getQuery(req, "clone")))
             if (!ev)
                 return res.status(404).end("cannot clone")
             if (ev.center != c0.id) {
@@ -605,12 +606,14 @@ export function initRoutes(app: express.Express) {
             res.status(404).json({})
             return
         }
-        await setEventAddressAsync(ev, req.query["lang"] || "en")
-        res.json(applyTranslation(ev, req.query["lang"] || "en"))
+        const lang = tools.getQuery(req, "lang", "en")
+        await setEventAddressAsync(ev, lang)
+        res.json(applyTranslation(ev, lang))
     })
 
     app.get("/api/events", async (req, res, next) => {
-        res.json(await queryEventsAsync(req.query, req.query["lang"] || "en"))
+        const lang = tools.getQuery(req, "lang", "en")
+        res.json(await queryEventsAsync(tools.convertQuery(req.query), lang))
     })
 
     app.post("/api/events", async (req, res, next) => {

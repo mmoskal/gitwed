@@ -362,11 +362,11 @@ export function initRoutes(app: express.Express) {
             res.status(404).json({})
             return
         }
-        res.json(applyTranslation(ev, req.query["lang"]))
+        res.json(applyTranslation(ev, tools.getQuery(req, "lang")))
     })
 
     app.get("/api/v2/events", async (req, res, next) => {
-        res.json(await queryEventsAsync(req.query, req.query["lang"]))
+        res.json(await queryEventsAsync(tools.convertQuery(req.query), tools.getQuery(req, "lang")))
     })
 
     app.post("/api/v2/events", async (req, res, next) => {

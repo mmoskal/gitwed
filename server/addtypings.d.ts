@@ -1,5 +1,5 @@
 interface CheerioElement {
-    startIndex: number;
+ //   startIndex: number;
 }
 
 interface Cheerio {
@@ -13,6 +13,7 @@ type SMap<T> = { [s: string]: T };
 declare namespace Express {
     export interface Request {
         appuser: string;
+        oauthuser: string;
         langs: string[];
         _response: any;
     }

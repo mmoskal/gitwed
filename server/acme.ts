@@ -92,7 +92,7 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
 
     https.createServer({
         passphrase: "",
-        pfx: new Buffer(savedCert.cert, "base64")
+        pfx: Buffer.from(savedCert.cert, "base64")
     }, app)
         .listen(443, function () {
             winston.info("Starting HTTPS server");
