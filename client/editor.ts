@@ -727,8 +727,18 @@ namespace gw {
 
                 if (tag == "meta") return
 
+                if (tag == "br") {
+                    cleaned += "\n"
+                    return
+                }
+
                 if (blockTags.hasOwnProperty(tag)) {
                     tag = blockTags[tag]
+                    if (tag == "p") {
+                        let st = ee.getAttribute("style")
+                        if (/font-weight:\s*(bold|900|800|700)/.test(st))
+                            tag = "h3"
+                    }
                     cleaned += `<${tag}>`
                     isBlock = true
                 } else if (tag == "a") {
@@ -768,7 +778,7 @@ namespace gw {
 
             let wrap0 = document.createElement('div')
             // remove word-breaks
-            html = html.replace(/-<br\s*\/>/g, "")
+            //html = html.replace(/-<br\s*\/>/g, "")
             wrap0.innerHTML = html
             console.log("ORIG", wrap0)
             if (text === null) {
@@ -777,6 +787,8 @@ namespace gw {
             } else {
                 append(wrap0)
             }
+            cleaned = cleaned.replace(/-\n/g, "")
+            cleaned = cleaned.replace(/\n/g, " ")
             cleaned = cleaned.replace(/<\/b>(\s*)<b>/g, (f, x) => x)
             cleaned = cleaned.replace(/<b>(\s*)<\/b>/g, (f, x) => x)
             cleaned = cleaned.replace(/<\/i>(\s*)<i>/g, (f, x) => x)
