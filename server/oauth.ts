@@ -143,7 +143,7 @@ export function init(app: express.Application) {
 
         const redirhost = url.parse(st.redirect || "").host
         if (gitfs.config.production && redirhost && !st.secondary && req.header("host") != redirhost) {
-            return res.redirect("https://" + redirhost + req.path)
+            return res.redirect("https://" + redirhost + req.url)
         }
 
         const data = {
