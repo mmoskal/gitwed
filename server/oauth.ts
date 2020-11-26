@@ -141,6 +141,11 @@ export function init(app: express.Application) {
         }
         const st = states[stid]
 
+        const redirhost = url.parse(st.redirect || "").host
+        if (gitfs.config.production && redirhost && !st.secondary && req.header("host") != redirhost) {
+            return res.redirect("https://" + redirhost + req.path)
+        }
+
         const data = {
             grant_type: "authorization_code",
             client_id: config.client_id,

@@ -353,6 +353,11 @@ app.get(/^\/cdn\/(([\w\-]+)\/)?(.*-|)([0-9a-f]{40})([-\.].*)/, (req, res, next) 
         })
 })
 
+function needsOAuth(cfg: expander.PageConfig) {
+    // only require oauth, when it's configured (ie., not on localhost)
+    return cfg.oauth && !!gitfs.config.oauth
+}
+
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
@@ -438,7 +443,7 @@ async function genericGet(req: express.Request, res: express.Response) {
                 let cfg = await expander.getPageConfigAsync(cleaned)
                 if (cfg.private && !(await auth.hasWritePermAsync(req.appuser, cfg.users))) {
                     notFound(req, "Private.")
-                } else if (cfg.oauth && !req.oauthuser) {
+                } else if (needsOAuth(cfg) && !req.oauthuser) {
                     notFound(req, "OAuth required.")
                 } else {
                     res.writeHead(200, {
@@ -567,11 +572,11 @@ async function genericGet(req: express.Request, res: express.Response) {
                 "/gw/login?redirect=" + encodeURIComponent("/" + cleaned))
         }
 
-        if (cfg.pageConfig.oauth && !req.oauthuser) {
+        if (needsOAuth(cfg.pageConfig) && !req.oauthuser) {
             const here = url.format({
                 protocol: req.protocol,
                 host: req.header("host"),
-                pathname: cleaned
+                pathname: req.path
             })
             return res.redirect(gitfs.config.authDomain +
                 "/oauth/login?redirect=" + encodeURIComponent(here))
@@ -580,7 +585,7 @@ async function genericGet(req: express.Request, res: express.Response) {
         pageCache.set(cacheKey, {
             html: page.html,
             isPrivate: cfg.pageConfig.private,
-            isOAuth: cfg.pageConfig.oauth
+            isOAuth: needsOAuth(cfg.pageConfig)
         })
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf8'
