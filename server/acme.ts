@@ -115,6 +115,7 @@ async function renewAsync(domains: string[], cfg: gitfs.Config) {
         csr,
         email: cfg.certEmail,
         termsOfServiceAgreed: true,
+        // preferredChain: 'DST Root CA X3', v4.1.0+
         challengeCreateFn: (authz: any, challenge: any, keyAuthorization: any) => {
             if (challenge.type === 'http-01') {
                 wellKnowns[`acme-challenge/${challenge.token}`] = keyAuthorization;
