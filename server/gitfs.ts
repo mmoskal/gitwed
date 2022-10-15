@@ -33,6 +33,7 @@ export interface Config {
     repoPath?: string;
     eventsRepoPath?: string;
     sideRepos?: SMap<string>;
+    vhostRedirs?: SMap<string>;
     mailgunApiKey?: string;
     sendgridApiKey?: string;
     gmapsKey?: string;

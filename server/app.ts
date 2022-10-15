@@ -369,6 +369,10 @@ async function genericGet(req: express.Request, res: express.Response) {
     if (/\/$/.test(cleaned))
         cleaned += "index"
 
+    const redir = routing.getVHostRedir(req)
+    if (redir)
+        return res.redirect(redir)
+
     if (!/^\/(common|gw|gwcdn)\//.test(cleaned)) {
         cleaned = routing.getVHostDir(req) + cleaned
     }

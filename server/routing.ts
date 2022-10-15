@@ -7,6 +7,15 @@ import bluebird = require('bluebird')
 import winston = require('winston')
 import logs = require('./logs')
 
+export function getVHostRedir(req: express.Request) {
+    const host = (req.header("x-forwarded-host") || req.header("host") || "").toLowerCase()
+    const v = gitfs.config.vhostRedirs
+    if (v && v.hasOwnProperty(host)) {
+        return "https://" + v[host] + req.path
+    }
+    return null
+}
+
 export function getVHostDir(req: express.Request) {
     let host = (req.header("x-forwarded-host") || req.header("host") || "").toLowerCase()
     let v = gitfs.config.vhosts

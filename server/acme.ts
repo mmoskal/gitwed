@@ -37,8 +37,15 @@ export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Confi
         });
 
     const mainDomain = cfg.authDomain.replace(/^https:\/\//, "").replace(/\/$/, "")
-    const domains = Object.keys(cfg.vhosts || {})
-    domains.unshift(mainDomain)
+    let domains0 = Object.keys(cfg.vhosts || {})
+        .concat(Object.keys(cfg.vhostRedirs || {}))
+    domains0.unshift(mainDomain)
+    const domains: string[] = []
+    for (const d of domains0) {
+        if (domains.indexOf(d) < 0)
+            domains.push(d)
+    }
+
 
     let savedCert: SavedCert
     let needsRenew = true
