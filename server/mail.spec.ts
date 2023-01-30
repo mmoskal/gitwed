@@ -55,10 +55,10 @@ describe("sendAsync()", () => {
             apiKey: "mailgunApiKey",
         })
         expect(
-            //@ts-ignore second call is a function so we can't test that
             MailgunJS({
                 domain: "mailgunDomain.com",
                 apiKey: "mailgunApiKey",
+                //@ts-ignore second call is a function so we can't test that
             }).messages().send.mock.calls[0][0]
         ).toMatchObject(msgFixture({ from }))
     })
@@ -77,10 +77,10 @@ describe("sendAsync()", () => {
             apiKey: "mailgunApiKey",
         })
         expect(
-            //@ts-ignore second call is a function so we can't test that
             MailgunJS({
                 domain: "mailgunDomain.com",
                 apiKey: "mailgunApiKey",
+                //@ts-ignore second call is a function so we can't test that
             }).messages().send.mock.calls[0][0]
         ).toMatchObject(msgFixture({ from }))
         expect(sendgrid.setApiKey).not.toBeCalled()
