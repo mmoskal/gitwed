@@ -21,6 +21,7 @@ import routing = require("./routing")
 import rest = require("./rest")
 import acme = require("./acme")
 import oauth = require("./oauth")
+import counter = require("./counter")
 
 import { Message } from "./mail"
 import { sendAsync } from "./mail"
@@ -178,6 +179,63 @@ const limiter = RateLimit({
 
 app.use("/api/send-email", limiter)
 app.post("/api/send-email", onSendEmail(gitfs.config))
+
+const cntlimiter = RateLimit({
+    max: 5, // req/minute
+})
+
+app.use("/api/post-count", cntlimiter)
+app.post("/api/post-count", async (req, res) => {
+    try {
+        const body = req.body as counter.CountPost
+
+        if (!body.from) body.from = ""
+        if (!body.comment) body.comment = ""
+        if (!body.password) body.password = ""
+
+        const count = +body.count | 0
+        if (
+            count <= 0 ||
+            typeof body.path != "string" ||
+            typeof body.from != "string" ||
+            typeof body.comment != "string" ||
+            (body.from + body.comment + body.password).length > 500
+        )
+            tools.throwError(400)
+
+        const m = /^\/([\w\-]+)/.exec(body.path)
+        if (!m || m[1].length > 60) tools.throwError(400)
+        const cntid = m[1]
+
+        const cfg = await expander.getPageConfigAsync("/" + cntid)
+
+        if (
+            cfg.countPassword &&
+            simplifyPassword(cfg.countPassword) !=
+                simplifyPassword(body.password)
+        )
+            tools.throwError(403)
+
+        if (!cfg.maxCount) tools.throwError(405)
+        if (count > cfg.maxCount) tools.throwError(412)
+
+        res.json(
+            counter.addCount(cntid, {
+                count,
+                from: body.from || undefined,
+                comment: body.comment || undefined,
+                now: Date.now(),
+            })
+        )
+    } catch (e) {
+        if (e.statusCode) res.status(e.statusCode).end()
+        else throw e
+    }
+
+    function simplifyPassword(s: string) {
+        return s.toLowerCase().replace(/[^a-z0-9]/g, "")
+    }
+})
 
 app.post("/api/uploadimg", (req, res) => {
     if (!req.appuser) return res.status(403).end()

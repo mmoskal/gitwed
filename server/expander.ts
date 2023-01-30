@@ -5,6 +5,7 @@ import events = require("./events")
 import events2 = require("./events2")
 import tools = require("./tools")
 import rest = require("./rest")
+import counter = require("./counter")
 import * as bluebird from "bluebird"
 import * as winston from "winston"
 
@@ -80,6 +81,8 @@ export interface PageConfig {
     epubSeparator?: string
     private?: boolean
     oauth?: boolean
+    maxCount?: number
+    countPassword?: string
     events?: "v1" | "v2"
 }
 
@@ -575,6 +578,15 @@ function expandAsync(cfg: ExpansionConfig) {
 
         let tag = elt[0].tagName
         if (elt.length > 1) tag = ""
+
+        if (tag == "counter") {
+            const m = /^\/?([\w-]+)/.exec(cfg.origHref || cfg.rootFile)
+            if (m && m[1].length < 60) {
+                const ee = counter.getCount(m[1])
+                elt.text(ee.count + "")
+                elt.attr("data-max-count", (cfg.pageConfig?.maxCount ?? 0) + "")
+            }
+        }
 
         if (tag == "include") {
             return includeAsync(ctx, elt, elt.attr("src"))

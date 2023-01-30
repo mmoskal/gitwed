@@ -7,3 +7,4 @@ logs
 *-cache/
 tmp
 certificate.json
+counters
