@@ -1,24 +1,24 @@
 import tools = require("./tools")
-import * as winston from "winston";
+import * as winston from "winston"
 
 export interface ServiceConfig {
-    id: string;
-    format: string;
-    oauthURL?: string;
-    oauthClientID?: string;
-    oauthClientSecret?: string;
+    id: string
+    format: string
+    oauthURL?: string
+    oauthClientID?: string
+    oauthClientSecret?: string
 }
 
 interface CacheEntry {
-    expTime: number;
-    data: SMap<string>;
+    expTime: number
+    data: SMap<string>
 }
 
 interface TokenResp {
-    access_token: string;
-    token_type: string; // 'Bearer',
-    expires_in: number; // 3600,
-    scope: string;
+    access_token: string
+    token_type: string // 'Bearer',
+    expires_in: number // 3600,
+    scope: string
 }
 
 function flatten(r: SMap<string>, pref: string, dict: any) {
@@ -30,8 +30,7 @@ function flatten(r: SMap<string>, pref: string, dict: any) {
     } else {
         if (typeof dict == "number" || typeof dict == "boolean")
             dict = dict + ""
-        if (dict == null)
-            dict = ""
+        if (dict == null) dict = ""
         if (typeof dict == "string") {
             r[pref] = dict
             return
@@ -51,11 +50,11 @@ function flatten(r: SMap<string>, pref: string, dict: any) {
 }
 
 export class Service {
-    private token: string;
-    private tokenExp: number;
-    private cache: SMap<CacheEntry> = {};
+    private token: string
+    private tokenExp: number
+    private cache: SMap<CacheEntry> = {}
 
-    constructor(public config: ServiceConfig) { }
+    constructor(public config: ServiceConfig) {}
 
     async expandAsync(e: Cheerio) {
         let url = this.config.format.replace(/\{(\w+)\}/g, (f, id: string) => {
@@ -69,20 +68,19 @@ export class Service {
             let resp = await tools.requestAsync({
                 url,
                 headers: {
-                    "Authorization": this.token,
+                    Authorization: this.token,
                 },
-                allowHttpErrors: true
+                allowHttpErrors: true,
             })
             c = {
                 expTime: Date.now() + 5 * 60 * 1000,
-                data: {}
+                data: {},
             }
-            if (resp.statusCode == 200)
-                flatten(c.data, "", resp.json)
+            if (resp.statusCode == 200) flatten(c.data, "", resp.json)
             else {
                 c.data = {
                     status: resp.statusCode + "",
-                    msg: resp.text
+                    msg: resp.text,
                 }
             }
             c.data["JSON"] = JSON.stringify(c.data, null, 4)
@@ -98,11 +96,9 @@ export class Service {
     }
 
     async refreshTokenAsync() {
-        if (!this.config.oauthURL)
-            return
+        if (!this.config.oauthURL) return
         let now = Date.now()
-        if (this.token && this.tokenExp < now)
-            return
+        if (this.token && this.tokenExp < now) return
         winston.info("authorize at " + this.config.oauthURL)
         let resp = await tools.requestAsync({
             url: this.config.oauthURL,
@@ -110,9 +106,12 @@ export class Service {
                 "Content-Type": "application/x-www-form-urlencoded",
             },
             method: "POST",
-            data: "grant_type=client_credentials" +
-                "&client_id=" + this.config.oauthClientID +
-                "&client_secret=" + this.config.oauthClientSecret
+            data:
+                "grant_type=client_credentials" +
+                "&client_id=" +
+                this.config.oauthClientID +
+                "&client_secret=" +
+                this.config.oauthClientSecret,
         })
         let r = resp.json as TokenResp
         this.token = r.token_type + " " + r.access_token
@@ -132,7 +131,6 @@ export function init(services: ServiceConfig[]) {
 export function expandAsync(e: Cheerio) {
     let id = e.attr("service")
     let s = serv[id]
-    if (!s)
-        return Promise.resolve()
+    if (!s) return Promise.resolve()
     return s.expandAsync(e)
 }

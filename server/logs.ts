@@ -1,32 +1,32 @@
-import fs = require('fs');
-import tools = require('./tools')
-import bluebird = require('bluebird')
-import winston = require('winston')
-import express = require('express');
-import util = require('util');
+import fs = require("fs")
+import tools = require("./tools")
+import bluebird = require("bluebird")
+import winston = require("winston")
+import express = require("express")
+import util = require("util")
 
 export function init() {
-    winston.level = "debug";
+    winston.level = "debug"
     winston.addColors({
-        trace: 'magenta',
-        input: 'grey',
-        verbose: 'cyan',
-        prompt: 'grey',
-        debug: 'blue',
-        info: 'green',
-        data: 'grey',
-        help: 'cyan',
-        warn: 'yellow',
-        error: 'red'
-    });
+        trace: "magenta",
+        input: "grey",
+        verbose: "cyan",
+        prompt: "grey",
+        debug: "blue",
+        info: "green",
+        data: "grey",
+        help: "cyan",
+        warn: "yellow",
+        error: "red",
+    })
 
     winston.remove(winston.transports.Console)
     winston.add(winston.transports.Console, {
         prettyPrint: true,
         colorize: true,
         silent: false,
-        timestamp: false
-    });
+        timestamp: false,
+    })
 
     tools.mkdirP("logs")
 
@@ -39,7 +39,7 @@ export function init() {
         prettyPrint: false,
         level: "info",
         json: false,
-        filename: "logs/info.log"
+        filename: "logs/info.log",
     }
     winston.add(winston.transports.File, opts)
 
@@ -58,7 +58,6 @@ export function init() {
     winston.add(MemLogger as any, {})
 }
 
-
 let logs = ""
 let logsPrev = ""
 
@@ -67,16 +66,21 @@ export function getLogs() {
 }
 
 class MemLogger extends winston.Transport {
-    name: string;
-    level: string;
+    name: string
+    level: string
 
     constructor(options: any) {
         super(options)
-        this.name = 'memLogger';
-        this.level = options.level || 'debug';
+        this.name = "memLogger"
+        this.level = options.level || "debug"
     }
 
-    log(level: string, msg: string, meta: any, callback: (err: Error, data: boolean) => void) {
+    log(
+        level: string,
+        msg: string,
+        meta: any,
+        callback: (err: Error, data: boolean) => void
+    ) {
         let mm = new Date().toISOString() + ": " + level + ": " + msg
         if (meta) {
             let insp = util.inspect(meta)
@@ -88,7 +92,7 @@ class MemLogger extends winston.Transport {
             logsPrev = logs
             logs = ""
         }
-        callback(null, true);
+        callback(null, true)
     }
 }
 
@@ -102,15 +106,13 @@ export function logError(err: any, req: express.Request = null) {
     }
     let code: number = err.statusCode
     let msg = err.stack || err
-    if (err.innerExn)
-        msg += "\nInner:\n" + err.innerExn.stack
+    if (err.innerExn) msg += "\nInner:\n" + err.innerExn.stack
 
-    if (code)
-        winston.info("HTTP " + code)
+    if (code) winston.info("HTTP " + code)
     else {
         console.log(err)
         winston.error(msg, info)
-        code = 500;
+        code = 500
     }
 
     if (req) {
@@ -121,6 +123,6 @@ export function logError(err: any, req: express.Request = null) {
     }
 }
 
-process.on('uncaughtException', function (err: any) {
+process.on("uncaughtException", function (err: any) {
     logError(err)
 })

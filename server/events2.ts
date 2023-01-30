@@ -1,19 +1,19 @@
-import express = require('express');
+import express = require("express")
 import path = require("path")
 import fs = require("fs")
-import gitfs = require('./gitfs')
-import gmaps = require('./gmaps')
-import tools = require('./tools')
-import expander = require('./expander')
-import bluebird = require('bluebird')
-import winston = require('winston')
+import gitfs = require("./gitfs")
+import gmaps = require("./gmaps")
+import tools = require("./tools")
+import expander = require("./expander")
+import bluebird = require("bluebird")
+import winston = require("winston")
 
 const fsPath = "v2/"
 
 // https://schema.org/PostalAddress
 export interface Geo {
-    latitude?: number;
-    longitude?: number;
+    latitude?: number
+    longitude?: number
 }
 export interface PostalAddress extends Geo {
     addressLocality: string // city
@@ -32,51 +32,51 @@ export interface Event {
 }
 
 export interface Translation {
-    lang: string;
+    lang: string
 }
 
 export interface WithTranslations {
-    lang?: string;
-    translations?: Translation[];
+    lang?: string
+    translations?: Translation[]
 }
 
 export interface EventTranslation extends Translation {
-    name?: string;
-    description?: string;
-    speakerBio?: string;
+    name?: string
+    description?: string
+    speakerBio?: string
 }
 
 export interface EventIndexEntry extends Translation {
-    eventId: number;
-    startDate: string; // "2016-01-05"
-    endDate: string;
-    name: string;
-    organizer: string; // "wroclaw"
-    location: PostalAddress;
-    translations?: EventTranslation[];
+    eventId: number
+    startDate: string // "2016-01-05"
+    endDate: string
+    name: string
+    organizer: string // "wroclaw"
+    location: PostalAddress
+    translations?: EventTranslation[]
 }
 
 export interface EventListEntry extends EventIndexEntry {
-    weekdayRange?: string;
-    dateRange?: string;
-    combinedRange?: string;
+    weekdayRange?: string
+    dateRange?: string
+    combinedRange?: string
 }
 
 // https://schema.org/Event
 export interface FullEvent extends EventListEntry {
-    startTime?: string; // "20:00"
-    description: string;
-    speakerBio?: string;
+    startTime?: string // "20:00"
+    description: string
+    speakerBio?: string
     location: PostalAddress
 }
 
 export interface FullEventWithUser extends FullEvent {
-    editorEmail: string;
+    editorEmail: string
 }
 
 export interface EventIndex {
-    events: EventIndexEntry[];
-    nextId: number;
+    events: EventIndexEntry[]
+    nextId: number
 }
 
 let index: EventIndex
@@ -87,8 +87,7 @@ export function getLangs(ev: WithTranslations) {
     let langs = [ev.lang || "en"]
     if (ev.translations) {
         for (let t of ev.translations) {
-            if (t.lang && langs.indexOf(t.lang) < 0)
-                langs.push(t.lang)
+            if (t.lang && langs.indexOf(t.lang) < 0) langs.push(t.lang)
         }
     }
     return langs
@@ -109,7 +108,7 @@ function forIndex(js: FullEvent): EventIndexEntry {
         translations: (js.translations || []).map(t => ({
             lang: t.lang,
             title: t.name,
-        }))
+        })),
     }
 }
 
@@ -123,9 +122,17 @@ async function saveEventAsync(e: FullEvent, user: string) {
     let idx = index.events.findIndex(x => x.eventId == e.eventId)
     if (idx < 0) idx = index.events.length
     index.events.splice(idx, 1, forIndex(e))
-    fs.writeFileSync(path.join(currEventsPath, "index.json"), JSON.stringify(index, null, 1))
+    fs.writeFileSync(
+        path.join(currEventsPath, "index.json"),
+        JSON.stringify(index, null, 1)
+    )
 
-    await gitfs.events.setJsonFileAsync(fsPath + eventFn(e.eventId), e, "Update " + e.name, user)
+    await gitfs.events.setJsonFileAsync(
+        fsPath + eventFn(e.eventId),
+        e,
+        "Update " + e.name,
+        user
+    )
 }
 
 export async function readEventAsync(id: number): Promise<FullEvent> {
@@ -136,17 +143,17 @@ export async function readEventAsync(id: number): Promise<FullEvent> {
             startDate: "2017-09-28",
             endDate: "",
             name: "Ngondro in Daily Life by Foo Bar",
-            description: "<p>Start start start! something something!\n</p>\n<p>Second para 2</p>",
+            description:
+                "<p>Start start start! something something!\n</p>\n<p>Second para 2</p>",
             startTime: "20:00",
             lang: "en",
             location: {
                 addressLocality: "Notown",
-            }
+            },
         }
     }
 
-    if (!index.events.some(e => e.eventId == id))
-        return null
+    if (!index.events.some(e => e.eventId == id)) return null
     let curr = eventsCache[id + ""]
     let r: FullEvent
     if (curr) {
@@ -176,7 +183,7 @@ function loadOrCreateIndex() {
     winston.info("creating events index...")
     index = {
         events: [],
-        nextId: 0
+        nextId: 0,
     }
     for (let fn of fs.readdirSync(currEventsPath)) {
         if (/^\d+\.json$/.test(fn)) {
@@ -189,7 +196,9 @@ function loadOrCreateIndex() {
     fs.writeFileSync(idx, JSON.stringify(index, null, 1))
 
     function readJson(fn: string) {
-        return JSON.parse(fs.readFileSync(path.join(currEventsPath, fn), "utf8"))
+        return JSON.parse(
+            fs.readFileSync(path.join(currEventsPath, fn), "utf8")
+        )
     }
 }
 
@@ -217,12 +226,10 @@ function validCity(c: string) {
 
 function applyTranslation(r: EventListEntry, lang: string) {
     r = tools.clone(r)
-    if (!lang)
-        return r
+    if (!lang) return r
 
     for (let t of r.translations || []) {
-        if (t.lang == lang)
-            tools.copyFields(r, t)
+        if (t.lang == lang) tools.copyFields(r, t)
     }
     delete r.translations
     augmentEvent(r, lang)
@@ -235,7 +242,10 @@ function augmentEvent(r: EventListEntry, lang: string) {
     r.combinedRange = tools.fullDate(r.startDate, lang)
     if (r.endDate && r.endDate != r.startDate) {
         r.weekdayRange += " - " + tools.weekDay(r.endDate, lang)
-        if (tools.monthName(r.startDate, lang) != tools.monthName(r.endDate, lang)) {
+        if (
+            tools.monthName(r.startDate, lang) !=
+            tools.monthName(r.endDate, lang)
+        ) {
             r.dateRange += " - " + tools.monthPlusDay(r.endDate, lang)
         } else {
             r.dateRange += " - " + tools.monthDay(r.endDate, lang)
@@ -249,11 +259,12 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
     if (!gitfs.events) {
         return {
             totalCount: 0,
-            events: []
+            events: [],
         }
     }
 
-    let startDate = query["start"] || formatDate(new Date(Date.now() - 23 * 3600 * 1000))
+    let startDate =
+        query["start"] || formatDate(new Date(Date.now() - 23 * 3600 * 1000))
     let stopDate = query["stop"] || "9999-99-99"
     let organizer = query["organizer"] || "*"
     let country = query["country"] || "*"
@@ -262,29 +273,26 @@ export async function queryEventsAsync(query: SMap<string>, lang: string) {
 
     let events = index.events.filter(e => {
         let end = e.endDate || e.startDate
-        if (end < startDate)
-            return false
-        if (e.startDate > stopDate)
-            return false
-        if (organizer != "*" && e.organizer != organizer)
-            return false
+        if (end < startDate) return false
+        if (e.startDate > stopDate) return false
+        if (organizer != "*" && e.organizer != organizer) return false
         return true
     })
 
     if (country != "*") {
         events = events.filter(e => {
-            if (e.location.addressCountry !== country)
-                return false
+            if (e.location.addressCountry !== country) return false
             return true
         })
     }
 
-    events.sort((a, b) =>
-        tools.strcmp(a.startDate, b.startDate) || (a.eventId - b.eventId))
+    events.sort(
+        (a, b) =>
+            tools.strcmp(a.startDate, b.startDate) || a.eventId - b.eventId
+    )
     let totalCount = events.length
     let skip = parseInt(query["skip"]) || 0
-    if (skip)
-        events = events.slice(skip)
+    if (skip) events = events.slice(skip)
     let count = Math.abs(parseInt(query["count"]) || 100)
     if (count > 100) count = 100
     if (events.length > count) events = events.slice(0, count)
@@ -299,33 +307,35 @@ async function setMapImgAsync(
     addrObj: PostalAddress,
     cfg: expander.ExpansionConfig
 ) {
-    let addr = gmaps.cleanAddress(addrObj.streetAddress + ", " + addrObj.addressLocality + " " + addrObj.postalCode)
+    let addr = gmaps.cleanAddress(
+        addrObj.streetAddress +
+            ", " +
+            addrObj.addressLocality +
+            " " +
+            addrObj.postalCode
+    )
     if (!cfg.vars) cfg.vars = {}
     cfg.vars[pref + "mapurl"] = "https://maps.google.com/?q=" + encodeURI(addr)
-    cfg.vars[pref + "mapimg"] = await gmaps.getMapsPictureAsync({ address: addr })
+    cfg.vars[pref + "mapimg"] = await gmaps.getMapsPictureAsync({
+        address: addr,
+    })
 }
 
 function validateEvent(ev: FullEvent) {
-    if (!ev.startDate || !validDate(ev.startDate))
-        return "invalid startDate"
-    if (!validDate(ev.endDate))
-        return "invalid endDate"
-    if (!validTime(ev.startTime))
-        return "invalid startTime"
-    if (!ev.location)
-        return "location missing"
+    if (!ev.startDate || !validDate(ev.startDate)) return "invalid startDate"
+    if (!validDate(ev.endDate)) return "invalid endDate"
+    if (!validTime(ev.startTime)) return "invalid startTime"
+    if (!ev.location) return "location missing"
     if (!validCountry(ev.location.addressCountry))
         return "invalid location.addressCountry"
     if (!validCity(ev.location.addressLocality))
         return "invalid location.addressLocality"
     if (ev.translations != null) {
-        if (!Array.isArray(ev.translations))
-            return "invalid translations"
+        if (!Array.isArray(ev.translations)) return "invalid translations"
         if (!ev.translations.every(t => tools.validateLang(t.lang)))
             return "some translations have invalid 'lang' property"
     }
-    if (!ev.endDate)
-        ev.endDate = ev.startDate
+    if (!ev.endDate) ev.endDate = ev.startDate
     return null
 }
 
@@ -334,8 +344,7 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
         const ei = cfg.eventInfo as FullEvent
         augmentEvent(ei, cfg.lang)
 
-        if (!cfg.contentOverride)
-            cfg.contentOverride = {}
+        if (!cfg.contentOverride) cfg.contentOverride = {}
 
         let base = tools.jsonFlatten(ei)
         for (let k of Object.keys(base)) {
@@ -348,8 +357,7 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
 }
 
 export function initRoutes(app: express.Express) {
-    if (!gitfs.events)
-        return
+    if (!gitfs.events) return
     currEventsPath = path.join(gitfs.config.eventsRepoPath, fsPath)
     loadOrCreateIndex()
 
@@ -366,20 +374,25 @@ export function initRoutes(app: express.Express) {
     })
 
     app.get("/api/v2/events", async (req, res, next) => {
-        res.json(await queryEventsAsync(tools.convertQuery(req.query), tools.getQuery(req, "lang")))
+        res.json(
+            await queryEventsAsync(
+                tools.convertQuery(req.query),
+                tools.getQuery(req, "lang")
+            )
+        )
     })
 
     app.post("/api/v2/events", async (req, res, next) => {
-        if (!gitfs.config.eventSecret)
-            return res.status(444).end()
+        if (!gitfs.config.eventSecret) return res.status(444).end()
 
-        if (req.header("x-gitwed-secret") !== gitfs.config.eventSecret &&
-            req.query["access_token"] !== gitfs.config.eventSecret)
+        if (
+            req.header("x-gitwed-secret") !== gitfs.config.eventSecret &&
+            req.query["access_token"] !== gitfs.config.eventSecret
+        )
             return res.status(403).end()
 
         let bodies: FullEventWithUser[] = req.body
-        if (!Array.isArray(req.body))
-            bodies = [req.body]
+        if (!Array.isArray(req.body)) bodies = [req.body]
 
         for (let ev of bodies) {
             const err = validateEvent(ev)
@@ -387,20 +400,20 @@ export function initRoutes(app: express.Express) {
                 res.status(412).json({ message: err })
                 return
             }
-            if (ev.eventId && !await readEventAsync(ev.eventId)) {
-                res.status(404).json({ message: `Event ${ev.eventId} doesn't exists yet` })
+            if (ev.eventId && !(await readEventAsync(ev.eventId))) {
+                res.status(404).json({
+                    message: `Event ${ev.eventId} doesn't exists yet`,
+                })
                 return
             }
         }
 
         for (let ev of bodies) {
-            if (!ev.eventId)
-                ev.eventId = index.nextId++
+            if (!ev.eventId) ev.eventId = index.nextId++
         }
 
         for (let ev of bodies) {
-            if (!ev.eventId)
-                ev.eventId = index.nextId++
+            if (!ev.eventId) ev.eventId = index.nextId++
         }
 
         let numUpdated = 0
@@ -415,5 +428,4 @@ export function initRoutes(app: express.Express) {
 
         res.json({ updated: numUpdated })
     })
-
 }

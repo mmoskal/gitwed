@@ -1,14 +1,14 @@
-import * as url from "url";
-import * as querystring from "querystring";
-import * as express from "express";
-import * as winston from "winston";
-import * as jwt from "jwt-simple";
+import * as url from "url"
+import * as querystring from "querystring"
+import * as express from "express"
+import * as winston from "winston"
+import * as jwt from "jwt-simple"
 
-import * as gitfs from "./gitfs";
-import * as tools from "./tools";
+import * as gitfs from "./gitfs"
+import * as tools from "./tools"
 
 // two weeks
-const cookieValidity = 14 * 24 * 3600;
+const cookieValidity = 14 * 24 * 3600
 const cookieName = "GWOAUTH"
 
 export function setLocal() {
@@ -16,41 +16,40 @@ export function setLocal() {
 }
 
 interface LoginState {
-    redirect: string;
-    secondary?: boolean;
-    user_state?: string;
+    redirect: string
+    secondary?: boolean
+    user_state?: string
 }
 
 const states: SMap<LoginState> = {}
-export let isLocal = false;
+export let isLocal = false
 let config: gitfs.OAuthConfig
 let jwtKey: string
 
 function showError(res: express.Response, msg: string) {
-    res.status(400).end(msg);
+    res.status(400).end(msg)
 }
 
 function isValidDomain(d: string) {
     d = d.toLowerCase()
     const vh = gitfs.config.vhosts
-    if (vh && vh.hasOwnProperty(d))
-        return true
+    if (vh && vh.hasOwnProperty(d)) return true
     const ad = gitfs.config.authDomain
-    if (ad && url.parse(ad).host == d)
-        return true
+    if (ad && url.parse(ad).host == d) return true
     return false
 }
 
 function rewriteRedir(redir: string) {
     const parsed = url.parse(redir)
-    if (!parsed.protocol)
-        return parsed.path
-    if ((parsed.protocol == "http:" && /^localhost:\d+$/.test(parsed.host)) ||
-        (parsed.protocol == "https:" && isValidDomain(parsed.host)))
+    if (!parsed.protocol) return parsed.path
+    if (
+        (parsed.protocol == "http:" && /^localhost:\d+$/.test(parsed.host)) ||
+        (parsed.protocol == "https:" && isValidDomain(parsed.host))
+    )
         return url.format({
             protocol: parsed.protocol,
             host: parsed.host,
-            pathname: parsed.pathname
+            pathname: parsed.pathname,
         })
     return "/"
 }
@@ -67,18 +66,19 @@ export function earlyInit(app: express.Application) {
                     // winston.info("oauth: " + req.oauthuser)
                 }
             } catch (e) {
-                winston.error("error verifying token: " + tok + ": " + e.message)
+                winston.error(
+                    "error verifying token: " + tok + ": " + e.message
+                )
             }
         }
 
-        next();
+        next()
     })
 }
 
 export function init(app: express.Application) {
     config = gitfs.config.oauth
-    if (!config || !config.redirect_uris)
-        return
+    if (!config || !config.redirect_uris) return
 
     jwtKey = "oauth:" + gitfs.config.jwtSecret
 
@@ -87,9 +87,13 @@ export function init(app: express.Application) {
         res.redirect(config.logout_uri || "/")
     })
 
-    function initiateLogin(req: express.Request, redirect: string, secondary = false) {
-        let st = tools.createRandomId(12);
-        if (isLocal) st = "0" + st;
+    function initiateLogin(
+        req: express.Request,
+        redirect: string,
+        secondary = false
+    ) {
+        let st = tools.createRandomId(12)
+        if (isLocal) st = "0" + st
         const qs = querystring.stringify({
             response_type: "code",
             client_id: config.client_id,
@@ -118,8 +122,7 @@ export function init(app: express.Application) {
                 break
             }
         }
-        if (!settoken)
-            return showError(res, "Invalid secondary domain");
+        if (!settoken) return showError(res, "Invalid secondary domain")
         redir = settoken + "?redirect=" + encodeURIComponent(parsed.pathname)
         initiateLogin(req, redir, true)
     })
@@ -136,13 +139,18 @@ export function init(app: express.Application) {
             return
         }
         if (!states.hasOwnProperty(stid)) {
-            showError(res, "Bad state");
-            return;
+            showError(res, "Bad state")
+            return
         }
         const st = states[stid]
 
         const redirhost = url.parse(st.redirect || "").host
-        if (gitfs.config.production && redirhost && !st.secondary && req.header("host") != redirhost) {
+        if (
+            gitfs.config.production &&
+            redirhost &&
+            !st.secondary &&
+            req.header("host") != redirhost
+        ) {
             return res.redirect("https://" + redirhost + req.url)
         }
 
@@ -151,21 +159,26 @@ export function init(app: express.Application) {
             client_id: config.client_id,
             redirect_uri: config.redirect_uris[0],
             client_secret: config.client_secret,
-            code: tools.getQuery(req, "code")
+            code: tools.getQuery(req, "code"),
         }
         winston.debug("asking for code: " + config.token_uri)
 
         const tokenresp = await tools.requestAsync({
             url: config.token_uri,
             headers: {
-                "content-type": "application/x-www-form-urlencoded"
+                "content-type": "application/x-www-form-urlencoded",
             },
             data: querystring.stringify(data),
-            allowHttpErrors: true
+            allowHttpErrors: true,
         })
 
         if (tokenresp.statusCode != 200) {
-            winston.error("cannot get auth-token: " + tokenresp.text + "/" + tokenresp.statusCode)
+            winston.error(
+                "cannot get auth-token: " +
+                    tokenresp.text +
+                    "/" +
+                    tokenresp.statusCode
+            )
             return showError(res, "cannot get access token")
         }
 
@@ -187,23 +200,30 @@ export function init(app: express.Application) {
             const meresp = await tools.requestAsync({
                 url: config.userinfo_uri,
                 headers: {
-                    Authorization: "Bearer " + token
+                    Authorization: "Bearer " + token,
                 },
-                allowHttpErrors: true
+                allowHttpErrors: true,
             })
 
             if (tokenresp.statusCode != 200) {
-                winston.error("cannot get user-info: " + meresp.text + "/" + meresp.statusCode)
+                winston.error(
+                    "cannot get user-info: " +
+                        meresp.text +
+                        "/" +
+                        meresp.statusCode
+                )
                 return showError(res, "cannot get user info")
             }
-
 
             const me: any = meresp.json
             userid = me.id || userid
             // console.log(JSON.stringify(me, null, 1))
             if (config.userinfo_condition) {
-                const check = "(function (me) { 'use strict';\nreturn " + config.userinfo_condition + " })"
-                userValid = (eval(check))(me)
+                const check =
+                    "(function (me) { 'use strict';\nreturn " +
+                    config.userinfo_condition +
+                    " })"
+                userValid = eval(check)(me)
                 winston.info(`userValid: ${userid} -> ${userValid}`)
             }
         }
@@ -211,25 +231,30 @@ export function init(app: express.Application) {
         if (!userValid) {
             if (config.userInvalidPage)
                 return res.redirect(config.userInvalidPage)
-            else
-                return showError(res, "user invalid")
+            else return showError(res, "user invalid")
         }
 
         if (st.secondary) {
-            const secondaryToken = jwt.encode({
-                iss: "GW",
-                sub: userid,
-                iat: Math.floor(Date.now() / 1000)
-            }, config.secondaryKey)
+            const secondaryToken = jwt.encode(
+                {
+                    iss: "GW",
+                    sub: userid,
+                    iat: Math.floor(Date.now() / 1000),
+                },
+                config.secondaryKey
+            )
             return res.redirect(st.redirect + "&token=" + secondaryToken)
         }
 
         // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
-        const jwtToken = jwt.encode({
-            iss: "GW",
-            sub: userid,
-            iat: Math.floor(Date.now() / 1000)
-        }, jwtKey)
+        const jwtToken = jwt.encode(
+            {
+                iss: "GW",
+                sub: userid,
+                iat: Math.floor(Date.now() / 1000),
+            },
+            jwtKey
+        )
 
         res.cookie(cookieName, jwtToken, {
             httpOnly: true,

@@ -1,17 +1,17 @@
 import cheerio = require("cheerio")
-import gitfs = require('./gitfs')
-import auth = require('./auth')
-import events = require('./events')
-import events2 = require('./events2')
-import tools = require('./tools')
-import rest = require('./rest')
-import * as bluebird from "bluebird";
-import * as winston from "winston";
+import gitfs = require("./gitfs")
+import auth = require("./auth")
+import events = require("./events")
+import events2 = require("./events2")
+import tools = require("./tools")
+import rest = require("./rest")
+import * as bluebird from "bluebird"
+import * as winston from "winston"
 
 let htmlparser2 = require("htmlparser2")
 
 function toHTML(e: CheerioStatic | Cheerio) {
-    return e.html().replace(/&#x([0-9a-f]{1,6});/ig, (entity, match) => {
+    return e.html().replace(/&#x([0-9a-f]{1,6});/gi, (entity, match) => {
         let code = parseInt(match, 16)
         if (code < 0x80) return entity
         return String.fromCodePoint(code)
@@ -19,79 +19,89 @@ function toHTML(e: CheerioStatic | Cheerio) {
 }
 
 function jsQuote(s: string) {
-    return "\"" + s.replace(/[\\"\n\r\t]/g, (m) => {
-        switch (m) {
-            case "\\":
-            case "\"": return "\\" + m;
-            case "\n": return "\\n";
-            case "\r": return "\\r";
-            case "\t": return "\\t";
-            default: return m;
-        }
-    }) + "\""
+    return (
+        '"' +
+        s.replace(/[\\"\n\r\t]/g, m => {
+            switch (m) {
+                case "\\":
+                case '"':
+                    return "\\" + m
+                case "\n":
+                    return "\\n"
+                case "\r":
+                    return "\\r"
+                case "\t":
+                    return "\\t"
+                default:
+                    return m
+            }
+        }) +
+        '"'
+    )
 }
 
 function error(msg: string, ctx?: Ctx, elt?: Cheerio) {
-    if (ctx)
-        msg += " at " + ctx.filename
+    if (ctx) msg += " at " + ctx.filename
 
     if (elt && elt[0] && elt[0].startIndex != null) {
         let idx = elt[0].startIndex
         msg += "@" + idx
         if (ctx)
-            msg += "  ..." +
+            msg +=
+                "  ..." +
                 ctx.fileContent.slice(Math.max(0, idx - 10), idx) +
                 "*" +
-                ctx.fileContent.slice(idx, idx + 20) + "..."
+                ctx.fileContent.slice(idx, idx + 20) +
+                "..."
     }
 
     throw new Error(msg)
 }
 
 interface Ctx {
-    filename: string;
-    subst: SMap<Cheerio>;
-    fileContent: string;
+    filename: string
+    subst: SMap<Cheerio>
+    fileContent: string
 }
 
 export interface Pos {
-    filename: string;
-    startIdx: number;
-    length: number;
+    filename: string
+    startIdx: number
+    length: number
 }
 
 export interface PageConfig {
-    langs?: string[];
-    users?: string[];
+    langs?: string[]
+    users?: string[]
     templates?: SMap<string>
-    center?: string;
-    epub?: boolean;
-    epubEndNotes?: string; // file name where numbered notes are
-    epubSeparator?: string;
-    private?: boolean;
-    oauth?: boolean;
-    events?: "v1" | "v2";
+    center?: string
+    epub?: boolean
+    epubEndNotes?: string // file name where numbered notes are
+    epubSeparator?: string
+    private?: boolean
+    oauth?: boolean
+    events?: "v1" | "v2"
 }
 
 export interface ExpansionConfig {
-    rootFile: string;
-    origHref?: string;
-    origQuery?: SMap<string>;
-    ref?: string;
-    appuser?: string;
-    oauthuser?: string;
-    rootFileContent?: string;
-    lang?: string;
-    langs?: string[];
-    langFileName?: string;
-    langFileContent?: string;
-    pageConfig?: PageConfig;
-    hasWritePerm?: boolean;
-    vars?: SMap<string>;
-    contentOverride?: SMap<string>;
-    eventInfo?: events.FullEvent | events2.FullEvent;
-    centerInfo?: events.Center;
-    eventId?: number;
+    rootFile: string
+    origHref?: string
+    origQuery?: SMap<string>
+    ref?: string
+    appuser?: string
+    oauthuser?: string
+    rootFileContent?: string
+    lang?: string
+    langs?: string[]
+    langFileName?: string
+    langFileContent?: string
+    pageConfig?: PageConfig
+    hasWritePerm?: boolean
+    vars?: SMap<string>
+    contentOverride?: SMap<string>
+    eventInfo?: events.FullEvent | events2.FullEvent
+    centerInfo?: events.Center
+    eventId?: number
 }
 
 export function relativePath(curr: string, newpath: string) {
@@ -112,7 +122,7 @@ let cheerioOptions: any = {
     lowerCaseAttributeNames: true,
     recognizeSelfClosing: true,
     normalizeWhitespace: false,
-    withStartIndices: true
+    withStartIndices: true,
 }
 
 export function cleanHtmlFragment(frag: string) {
@@ -157,7 +167,6 @@ export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
     return toHTML(h)
 }
 
-
 function canBeCdned(v: string, canHaveRelativeLinks = false) {
     if (!v) return false
     if (/^[\w-]+:\/\//.test(v)) return false
@@ -167,7 +176,10 @@ function canBeCdned(v: string, canHaveRelativeLinks = false) {
     return true
 }
 
-export const replicatePictureSource = (ee: Cheerio, replicate: (url: string) => Promise<string>): Promise<void>[] => {
+export const replicatePictureSource = (
+    ee: Cheerio,
+    replicate: (url: string) => Promise<string>
+): Promise<void>[] => {
     // special case for <picture><source srcset="..." /></picture>
     const srcset = ee.attr("srcset")
     if (!srcset) return []
@@ -176,24 +188,30 @@ export const replicatePictureSource = (ee: Cheerio, replicate: (url: string) => 
         const v = mediaParams[0]
         if (!canBeCdned(v, false)) return acc
 
-        acc.push(replicate(v).then(r => {
-            mediaParams[0] = r
-            return mediaParams.join(" ")
-        }))
+        acc.push(
+            replicate(v).then(r => {
+                mediaParams[0] = r
+                return mediaParams.join(" ")
+            })
+        )
         return acc
     }, [])
 
-    return [Promise.all(newSrcset).then(updatedSrcset => {
-        ee.attr("srcset", updatedSrcset.join(", "))
-        ee.attr("data-gw-orig-srcset", srcset)
-    })]
+    return [
+        Promise.all(newSrcset).then(updatedSrcset => {
+            ee.attr("srcset", updatedSrcset.join(", "))
+            ee.attr("data-gw-orig-srcset", srcset)
+        }),
+    ]
 }
 
 function expandAsync(cfg: ExpansionConfig) {
     let filename = cfg.rootFile
     let fileContent = cfg.rootFileContent
 
-    let hLoc = cfg.langFileContent ? cheerio.load(cfg.langFileContent, cheerioOptions) : null
+    let hLoc = cfg.langFileContent
+        ? cheerio.load(cfg.langFileContent, cheerioOptions)
+        : null
     let h = cheerio.load(fileContent, cheerioOptions)
 
     let idToPos: SMap<Pos> = {}
@@ -217,7 +235,8 @@ function expandAsync(cfg: ExpansionConfig) {
             forEach("[gw-pos]", ee => {
                 let m = /(.*)@(\d+)-(\d+)/.exec(ee.attr("gw-pos"))
                 let id = ee.attr("edit") || ee.attr("id")
-                id = m[1].replace(/.*\//, "").replace(/\.html?$/i, "") + "-" + id
+                id =
+                    m[1].replace(/.*\//, "").replace(/\.html?$/i, "") + "-" + id
                 id = id.replace(/[^\w]+/g, "_")
                 ee.attr("data-gw-id", id)
                 if (idToPos.hasOwnProperty(id))
@@ -227,7 +246,7 @@ function expandAsync(cfg: ExpansionConfig) {
                     idToPos[id] = {
                         filename: m[1],
                         startIdx: parseInt(m[2]),
-                        length: parseInt(m[3])
+                        length: parseInt(m[3]),
                     }
                 ee.removeAttr("edit")
                 ee.removeAttr("gw-pos")
@@ -267,20 +286,16 @@ function expandAsync(cfg: ExpansionConfig) {
                 langMap,
                 cheerio: h,
                 forEach,
-                html: toHTML(h)
+                html: toHTML(h),
             }
         })
 
     function getTreeAsync(repo: gitfs.GitFs, path: string) {
-        if (trees[path])
-            return trees[path]
-        return (trees[path] =
-            repo.getTreeAsync(path, cfg.ref)
-                .then(ents => {
-                    if (!ents)
-                        winston.debug("no such tree: " + path + " in " + cfg.ref)
-                    return ents
-                }))
+        if (trees[path]) return trees[path]
+        return (trees[path] = repo.getTreeAsync(path, cfg.ref).then(ents => {
+            if (!ents) winston.debug("no such tree: " + path + " in " + cfg.ref)
+            return ents
+        }))
     }
 
     function replUrlAsync(url: string) {
@@ -290,68 +305,91 @@ function expandAsync(cfg: ExpansionConfig) {
         if (spl.parent == "/gwcdn") {
             let sha = gitfs.gwcdnByName[spl.name]
             if (!sha)
-                winston.info("no such file (GWCDN): " + resolved + " in " + cfg.ref)
-            return Promise.resolve(!sha ? url : gitfs.config.cdnPath + "/" + spl.name + "-" + sha + ext)
+                winston.info(
+                    "no such file (GWCDN): " + resolved + " in " + cfg.ref
+                )
+            return Promise.resolve(
+                !sha
+                    ? url
+                    : gitfs.config.cdnPath + "/" + spl.name + "-" + sha + ext
+            )
         }
         let repo = gitfs.findRepo(spl.parent)
         //winston.info(`repl: ${url} par=${spl.parent} r=${repo.id}`)
-        return getTreeAsync(repo, spl.parent)
-            .then(ents => {
-                if (!ents)
-                    return url
-                let e = ents.find(x => x.name == spl.name)
-                if (e) {
-                    let pref = repo.id == "main" ? "" : repo.id + "/"
-                    return gitfs.config.cdnPath + "/" + pref + spl.name + "-" + e.sha + ext
-                } else {
-                    winston.info("no such file: " + resolved + " in " + cfg.ref)
-                    return url
-                }
-            })
+        return getTreeAsync(repo, spl.parent).then(ents => {
+            if (!ents) return url
+            let e = ents.find(x => x.name == spl.name)
+            if (e) {
+                let pref = repo.id == "main" ? "" : repo.id + "/"
+                return (
+                    gitfs.config.cdnPath +
+                    "/" +
+                    pref +
+                    spl.name +
+                    "-" +
+                    e.sha +
+                    ext
+                )
+            } else {
+                winston.info("no such file: " + resolved + " in " + cfg.ref)
+                return url
+            }
+        })
     }
 
     function metaRewrite() {
         let clean = (s: string) => (s || "").replace(/\s+/g, " ").trim()
         let metas: SMap<string> = {
-            title: clean(h("#gw-meta-title").text() || h("title").text() || h("h1").first().text())
+            title: clean(
+                h("#gw-meta-title").text() ||
+                    h("title").text() ||
+                    h("h1").first().text()
+            ),
         }
         let commonMeta = ["description", "keywords", "copyright", "author"]
         for (let m of commonMeta) {
-            metas[m] = clean(h("#gw-meta-" + m).text() || h("meta[name='" + m + "']").attr("content"))
+            metas[m] = clean(
+                h("#gw-meta-" + m).text() ||
+                    h("meta[name='" + m + "']").attr("content")
+            )
         }
 
         h("title").text(metas["title"])
 
         let metaMap: SMap<string> = {
-            'twitter:title': 'title',
-            'twitter:description': 'description',
-            'og:title': 'title',
-            'og:description': 'description',
+            "twitter:title": "title",
+            "twitter:description": "description",
+            "og:title": "title",
+            "og:description": "description",
         }
-        for (let x of commonMeta)
-            metaMap[x] = x
+        for (let x of commonMeta) metaMap[x] = x
         for (let k of Object.keys(metaMap)) {
             let e = h(`meta[name='${k}']`)
-            if (!e.length)
-                e = h(`meta[property='${k}']`)
+            if (!e.length) e = h(`meta[property='${k}']`)
             if (!e.length) continue
-            if (!e.attr("content"))
-                e.attr("content", metas[metaMap[k]])
+            if (!e.attr("content")) e.attr("content", metas[metaMap[k]])
         }
 
         h("meta[http-equiv='Content-Language']").attr("content", cfg.lang)
 
         if (cfg.lang && cfg.langs.length > 1) {
             let currPath = cfg.origHref || cfg.rootFile
-            let ht = cfg.langs.map(lang => {
-                let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "lang="
-                let href = setlang + lang
-                return `    <link rel="alternate" href="${href}" hreflang="${lang}" />\n`
-            }).join("") +
+            let ht =
+                cfg.langs
+                    .map(lang => {
+                        let setlang =
+                            currPath +
+                            (currPath.indexOf("?") >= 0 ? "&" : "?") +
+                            "lang="
+                        let href = setlang + lang
+                        return `    <link rel="alternate" href="${href}" hreflang="${lang}" />\n`
+                    })
+                    .join("") +
                 `    <link rel="alternate" href="${currPath}" hreflang="x-default" />\n`
             h("head").append(
                 `\n    <!-- links to alternate langauges for search engines -->\n` +
-                ht)
+                    ht
+            )
         }
     }
 
@@ -366,21 +404,26 @@ function expandAsync(cfg: ExpansionConfig) {
         })
 
         if (gitfs.config.justDir && !gitfs.config.cdnPath)
-            return Promise.all(promises).then(() => {
-            })
+            return Promise.all(promises).then(() => {})
 
-        let repl = (e: CheerioElement, attrName: string, mayHaveRelativeLinks = false) => {
+        let repl = (
+            e: CheerioElement,
+            attrName: string,
+            mayHaveRelativeLinks = false
+        ) => {
             let ee = h(e)
             let v = ee.attr(attrName)
             if (!v) return
             if (!canBeCdned(v, mayHaveRelativeLinks)) return
-            promises.push(replUrlAsync(v).then(r => {
-                //winston.debug("repl: " + v + " -> " + r)
-                if (r != v) {
-                    ee.attr(attrName, r)
-                    ee.attr("data-gw-orig-" + attrName, v)
-                }
-            }))
+            promises.push(
+                replUrlAsync(v).then(r => {
+                    //winston.debug("repl: " + v + " -> " + r)
+                    if (r != v) {
+                        ee.attr(attrName, r)
+                        ee.attr("data-gw-orig-" + attrName, v)
+                    }
+                })
+            )
         }
 
         // used by some plugins
@@ -390,11 +433,12 @@ function expandAsync(cfg: ExpansionConfig) {
 
         h("img, audio, video, track").each((idx, e) => {
             repl(e, "src")
-            if (e.tagName != "img")
-                repl(e, "poster")
+            if (e.tagName != "img") repl(e, "poster")
         })
         h("source").each((_, e) => {
-            replicatePictureSource(h(e), replUrlAsync).forEach(res => promises.push(res))
+            replicatePictureSource(h(e), replUrlAsync).forEach(res =>
+                promises.push(res)
+            )
         })
         h("script").each((idx, e) => {
             repl(e, "src", true)
@@ -402,16 +446,17 @@ function expandAsync(cfg: ExpansionConfig) {
         h("link").each((idx, e) => {
             let ee = h(e)
             let rels = (ee.attr("rel") || "").split(/\s+/)
-            if (rels.indexOf("stylesheet") >= 0)
-                repl(e, "href", true)
-            if (rels.indexOf("icon") >= 0 || rels.indexOf("apple-touch-icon") >= 0)
+            if (rels.indexOf("stylesheet") >= 0) repl(e, "href", true)
+            if (
+                rels.indexOf("icon") >= 0 ||
+                rels.indexOf("apple-touch-icon") >= 0
+            )
                 repl(e, "href")
         })
         h("meta").each((idx, e) => {
             let ee = h(e)
             let p = ee.attr("property") || ee.attr("name")
-            if (/(TileImage|:image)$/.test(p))
-                repl(e, "content")
+            if (/(TileImage|:image)$/.test(p)) repl(e, "content")
         })
         h("style").each((idx, e) => {
             let ee = h(e)
@@ -425,45 +470,59 @@ function expandAsync(cfg: ExpansionConfig) {
                 if (m) s = m[1]
                 let tag = "##REPL##" + ++replIdx + "#"
                 if (canBeCdned(s, true)) {
-                    lprom.push(replUrlAsync(s).then(r => {
-                        map[tag] = r
-                    }))
+                    lprom.push(
+                        replUrlAsync(s).then(r => {
+                            map[tag] = r
+                        })
+                    )
                 } else {
                     map[tag] = s
                 }
                 return tag
             }
-            let t0 = ee.text()
-                .replace(/url\(([^\)]+)\)/g, (f, u) => "url(" + addrepl(u) + ")")
-                .replace(/@import ("[^"]+"|'[^']+')/g, (f, u) => "@import " + addrepl(u))
-            promises.push(Promise.all(lprom)
-                .then(() => {
-                    ee.text(t0.replace(/##REPL##\d+#/g, f => "\"" + map[f] + "\""))
-                }))
+            let t0 = ee
+                .text()
+                .replace(
+                    /url\(([^\)]+)\)/g,
+                    (f, u) => "url(" + addrepl(u) + ")"
+                )
+                .replace(
+                    /@import ("[^"]+"|'[^']+')/g,
+                    (f, u) => "@import " + addrepl(u)
+                )
+            promises.push(
+                Promise.all(lprom).then(() => {
+                    ee.text(
+                        t0.replace(/##REPL##\d+#/g, f => '"' + map[f] + '"')
+                    )
+                })
+            )
         })
 
-        return Promise.all(promises).then(() => {
-        })
+        return Promise.all(promises).then(() => {})
     }
 
     function setLocations(e: Cheerio, filename: string, fileContent: string) {
         allFiles[filename] = fileContent
         let mapping: SMap<number> = {}
         let parser: any
-        let handler = new htmlparser2.DomHandler(cheerioOptions, (elt: CheerioElement) => {
-            //console.log(elt.tagName, elt.startIndex, parser.endIndex)
-            mapping[elt.startIndex + ""] = parser.startIndex
-        });
+        let handler = new htmlparser2.DomHandler(
+            cheerioOptions,
+            (elt: CheerioElement) => {
+                //console.log(elt.tagName, elt.startIndex, parser.endIndex)
+                mapping[elt.startIndex + ""] = parser.startIndex
+            }
+        )
         parser = new htmlparser2.Parser(handler, cheerioOptions)
-        parser.end(fileContent);
+        parser.end(fileContent)
 
         let setloc = (x: Cheerio) => {
             let start = x[0].startIndex
             let end = mapping[start + ""]
             if (fileContent[start] == "<") {
                 while (start < fileContent.length && fileContent[start] != ">")
-                    start++;
-                start++;
+                    start++
+                start++
             }
             //console.log(`${ch.tagName}: "${fileContent.slice(start, end)}"`)
             x.attr("gw-pos", filename + "@" + start + "-" + (end - start))
@@ -475,15 +534,17 @@ function expandAsync(cfg: ExpansionConfig) {
 
     function includeAsync(ctx: Ctx, e: Cheerio, filename: string) {
         filename = relativePath(ctx.filename, filename)
-        return gitfs.findRepo(filename).getTextFileAsync(filename, cfg.ref)
+        return gitfs
+            .findRepo(filename)
+            .getTextFileAsync(filename, cfg.ref)
             .then(fileContent => {
                 let subst: SMap<Cheerio> = {}
                 for (let ch of e.children().toArray()) {
                     let ch2 = h(ch)
                     let id = ch2.attr("id")
                     if (id) {
-                        subst[id] = ch2;
-                        ch2.gw_ctx = ctx; // save outer ctx for further expansion and filename tracking
+                        subst[id] = ch2
+                        ch2.gw_ctx = ctx // save outer ctx for further expansion and filename tracking
                     }
                 }
                 let n = h(fileContent)
@@ -503,14 +564,13 @@ function expandAsync(cfg: ExpansionConfig) {
 
         if (elt.attr("edit") != null) {
             eltId = elt.attr("edit") || eltId
-            if (!eltId) error("no id on element marked with 'edit'", ctx, elt);
+            if (!eltId) error("no id on element marked with 'edit'", ctx, elt)
             if (cfg.contentOverride && cfg.contentOverride[eltId]) {
                 elt.html(cfg.contentOverride[eltId])
             }
             if (elt.find("p, ul, ol, h1, h2, h3, h4, h5, h6").length > 0)
                 elt.attr("data-editable", "true")
-            else
-                elt.attr("data-fixture", "true")
+            else elt.attr("data-fixture", "true")
         }
 
         let tag = elt[0].tagName
@@ -529,59 +589,64 @@ function expandAsync(cfg: ExpansionConfig) {
             let q = tools.clone(cfg.origQuery || {})
             tools.copyFields(q, elt[0].attribs)
             q["center"] = q["center"] || cfg.pageConfig.center
-            return events.queryEventsAsync(q, cfg.lang)
-                .then(r => {
-                    let html = tools.expandTemplateList(elt.html(), r.events)
-                    elt.replaceWith(html)
-                })
+            return events.queryEventsAsync(q, cfg.lang).then(r => {
+                let html = tools.expandTemplateList(elt.html(), r.events)
+                elt.replaceWith(html)
+            })
         }
 
         if (tag == "event-list2") {
             let q = tools.clone(cfg.origQuery || {})
             tools.copyFields(q, elt[0].attribs)
-            return events2.queryEventsAsync(q, cfg.lang)
-                .then(r => {
-                    let html = tools.expandTemplateList(elt.html(), r.events)
-                    elt.replaceWith(html)
-                })
+            return events2.queryEventsAsync(q, cfg.lang).then(r => {
+                let html = tools.expandTemplateList(elt.html(), r.events)
+                elt.replaceWith(html)
+            })
         }
 
         if (tag == "lang-list") {
             let deflTempl: string = null
-            let templ = elt.html().replace(/<current>([^]*)<\/current>/, (f, c) => {
-                deflTempl = c
-                return ""
-            })
-            if (deflTempl == null) deflTempl = templ
-            let ht = cfg.langs.map(lang => {
-                let currPath = cfg.origHref || cfg.rootFile
-                let setlang = currPath + (currPath.indexOf("?") >= 0 ? "&" : "?") + "setlang="
-                let isCurr = lang == cfg.lang
-                let href = setlang + lang
-                let full = tools.getLocale(lang).lang
-                return tools.expandTemplate(isCurr ? deflTempl : templ, {
-                    lang,
-                    LANG: lang.toUpperCase(),
-                    href,
-                    full,
-                    current: isCurr ? "current" : ""
+            let templ = elt
+                .html()
+                .replace(/<current>([^]*)<\/current>/, (f, c) => {
+                    deflTempl = c
+                    return ""
                 })
-            }).join("\n")
+            if (deflTempl == null) deflTempl = templ
+            let ht = cfg.langs
+                .map(lang => {
+                    let currPath = cfg.origHref || cfg.rootFile
+                    let setlang =
+                        currPath +
+                        (currPath.indexOf("?") >= 0 ? "&" : "?") +
+                        "setlang="
+                    let isCurr = lang == cfg.lang
+                    let href = setlang + lang
+                    let full = tools.getLocale(lang).lang
+                    return tools.expandTemplate(isCurr ? deflTempl : templ, {
+                        lang,
+                        LANG: lang.toUpperCase(),
+                        href,
+                        full,
+                        current: isCurr ? "current" : "",
+                    })
+                })
+                .join("\n")
             if (cfg.langs.length <= 1) ht = ""
             elt.replaceWith(ht)
             return Promise.resolve()
         }
 
         let arr = elt.length > 1 ? elt.toArray() : elt.children().toArray()
-        return bluebird.each(arr, ee => recAsync(ctx, h(ee)))
-            .then(() => { })
+        return bluebird.each(arr, ee => recAsync(ctx, h(ee))).then(() => {})
     }
 }
 
 function fillContentAsync(cfg: ExpansionConfig) {
-    if (cfg.rootFileContent != null)
-        return Promise.resolve()
-    return gitfs.findRepo(cfg.rootFile).getTextFileAsync(cfg.rootFile, cfg.ref)
+    if (cfg.rootFileContent != null) return Promise.resolve()
+    return gitfs
+        .findRepo(cfg.rootFile)
+        .getTextFileAsync(cfg.rootFile, cfg.ref)
         .then(s => {
             cfg.rootFileContent = s
         })
@@ -589,34 +654,38 @@ function fillContentAsync(cfg: ExpansionConfig) {
 
 export function pageConfigPath(page: string) {
     let m = /^\/?([^\/]+)/.exec(page)
-    if (!m)
-        return null
+    if (!m) return null
     let dir = m[1]
-    if (dir == "favicon.ico")
-        dir = "common"
+    if (dir == "favicon.ico") dir = "common"
     return "/" + dir + "/config.json"
 }
 
 export function getPageConfigAsync(page: string): Promise<PageConfig> {
     let m = /^\/?center-(\w+)/.exec(page)
-    if (m)
-        return Promise.resolve({ center: m[1] })
+    if (m) return Promise.resolve({ center: m[1] })
 
     let path = pageConfigPath(page)
-    if (!path)
-        return Promise.reject(new Error("Invalid page path."))
+    if (!path) return Promise.reject(new Error("Invalid page path."))
     // config always taken from master
     return Promise.resolve()
-        .then(() => gitfs.findRepo(path).getTextFileAsync(path)
-            .then(v => v, e => {
-                return Promise.reject(new Error("Missing config.json: " + e.message))
-            }))
-        .then(async (cfText) => {
+        .then(() =>
+            gitfs
+                .findRepo(path)
+                .getTextFileAsync(path)
+                .then(
+                    v => v,
+                    e => {
+                        return Promise.reject(
+                            new Error("Missing config.json: " + e.message)
+                        )
+                    }
+                )
+        )
+        .then(async cfText => {
             let cfg = JSON.parse(cfText) as PageConfig
             if (cfg.center && gitfs.events) {
                 let c = await events.getCenterAsync(cfg.center)
-                if (c)
-                    cfg.users = (c.users || []).slice()
+                if (c) cfg.users = (c.users || []).slice()
             }
             return cfg
         })
@@ -626,8 +695,7 @@ export async function hasWritePermAsync(appuser: string, page: string) {
     let m = /^\/?center-(\w+)/.exec(page)
     if (m) {
         let c = await events.getCenterAsync(m[1])
-        if (c)
-            return auth.hasWritePermAsync(appuser, c.users)
+        if (c) return auth.hasWritePermAsync(appuser, c.users)
     }
 
     let cfg = await getPageConfigAsync(page)
@@ -647,17 +715,14 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     const evmod = evversion == "v2" ? events2 : events
     if (cfg.eventId) {
         cfg.eventInfo = await evmod.readEventAsync(cfg.eventId)
-        if (!cfg.eventInfo)
-            throw new Error("ENOENT, events " + evversion)
+        if (!cfg.eventInfo) throw new Error("ENOENT, events " + evversion)
     }
 
     if (cfg.eventInfo) centerId = (cfg.eventInfo as events.FullEvent).center
 
-    if (centerId)
-        cfg.centerInfo = await events.getCenterAsync(centerId)
+    if (centerId) cfg.centerInfo = await events.getCenterAsync(centerId)
 
-    if (!plangs || !plangs.length)
-        cfg.pageConfig.langs = plangs = ["en"]
+    if (!plangs || !plangs.length) cfg.pageConfig.langs = plangs = ["en"]
 
     if (cfg.eventInfo && !cfg.appuser) {
         avlangs = events.getLangs(cfg.eventInfo)
@@ -682,12 +747,23 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
     }
 
     if (cfg.lang != plangs[0]) {
-        cfg.langFileName = relativePath(cfg.rootFile, "lang-" + cfg.lang + ".html")
-        cfg.langFileContent = await gitfs.findRepo(cfg.langFileName).getTextFileAsync(cfg.langFileName, cfg.ref)
-            .then(v => v, e => "")
+        cfg.langFileName = relativePath(
+            cfg.rootFile,
+            "lang-" + cfg.lang + ".html"
+        )
+        cfg.langFileContent = await gitfs
+            .findRepo(cfg.langFileName)
+            .getTextFileAsync(cfg.langFileName, cfg.ref)
+            .then(
+                v => v,
+                e => ""
+            )
     }
 
-    cfg.hasWritePerm = await auth.hasWritePermAsync(cfg.appuser, cfg.pageConfig.users)
+    cfg.hasWritePerm = await auth.hasWritePermAsync(
+        cfg.appuser,
+        cfg.pageConfig.users
+    )
     if (!cfg.vars) cfg.vars = {}
 
     await evmod.addVarsAsync(cfg)
@@ -696,7 +772,9 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         const einfo = cfg.eventInfo as events.FullEvent
         pcfg.center = einfo.center
         let cent = await events.getCenterAsync(einfo.center)
-        cfg.hasWritePerm = cfg.hasWritePerm || await auth.hasWritePermAsync(cfg.appuser, cent.users)
+        cfg.hasWritePerm =
+            cfg.hasWritePerm ||
+            (await auth.hasWritePermAsync(cfg.appuser, cent.users))
     }
 
     let pageInfo = {
@@ -717,8 +795,8 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         pageInfo.eventInfo = null
         pageInfo.centerInfo = null
     }
-    cfg.vars["pageInfo"] = "\nvar gitwedPageInfo = " +
-        JSON.stringify(pageInfo, null, 4) + ";\n"
+    cfg.vars["pageInfo"] =
+        "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n"
     cfg.vars["gw_lang"] = cfg.lang
     cfg.langs = avlangs
 
@@ -726,8 +804,10 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     if (!cfg.contentOverride) cfg.contentOverride = {}
 
-    r.html = r.html.replace(/@@([\w\.]+)@@/g, (f, v) =>
-        cfg.vars[v] || cfg.contentOverride[v] || "")
+    r.html = r.html.replace(
+        /@@([\w\.]+)@@/g,
+        (f, v) => cfg.vars[v] || cfg.contentOverride[v] || ""
+    )
 
     return r
 }

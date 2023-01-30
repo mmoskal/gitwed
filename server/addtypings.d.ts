@@ -1,20 +1,18 @@
 interface CheerioElement {
- //   startIndex: number;
+    //   startIndex: number;
 }
 
 interface Cheerio {
-    gw_ctx: any;
+    gw_ctx: any
 }
 
-type SMap<T> = { [s: string]: T };
-
-
+type SMap<T> = { [s: string]: T }
 
 declare namespace Express {
     export interface Request {
-        appuser: string;
-        oauthuser: string;
-        langs: string[];
-        _response: any;
+        appuser: string
+        oauthuser: string
+        langs: string[]
+        _response: any
     }
 }

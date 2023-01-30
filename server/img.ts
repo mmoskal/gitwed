@@ -1,24 +1,23 @@
-import crypto = require('crypto');
-import fs = require('fs');
-import gitfs = require('./gitfs')
-import tools = require('./tools')
-import bluebird = require('bluebird')
-import winston = require('winston')
-import sharp = require('sharp')
+import crypto = require("crypto")
+import fs = require("fs")
+import gitfs = require("./gitfs")
+import tools = require("./tools")
+import bluebird = require("bluebird")
+import winston = require("winston")
+import sharp = require("sharp")
 
 export interface ImgOptions {
-    maxWidth: number;
-    maxHeight?: number;
-    quality?: number;
+    maxWidth: number
+    maxHeight?: number
+    quality?: number
 }
 
 export interface ImgResult {
-    ext: string; // jpg or png
-    width: number;
-    height: number;
-    buffer: Buffer;
+    ext: string // jpg or png
+    width: number
+    height: number
+    buffer: Buffer
 }
-
 
 function constrainSize(w: number, h: number, maxW: number, maxH: number) {
     let scale = Math.min(maxW / w, maxH / h)
@@ -28,15 +27,16 @@ function constrainSize(w: number, h: number, maxW: number, maxH: number) {
     }
     return {
         w,
-        h
+        h,
     }
 }
 
-export async function resizeAsync(img: Buffer, opts: ImgOptions): Promise<ImgResult> {
-    if (opts.maxWidth && !opts.maxHeight)
-        opts.maxHeight = opts.maxWidth
-    if (!opts.quality)
-        opts.quality = 80;
+export async function resizeAsync(
+    img: Buffer,
+    opts: ImgOptions
+): Promise<ImgResult> {
+    if (opts.maxWidth && !opts.maxHeight) opts.maxHeight = opts.maxWidth
+    if (!opts.quality) opts.quality = 80
 
     let h = crypto.createHash("sha256")
     h.update(img)
@@ -52,18 +52,20 @@ export async function resizeAsync(img: Buffer, opts: ImgOptions): Promise<ImgRes
                 ext,
                 width: meta.width,
                 height: meta.height,
-                buffer: img
+                buffer: img,
             }
 
-        let sz = constrainSize(meta.width, meta.height, opts.maxWidth, opts.maxHeight)
+        let sz = constrainSize(
+            meta.width,
+            meta.height,
+            opts.maxWidth,
+            opts.maxHeight
+        )
 
-        let sh = sharp(img)
-            .resize(sz.w, sz.h)
+        let sh = sharp(img).resize(sz.w, sz.h)
 
-        if (meta.format == "png")
-            sh = sh.png()
-        else
-            sh = sh.jpeg({ quality: opts.quality })
+        if (meta.format == "png") sh = sh.png()
+        else sh = sh.jpeg({ quality: opts.quality })
 
         let buf = await sh.toBuffer()
 
@@ -71,7 +73,7 @@ export async function resizeAsync(img: Buffer, opts: ImgOptions): Promise<ImgRes
             ext,
             width: sz.w,
             height: sz.h,
-            buffer: null
+            buffer: null,
         }
 
         let tmp = tools.clone(res)

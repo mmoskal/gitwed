@@ -2,21 +2,20 @@ import fs = require("fs")
 import crypto = require("crypto")
 import tools = require("./tools")
 import logs = require("./logs")
-import * as child_process from "child_process";
-import * as bluebird from "bluebird";
-import winston = require('winston');
-import rest = require('./rest');
+import * as child_process from "child_process"
+import * as bluebird from "bluebird"
+import winston = require("winston")
+import rest = require("./rest")
 
 const gitRefreshTimeoutSeconds = 120
 
-
 export interface OAuthConfig {
-    "client_id": string
-    "client_secret": string
-    "auth_uri": string // URL for initiating the login process; "https://example.com/oauth2/authorize/",
-    "token_uri": string // URL for swapping code for token; "https://example.com/oauth2/token/",
-    "redirect_uris": string[] // list of URLs on current domain; first one will be used; "https://here.com/oauth"
-    "userinfo_uri": string // URL to get info about the user; "https://example.com/api/v1/users/me/"
+    client_id: string
+    client_secret: string
+    auth_uri: string // URL for initiating the login process; "https://example.com/oauth2/authorize/",
+    token_uri: string // URL for swapping code for token; "https://example.com/oauth2/token/",
+    redirect_uris: string[] // list of URLs on current domain; first one will be used; "https://here.com/oauth"
+    userinfo_uri: string // URL to get info about the user; "https://example.com/api/v1/users/me/"
     logout_uri?: string
     userinfo_condition?: string // JS boolean expression taking 'me' as free variable argument
     scopes?: string
@@ -28,86 +27,108 @@ export interface OAuthConfig {
 }
 
 export interface Config {
-    jwtSecret: string;
-    justDir?: boolean;
-    repoPath?: string;
-    eventsRepoPath?: string;
-    sideRepos?: SMap<string>;
-    vhostRedirs?: SMap<string>;
-    mailgunApiKey?: string;
-    sendgridApiKey?: string;
-    gmapsKey?: string;
-    mailgunDomain?: string;
-    authDomain?: string;
-    networkInterface?: string;
-    serviceName?: string;
-    proxy?: boolean;
-    cdnPath?: string;
-    production?: boolean;
-    vhosts?: SMap<string>;
-    certEmail?: string;
-    defaultRedirect?: string; // defaults to /events/
-    allowedEmailRecipients?: string[];
-    services?: rest.ServiceConfig[];
-    roSecret?: string;
-    eventSecret?: string;
-    oauth?: OAuthConfig;
+    jwtSecret: string
+    justDir?: boolean
+    repoPath?: string
+    eventsRepoPath?: string
+    sideRepos?: SMap<string>
+    vhostRedirs?: SMap<string>
+    mailgunApiKey?: string
+    sendgridApiKey?: string
+    gmapsKey?: string
+    mailgunDomain?: string
+    authDomain?: string
+    networkInterface?: string
+    serviceName?: string
+    proxy?: boolean
+    cdnPath?: string
+    production?: boolean
+    vhosts?: SMap<string>
+    certEmail?: string
+    defaultRedirect?: string // defaults to /events/
+    allowedEmailRecipients?: string[]
+    services?: rest.ServiceConfig[]
+    roSecret?: string
+    eventSecret?: string
+    oauth?: OAuthConfig
 }
 
 export let config: Config
 
 interface GitObject {
-    id: string;
-    type: string;
-    memsize: number;
-    data: Buffer;
-    tree?: TreeEntry[];
-    commit?: Commit;
+    id: string
+    type: string
+    memsize: number
+    data: Buffer
+    tree?: TreeEntry[]
+    commit?: Commit
 }
 
 interface Commit {
-    tree: string;
-    parents: string[];
-    author: string;
-    date: number;
-    msg: string;
+    tree: string
+    parents: string[]
+    author: string
+    date: number
+    msg: string
 }
 
 export interface TreeEntry {
-    mode: string;
-    name: string;
-    sha: string;
+    mode: string
+    name: string
+    sha: string
 }
 
 export interface LogEntry {
-    id: string;
-    author: string;
-    date: number;
-    files: string[];
-    msg: string;
+    id: string
+    author: string
+    date: number
+    files: string[]
+    msg: string
 }
 
 export interface GitFs {
-    pokeAsync: (force?: boolean) => Promise<void>;
-    logAsync: (path?: string) => Promise<LogEntry[]>;
+    pokeAsync: (force?: boolean) => Promise<void>
+    logAsync: (path?: string) => Promise<LogEntry[]>
 
-    getFileAsync: (name: string, ref?: string) => Promise<Buffer>;
-    getTextFileAsync: (name: string, ref?: string) => Promise<string>;
-    getTreeAsync(path: string, ref: string): Promise<TreeEntry[]>;
+    getFileAsync: (name: string, ref?: string) => Promise<Buffer>
+    getTextFileAsync: (name: string, ref?: string) => Promise<string>
+    getTreeAsync(path: string, ref: string): Promise<TreeEntry[]>
 
-    setTextFileAsync: (name: string, val: string, msg: string, user: string) => Promise<void>;
-    setJsonFileAsync: (name: string, val: {}, msg: string, user: string) => Promise<void>;
-    setBinFileAsync: (name: string, val: Buffer, msg: string, useremail: string) => Promise<void>;
-    createBinFileAsync: (dir: string, basename: string, ext: string, buf: Buffer, msg: string, user: string) => Promise<string>;
-    onUpdate: (f: (isPull: boolean) => void) => void;
+    setTextFileAsync: (
+        name: string,
+        val: string,
+        msg: string,
+        user: string
+    ) => Promise<void>
+    setJsonFileAsync: (
+        name: string,
+        val: {},
+        msg: string,
+        user: string
+    ) => Promise<void>
+    setBinFileAsync: (
+        name: string,
+        val: Buffer,
+        msg: string,
+        useremail: string
+    ) => Promise<void>
+    createBinFileAsync: (
+        dir: string,
+        basename: string,
+        ext: string,
+        buf: Buffer,
+        msg: string,
+        user: string
+    ) => Promise<string>
+    onUpdate: (f: (isPull: boolean) => void) => void
 
-    path: string;
-    id: string;
+    path: string
+    id: string
 }
 
-export let main: GitFs;
-export let events: GitFs;
-export let repos: SMap<GitFs> = {};
+export let main: GitFs
+export let events: GitFs
+export let repos: SMap<GitFs> = {}
 
 export let gwcdnByName: SMap<string> = {}
 export let gwcdnBySHA: SMap<string> = {}
@@ -115,8 +136,8 @@ let gwcdnDir = "gwcdn/"
 
 const repoByDirCache: SMap<GitFs> = {}
 export function findRepo(path: string): GitFs {
-    let p0 = path.split('/').filter(s => !!s)[0]
-    if (!p0 || p0[0] == '.') return main
+    let p0 = path.split("/").filter(s => !!s)[0]
+    if (!p0 || p0[0] == ".") return main
     let curr = tools.lookup(repoByDirCache, p0)
     if (curr) return curr
     for (let r of tools.values(repos)) {
@@ -132,8 +153,11 @@ function join(a: string, b: string) {
     return a.replace(/\/+$/, "") + "/" + b.replace(/^\/+/, "")
 }
 
-const readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(fs.readFile) as any
-const writeAsync: (fn: string, v: Buffer | string) => Promise<void> = bluebird.promisify(fs.writeFile) as any
+const readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(
+    fs.readFile
+) as any
+const writeAsync: (fn: string, v: Buffer | string) => Promise<void> =
+    bluebird.promisify(fs.writeFile) as any
 const readdirAsync = bluebird.promisify(fs.readdir)
 
 export function githash(buf: Buffer) {
@@ -148,8 +172,8 @@ export function splitName(fullname: string) {
     let parent: string = null
     let name = ""
     if (!m) {
-        if (fullname == "/") { }
-        else if (fullname.indexOf("/") == -1) {
+        if (fullname == "/") {
+        } else if (fullname.indexOf("/") == -1) {
             parent = "/"
             name = fullname
         } else {
@@ -167,23 +191,18 @@ function parseTree(buf: Buffer) {
     let ptr = 0
     while (ptr < buf.length) {
         let start = ptr
-        while (48 <= buf[ptr] && buf[ptr] <= 55)
-            ptr++
-        if (buf[ptr] != 32)
-            throw new Error("bad tree format")
+        while (48 <= buf[ptr] && buf[ptr] <= 55) ptr++
+        if (buf[ptr] != 32) throw new Error("bad tree format")
         let mode = buf.slice(start, ptr).toString("utf8")
         ptr++
         start = ptr
-        while (buf[ptr])
-            ptr++
-        if (buf[ptr] != 0)
-            throw new Error("bad tree format 2")
+        while (buf[ptr]) ptr++
+        if (buf[ptr] != 0) throw new Error("bad tree format 2")
         let name = buf.slice(start, ptr).toString("utf8")
         ptr++
         let sha = buf.slice(ptr, ptr + 20).toString("hex")
         ptr += 20
-        if (ptr > buf.length)
-            throw new Error("bad tree format 3")
+        if (ptr > buf.length) throw new Error("bad tree format 3")
         entries.push({ mode, name, sha })
     }
     return entries
@@ -200,10 +219,9 @@ function parseCommit(buf: Buffer): Commit {
         parents: mpar[1].split(/\s+/),
         author: mauthor[1],
         date: parseInt(mauthor[2]),
-        msg: cmt.slice(midx + 2)
+        msg: cmt.slice(midx + 2),
     }
 }
-
 
 function parseLog(fulllog: string) {
     let entries: LogEntry[] = []
@@ -227,8 +245,7 @@ function parseLog(fulllog: string) {
             currEntry.msg += l.slice(4) + "\n"
         } else {
             m = /^([A-Za-z]+):\s*(.*)/.exec(l)
-            if (m && m[1] == "Author")
-                currEntry.author = m[2]
+            if (m && m[1] == "Author") currEntry.author = m[2]
             else if (m && m[1] == "AuthorDate")
                 currEntry.date = Math.round(new Date(m[2]).getTime() / 1000)
             else {
@@ -245,14 +262,16 @@ let shutdownQueue: (() => Promise<void>)[] = []
 
 export function shutdown() {
     winston.info("shut down commanced")
-    Promise.all(shutdownQueue.map(f => f()))
-        .then(() => {
-            winston.info("exiting...")
-            process.exit(0)
-        })
+    Promise.all(shutdownQueue.map(f => f())).then(() => {
+        winston.info("exiting...")
+        process.exit(0)
+    })
 }
 
-export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs> {
+export async function mkGitFsAsync(
+    id: string,
+    repoPath: string
+): Promise<GitFs> {
     let gitCatFile: child_process.ChildProcess
     let lastUsage = 0
     let gitCatFileBuf = new tools.PromiseBuffer<Buffer>()
@@ -280,7 +299,7 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
         logAsync,
         onUpdate: f => onUpdate.push(f),
         path: repoPath,
-        id: id
+        id: id,
     }
 
     shutdownQueue.push(shutdownAsync)
@@ -300,23 +319,47 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
     repos[iface.id] = iface
     return iface
 
-    async function getTextFileAsync(name: string, ref = "master"): Promise<string> {
+    async function getTextFileAsync(
+        name: string,
+        ref = "master"
+    ): Promise<string> {
         let buf = await getFileAsync(name, ref)
         return buf.toString("utf8")
     }
 
-    function setTextFileAsync(name: string, val: string, msg: string, user: string) {
+    function setTextFileAsync(
+        name: string,
+        val: string,
+        msg: string,
+        user: string
+    ) {
         return setBinFileAsync(name, Buffer.from(val, "utf8"), msg, user)
     }
 
-    function setJsonFileAsync(name: string, val: {}, msg: string, user: string) {
-        return setBinFileAsync(name, Buffer.from(JSON.stringify(val, null, 4), "utf8"), msg, user)
+    function setJsonFileAsync(
+        name: string,
+        val: {},
+        msg: string,
+        user: string
+    ) {
+        return setBinFileAsync(
+            name,
+            Buffer.from(JSON.stringify(val, null, 4), "utf8"),
+            msg,
+            user
+        )
     }
 
     function logAsync(path = ".") {
         return apiLockAsync("log", () =>
-            runGitAsync(["log", "--name-status", "--pretty=fuller", "--max-count=200", path])
-                .then(buf => parseLog(buf)))
+            runGitAsync([
+                "log",
+                "--name-status",
+                "--pretty=fuller",
+                "--max-count=200",
+                path,
+            ]).then(buf => parseLog(buf))
+        )
     }
 
     function pokeAsync(force = false) {
@@ -336,11 +379,13 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
         })
     }
 
-
     function maybeSyncAsync() {
         if (syncRunning) return Promise.resolve()
         let now = Date.now()
-        if (pushNeeded || now - lastSyncTime > gitRefreshTimeoutSeconds * 1000) {
+        if (
+            pushNeeded ||
+            now - lastSyncTime > gitRefreshTimeoutSeconds * 1000
+        ) {
             lastSyncTime = now
             syncRunning = true
             return apiLockAsync("commit", () =>
@@ -349,28 +394,36 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
                         if (pushNeeded) {
                             let v = pushNeeded
                             winston.info("pushing...")
-                            return runGitAsync(["push", "--quiet"])
-                                .then(() => {
-                                    pushNeeded -= v
-                                    return getHeadRevAsync()
-                                })
+                            return runGitAsync(["push", "--quiet"]).then(() => {
+                                pushNeeded -= v
+                                return getHeadRevAsync()
+                            })
                         } else {
                             return Promise.resolve()
                         }
                     })
-                    .then(() => {
-                        syncRunning = false
-                    }, err => {
-                        syncRunning = false
-                        logs.logError(err)
-                    }))
+                    .then(
+                        () => {
+                            syncRunning = false
+                        },
+                        err => {
+                            syncRunning = false
+                            logs.logError(err)
+                        }
+                    )
+            )
         }
         return Promise.resolve()
     }
 
-    // export 
-    function createBinFileAsync(dir: string, basename: string, ext: string, buf: Buffer,
-        msg: string, user: string
+    // export
+    function createBinFileAsync(
+        dir: string,
+        basename: string,
+        ext: string,
+        buf: Buffer,
+        msg: string,
+        user: string
     ) {
         let fspath = repoPath + dir + "/"
         tools.mkdirP(fspath)
@@ -388,8 +441,7 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
         let fn = basename + ext
         if (ents.indexOf(fn) >= 0) {
             let no = 1
-            while (ents.indexOf(basename + "-" + no + ext) >= 0)
-                no++
+            while (ents.indexOf(basename + "-" + no + ext) >= 0) no++
             fn = basename + "-" + no + ext
         }
 
@@ -397,23 +449,30 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
         fs.writeFileSync(fspath + fn, buf)
 
         // this will write the file again
-        return setBinFileAsync(dir + "/" + fn, buf, msg, user)
-            .then(() => fn)
+        return setBinFileAsync(dir + "/" + fn, buf, msg, user).then(() => fn)
     }
 
-    // export    
+    // export
     function getFileAsync(name: string, ref = "master"): Promise<Buffer> {
         name = name.replace(/^\/+/, "")
         let m = /^gw\/(.*)/.exec(name)
         if (m)
             return readAsync("gw/" + m[1])
-                .then(v => v, err => readAsync("built/gw/" + m[1]))
-                .then(v => v, err => readAsync("node_modules/gitwed/gw/" + m[1]))
-                .then(v => v, err => readAsync("node_modules/gitwed/built/gw/" + m[1]))
+                .then(
+                    v => v,
+                    err => readAsync("built/gw/" + m[1])
+                )
+                .then(
+                    v => v,
+                    err => readAsync("node_modules/gitwed/gw/" + m[1])
+                )
+                .then(
+                    v => v,
+                    err => readAsync("node_modules/gitwed/built/gw/" + m[1])
+                )
 
         m = /^gwcdn\/(.*)/.exec(name)
-        if (m)
-            return readAsync(gwcdnDir + m[1])
+        if (m) return readAsync(gwcdnDir + m[1])
 
         if (ref == "SHA") {
             let fn = tools.lookup(gwcdnBySHA, name)
@@ -422,16 +481,16 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
             }
         }
 
-        if (ref == "master")
-            return readAsync(repoPath + name)
-        return getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name)
-            .then(obj => {
+        if (ref == "master") return readAsync(repoPath + name)
+        return getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name).then(
+            obj => {
                 if (obj.type == "blob") {
                     return obj.data
                 } else {
                     throw new Error("not found")
                 }
-            })
+            }
+        )
     }
 
     function getHeadRevAsync() {
@@ -445,15 +504,21 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
     }
 
     function pullAsync() {
-        if (justDir)
-            return getHeadRevAsync()
+        if (justDir) return getHeadRevAsync()
         let id = rootId
         return Promise.resolve()
-            .then(() => runGitAsync(["pull", "--strategy=recursive", "--strategy-option=ours", "--no-edit", "--quiet"]))
+            .then(() =>
+                runGitAsync([
+                    "pull",
+                    "--strategy=recursive",
+                    "--strategy-option=ours",
+                    "--no-edit",
+                    "--quiet",
+                ])
+            )
             .then(getHeadRevAsync)
             .then(() => {
-                if (id == rootId)
-                    winston.info(`empty pull at ${rootId}`)
+                if (id == rootId) winston.info(`empty pull at ${rootId}`)
                 else {
                     onUpdate.forEach(f => f(true))
                     winston.info(`git pull: ${id} -> ${rootId}`)
@@ -487,30 +552,28 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
                 cwd: repoPath,
                 env: process.env,
                 stdio: "pipe",
-                shell: false
+                shell: false,
             })
             gitCatFile.stderr.setEncoding("utf8")
-            gitCatFile.stderr.on('data', (msg: string) => {
+            gitCatFile.stderr.on("data", (msg: string) => {
                 winston.error("[git cat-file error] " + msg)
             })
-            gitCatFile.stdout.on('data', (buf: Buffer) => gitCatFileBuf.push(buf))
+            gitCatFile.stdout.on("data", (buf: Buffer) =>
+                gitCatFileBuf.push(buf)
+            )
         }
     }
 
-
     function getGitObjectAsync(id: string) {
-        if (!id || /[\r\n]/.test(id))
-            throw new Error("bad id: " + id)
+        if (!id || /[\r\n]/.test(id)) throw new Error("bad id: " + id)
 
         let cached = gitCache.get(id)
-        if (cached)
-            return Promise.resolve(cached)
+        if (cached) return Promise.resolve(cached)
 
         return apiLockAsync("cat-file", () => {
             // check again, maybe the object has been cached while we were waiting
             cached = gitCache.get(id)
-            if (cached)
-                return Promise.resolve(cached)
+            if (cached) return Promise.resolve(cached)
 
             winston.debug("cat: " + id)
 
@@ -522,68 +585,77 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
                 id: id,
                 type: "",
                 memsize: 64,
-                data: null
+                data: null,
             }
             let typeBuf: Buffer = null
             let loop = (): Promise<GitObject> =>
-                gitCatFileBuf.shiftAsync()
-                    .then(buf => {
-                        startGitCatFile() // make sure the usage counter is updated
-                        if (!res.type) {
-                            winston.debug(`cat-file ${id} -> ${buf.length} bytes; ${buf[0]} ${buf[1]}`)
-                            if (typeBuf) {
-                                buf = Buffer.concat([typeBuf, buf])
-                                typeBuf = null
-                            } else {
-                                while (buf[0] == 10)
-                                    buf = buf.slice(1)
-                            }
-                            let end = buf.indexOf(10)
-                            winston.debug(`len-${buf.length} pos=${end}`)
-                            if (end < 0) {
-                                if (buf.length == 0) {
-                                    // skip it
-                                } else {
-                                    typeBuf = buf
-                                }
-                                winston.info(`retrying read; sz=${buf.length}`)
-                                return loop()
-                            }
-                            let line = buf
-                            if (end >= 0) {
-                                line = buf.slice(0, end)
-                                buf = buf.slice(end + 1)
-                            } else {
-                                throw new Error("bad cat-file respose: " + buf.toString("utf8").slice(0, 100))
-                            }
-                            let lineS = line.toString("utf8")
-                            if (/ missing/.test(lineS)) {
-                                throw new Error("file missing")
-                            }
-                            let m = /^([0-9a-f]{40}) (\S+) (\d+)/.exec(lineS)
-                            if (!m)
-                                throw new Error("invalid cat-file response: "
-                                    + lineS + " <nl> " + buf.toString("utf8"))
-                            res.id = m[1]
-                            res.type = m[2]
-                            sizeLeft = parseInt(m[3])
-                            res.memsize += sizeLeft // approximate
-                        }
-                        if (buf.length > sizeLeft) {
-                            buf = buf.slice(0, sizeLeft)
-                        }
-                        bufs.push(buf)
-                        sizeLeft -= buf.length
-                        if (sizeLeft <= 0) {
-                            res.data = Buffer.concat(bufs)
-                            return res
+                gitCatFileBuf.shiftAsync().then(buf => {
+                    startGitCatFile() // make sure the usage counter is updated
+                    if (!res.type) {
+                        winston.debug(
+                            `cat-file ${id} -> ${buf.length} bytes; ${buf[0]} ${buf[1]}`
+                        )
+                        if (typeBuf) {
+                            buf = Buffer.concat([typeBuf, buf])
+                            typeBuf = null
                         } else {
+                            while (buf[0] == 10) buf = buf.slice(1)
+                        }
+                        let end = buf.indexOf(10)
+                        winston.debug(`len-${buf.length} pos=${end}`)
+                        if (end < 0) {
+                            if (buf.length == 0) {
+                                // skip it
+                            } else {
+                                typeBuf = buf
+                            }
+                            winston.info(`retrying read; sz=${buf.length}`)
                             return loop()
                         }
-                    })
+                        let line = buf
+                        if (end >= 0) {
+                            line = buf.slice(0, end)
+                            buf = buf.slice(end + 1)
+                        } else {
+                            throw new Error(
+                                "bad cat-file respose: " +
+                                    buf.toString("utf8").slice(0, 100)
+                            )
+                        }
+                        let lineS = line.toString("utf8")
+                        if (/ missing/.test(lineS)) {
+                            throw new Error("file missing")
+                        }
+                        let m = /^([0-9a-f]{40}) (\S+) (\d+)/.exec(lineS)
+                        if (!m)
+                            throw new Error(
+                                "invalid cat-file response: " +
+                                    lineS +
+                                    " <nl> " +
+                                    buf.toString("utf8")
+                            )
+                        res.id = m[1]
+                        res.type = m[2]
+                        sizeLeft = parseInt(m[3])
+                        res.memsize += sizeLeft // approximate
+                    }
+                    if (buf.length > sizeLeft) {
+                        buf = buf.slice(0, sizeLeft)
+                    }
+                    bufs.push(buf)
+                    sizeLeft -= buf.length
+                    if (sizeLeft <= 0) {
+                        res.data = Buffer.concat(bufs)
+                        return res
+                    } else {
+                        return loop()
+                    }
+                })
 
             return loop().then(obj => {
-                winston.debug(`[cat-file] ${id} -> ${obj.id} ${obj.type} ${obj.data.length}`)
+                winston.debug(
+                    `[cat-file] ${id} -> ${obj.id} ${obj.type} ${obj.data.length}`
+                )
                 if (obj.type == "tree") {
                     obj.tree = parseTree(obj.data)
                     obj.data = null
@@ -606,28 +678,20 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
     // export
     function getTreeAsync(path: string, ref: string): Promise<TreeEntry[]> {
         if (ref == "HEAD" || ref == "master") ref = rootId
-        if (!/^[0-9a-f]{40}$/.test(ref))
-            throw new Error("bad ref: " + ref)
+        if (!/^[0-9a-f]{40}$/.test(ref)) throw new Error("bad ref: " + ref)
         if (path == "/")
-            return getGitObjectAsync(ref)
-                .then(obj => {
-                    if (obj.type != "commit")
-                        throw new Error("bad type")
-                    return getGitObjectAsync(obj.commit.tree)
-                        .then(o => o.tree)
-                })
+            return getGitObjectAsync(ref).then(obj => {
+                if (obj.type != "commit") throw new Error("bad type")
+                return getGitObjectAsync(obj.commit.tree).then(o => o.tree)
+            })
 
         let spl = splitName(path.replace(/\/$/, ""))
-        return getTreeAsync(spl.parent, ref)
-            .then(ents => {
-                if (!ents)
-                    return null
-                let e = ents.find(x => x.name == spl.name)
-                if (!e)
-                    return null
-                return getGitObjectAsync(e.sha)
-                    .then(o => o.tree)
-            })
+        return getTreeAsync(spl.parent, ref).then(ents => {
+            if (!ents) return null
+            let e = ents.find(x => x.name == spl.name)
+            if (!e) return null
+            return getGitObjectAsync(e.sha).then(o => o.tree)
+        })
     }
 
     function runGitAsync(args: string[]) {
@@ -638,48 +702,58 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
                 cwd: repoPath,
                 env: process.env,
                 stdio: "pipe",
-                shell: false
+                shell: false,
             })
             let outbufs: Buffer[] = []
             let errbufs: Buffer[] = []
             ch.stdin.end()
-            ch.stderr.on('data', (buf: Buffer) => {
+            ch.stderr.on("data", (buf: Buffer) => {
                 errbufs.push(buf)
             })
-            ch.stdout.on('data', (buf: Buffer) => {
+            ch.stdout.on("data", (buf: Buffer) => {
                 outbufs.push(buf)
             })
-            ch.on('close', (code: number) => {
+            ch.on("close", (code: number) => {
                 if (errbufs.length)
                     winston.info(Buffer.concat(errbufs).toString("utf8").trim())
                 if (code != 0) {
                     reject(new Error("Exit code: " + code + " from " + info))
                 }
                 resolve(Buffer.concat(outbufs).toString("utf8"))
-            });
+            })
         })
     }
 
-    // export 
-    function setBinFileAsync(name: string, val: Buffer, msg: string, useremail: string) {
+    // export
+    function setBinFileAsync(
+        name: string,
+        val: Buffer,
+        msg: string,
+        useremail: string
+    ) {
         name = name.replace(/^\/+/, "")
         return apiLockAsync("commit", async () => {
-            winston.info(`write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`)
+            winston.info(
+                `write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`
+            )
             let spl = splitName(name)
             tools.mkdirP(repoPath + spl.parent)
             await writeAsync(repoPath + name, val)
 
-            if (justDir)
-                return
+            if (justDir) return
 
             let uname = useremail.replace(/@.*/, "")
 
             await runGitAsync(["add", name])
             await runGitAsync([
-                "-c", "user.name=" + uname,
-                "-c", "user.email=" + useremail,
+                "-c",
+                "user.name=" + uname,
+                "-c",
+                "user.email=" + useremail,
                 "commit",
-                "-m", msg])
+                "-m",
+                msg,
+            ])
             await getHeadRevAsync()
 
             pushNeeded++
@@ -689,24 +763,22 @@ export async function mkGitFsAsync(id: string, repoPath: string): Promise<GitFs>
     }
 
     function statusCleanAsync() {
-        if (justDir)
-            return Promise.resolve()
+        if (justDir) return Promise.resolve()
 
-        return runGitAsync(["status", "--porcelain", "--untracked-files"])
-            .then(outp => {
+        return runGitAsync(["status", "--porcelain", "--untracked-files"]).then(
+            outp => {
                 if (outp.trim()) {
                     winston.error(`git status output:\n${outp}`)
                     throw new Error("git not clean")
                 }
-            })
+            }
+        )
     }
-
 }
 
 function readGWCDN() {
     let ndir = "node_modules/gitwed/gwcdn/"
-    if (fs.existsSync(ndir))
-        gwcdnDir = ndir
+    if (fs.existsSync(ndir)) gwcdnDir = ndir
     for (let fn of fs.readdirSync(gwcdnDir)) {
         let sha = githash(fs.readFileSync(gwcdnDir + fn))
         gwcdnByName[fn] = sha

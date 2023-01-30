@@ -5,25 +5,24 @@ import crypto = require("crypto")
 import tools = require("./tools")
 import logs = require("./logs")
 import gitfs = require("./gitfs")
-import winston = require('winston');
+import winston = require("winston")
 
 export interface MapOptions {
-    address: string;
-    zoom?: number;
-    scale?: number;
-    size?: string;
-    maptype?: string;
-    language?: string;
-    markers?: string;
+    address: string
+    zoom?: number
+    scale?: number
+    size?: string
+    maptype?: string
+    language?: string
+    markers?: string
 }
 
 export function cleanAddress(addr: string) {
-    return addr.replace(/<br>/ig, ", ")
+    return addr.replace(/<br>/gi, ", ")
 }
 
 export async function getMapsPictureAsync(opts: MapOptions) {
-    if (!gitfs.config.gmapsKey)
-        return "/gw/placeholder.png"
+    if (!gitfs.config.gmapsKey) return "/gw/placeholder.png"
     if (!opts.zoom) opts.zoom = 13
     if (!opts.scale) opts.scale = 2
     if (!opts.size) opts.size = "280x200"
@@ -34,48 +33,58 @@ export async function getMapsPictureAsync(opts: MapOptions) {
     let fn = "map-cache/" + hash + ".png"
     if (!fs.existsSync(fn)) {
         let res = await tools.requestAsync({
-            url: "https://maps.googleapis.com/maps/api/staticmap?" + qs + "&key=" + gitfs.config.gmapsKey
+            url:
+                "https://maps.googleapis.com/maps/api/staticmap?" +
+                qs +
+                "&key=" +
+                gitfs.config.gmapsKey,
         })
         tools.mkdirP("map-cache")
         if (res.statusCode == 200) {
             fs.writeFileSync(fn, res.buffer)
         } else {
-            winston.error("bad response from google maps: " + res.statusCode + " / " + res.text, opts)
+            winston.error(
+                "bad response from google maps: " +
+                    res.statusCode +
+                    " / " +
+                    res.text,
+                opts
+            )
         }
     }
     return (gitfs.config.cdnPath || "") + "/map-cache/" + hash + ".png"
 }
 
 interface GMapsComponent {
-    long_name: string;
-    short_name: string;
-    types: string[];
+    long_name: string
+    short_name: string
+    types: string[]
 }
 interface GMapsResult {
-    address_components: GMapsComponent[];
-    formatted_address: string;
+    address_components: GMapsComponent[]
+    formatted_address: string
     geometry: {
         location: {
-            lat: number;
-            lng: number;
+            lat: number
+            lng: number
         }
-        location_type: string;
-    };
-    place_id: string;
-    types: string[];
+        location_type: string
+    }
+    place_id: string
+    types: string[]
 }
 interface GMapsResults {
-    results: GMapsResult[];
-    status: string;
+    results: GMapsResult[]
+    status: string
 }
 
 export interface ParsedAddress {
-    street: string;
-    street_number: string;
-    city: string;
-    country: string;
-    state: string;
-    fullcity: string;
+    street: string
+    street_number: string
+    city: string
+    country: string
+    state: string
+    fullcity: string
 }
 
 const addrCache: SMap<ParsedAddress> = {}
@@ -85,7 +94,7 @@ const emptyAddr: ParsedAddress = {
     city: "",
     country: "",
     state: "",
-    fullcity: "?"
+    fullcity: "?",
 }
 
 export async function parseAddressAsync(addr: string): Promise<ParsedAddress> {
@@ -97,15 +106,24 @@ export async function parseAddressAsync(addr: string): Promise<ParsedAddress> {
     let cached = await tools.readTextFileAsync(fn)
     if (!cached) {
         let res = await tools.requestAsync({
-            url: "https://maps.googleapis.com/maps/api/geocode/json?address=" +
-            encodeURIComponent(addr) + "&key=" + gitfs.config.gmapsKey
+            url:
+                "https://maps.googleapis.com/maps/api/geocode/json?address=" +
+                encodeURIComponent(addr) +
+                "&key=" +
+                gitfs.config.gmapsKey,
         })
         tools.mkdirP("map-cache")
         if (res.statusCode == 200) {
             cached = res.text
             fs.writeFileSync(fn, res.text)
         } else {
-            winston.error("bad response from google maps (geolocation): " + res.statusCode + " / " + res.text, addr)
+            winston.error(
+                "bad response from google maps (geolocation): " +
+                    res.statusCode +
+                    " / " +
+                    res.text,
+                addr
+            )
         }
     }
 
@@ -130,10 +148,11 @@ export async function parseAddressAsync(addr: string): Promise<ParsedAddress> {
         city: short("postal_town") || short("locality"),
         country: short("country"),
         state: "",
-        fullcity: ""
+        fullcity: "",
     }
     if (res.country == "US" || res.country == "CA")
         res.state = short("administrative_area_level_1")
-    res.fullcity = res.city + (res.state ? ", " + res.state : "") + ", " + res.country
+    res.fullcity =
+        res.city + (res.state ? ", " + res.state : "") + ", " + res.country
     return res
 }
