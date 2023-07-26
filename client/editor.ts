@@ -774,6 +774,7 @@ namespace gw {
             h4: "h4",
             h5: "h5",
             h6: "h6",
+            blockquote: "blockquote",
         }
 
         const inlineTags: SMap<string> = {
@@ -803,7 +804,7 @@ namespace gw {
                 if (tag == "meta") return
 
                 if (tag == "br") {
-                    cleaned += "\n"
+                    cleaned += "<br/>\n"
                     return
                 }
 
@@ -866,6 +867,7 @@ namespace gw {
             }
             cleaned = cleaned.replace(/-\n/g, "")
             cleaned = cleaned.replace(/\n/g, " ")
+            cleaned = cleaned.replace(/\u00A0/g, " ")
             cleaned = cleaned.replace(/<\/b>(\s*)<b>/g, (f, x) => x)
             cleaned = cleaned.replace(/<b>(\s*)<\/b>/g, (f, x) => x)
             cleaned = cleaned.replace(/<\/i>(\s*)<i>/g, (f, x) => x)
