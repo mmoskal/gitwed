@@ -271,7 +271,7 @@ export function initRoutes(app: express.Express) {
         let cfg = await expander.getPageConfigAsync(page)
 
         if (!cfg.users) cfg.users = []
-        if (cfg.users.indexOf(email) >= 0) return
+        if (cfg.users.indexOf(email) >= 0) return res.status(202).json({})
 
         let msg = "Adding user " + email + " to " + page
 
