@@ -23,6 +23,7 @@ export interface OAuthConfig {
     userInvalidPage: string // send user here, if the user account is invalid
 
     secondaryRedirs: string[]
+    secondaryTokenFields?: string[]
     secondaryKey: string
 }
 

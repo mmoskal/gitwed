@@ -188,8 +188,11 @@ export function init(app: express.Application) {
 
         const idToken = tokenresp.json.id_token
         let userid = "user"
+        const secondaryFields: any = {}
+
         if (idToken) {
             const decoded = jwt.decode(idToken, "", true)
+            Object.assign(secondaryFields, decoded);
             //console.log(decoded)
             userid = decoded.sub || userid
         }
@@ -216,6 +219,7 @@ export function init(app: express.Application) {
             }
 
             const me: any = meresp.json
+            Object.assign(secondaryFields, me);
             userid = me.id || userid
             // console.log(JSON.stringify(me, null, 1))
             if (config.userinfo_condition) {
@@ -235,12 +239,16 @@ export function init(app: express.Application) {
         }
 
         if (st.secondary) {
+            const obj: any = {
+                iss: "GW",
+                sub: userid,
+                iat: Math.floor(Date.now() / 1000),
+            }
+            for (const fld of config.secondaryTokenFields || []) {
+                obj[fld] = secondaryFields[fld]
+            }
             const secondaryToken = jwt.encode(
-                {
-                    iss: "GW",
-                    sub: userid,
-                    iat: Math.floor(Date.now() / 1000),
-                },
+                obj,
                 config.secondaryKey
             )
             return res.redirect(st.redirect + "&token=" + secondaryToken)
