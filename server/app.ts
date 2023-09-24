@@ -814,7 +814,10 @@ if (args[0]) {
     process.exit(1)
 }
 if (!cfg.networkInterface) cfg.networkInterface = "localhost"
-if (!cfg.authDomain) cfg.authDomain = `http://${cfg.networkInterface}:3000`
+
+let port = process.env.PORT ? +process.env.PORT : 3000
+
+if (!cfg.authDomain) cfg.authDomain = `http://${cfg.networkInterface}:${port}`
 
 if (!cfg.serviceName) cfg.serviceName = "GITwed"
 
@@ -828,8 +831,6 @@ if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
 }
 
 if (!cfg.vhosts) cfg.vhosts = {}
-
-let port = 3000
 
 if (cfg.justDir) {
     winston.info(`using local file modifications`)
