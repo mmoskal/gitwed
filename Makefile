@@ -32,7 +32,9 @@ cdn: build
 d: deploy
 deploy:
 	git pull
-	$(MAKE) build
+	$(MAKE) build reload
+
+reload:
 	kill `ps fax | grep "node[ ]gitwed"|awk '{print $$1}'`
 
 e:
