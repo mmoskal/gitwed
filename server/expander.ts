@@ -222,6 +222,13 @@ function expandAsync(cfg: ExpansionConfig) {
     let trees: SMap<Promise<gitfs.TreeEntry[]>> = {}
     let langMap: SMap<string> = {}
 
+    // remove nested edit, as they crash content tools
+    h.root().find("[edit]").each((i, ch) => {
+        if (h(ch).parents("[edit]").length > 0) {
+            h(ch).attr("edit", null)
+        }
+    });
+
     setLocations(h.root(), filename, fileContent)
 
     function forEach(sel: string, f: (elt: Cheerio) => void) {
@@ -345,15 +352,15 @@ function expandAsync(cfg: ExpansionConfig) {
         let metas: SMap<string> = {
             title: clean(
                 h("#gw-meta-title").text() ||
-                    h("title").text() ||
-                    h("h1").first().text()
+                h("title").text() ||
+                h("h1").first().text()
             ),
         }
         let commonMeta = ["description", "keywords", "copyright", "author"]
         for (let m of commonMeta) {
             metas[m] = clean(
                 h("#gw-meta-" + m).text() ||
-                    h("meta[name='" + m + "']").attr("content")
+                h("meta[name='" + m + "']").attr("content")
             )
         }
 
@@ -388,7 +395,7 @@ function expandAsync(cfg: ExpansionConfig) {
                 `    <link rel="alternate" href="${currPath}" hreflang="x-default" />\n`
             h("head").append(
                 `\n    <!-- links to alternate langauges for search engines -->\n` +
-                    ht
+                ht
             )
         }
     }
@@ -404,7 +411,7 @@ function expandAsync(cfg: ExpansionConfig) {
         })
 
         if (gitfs.config.justDir && !gitfs.config.cdnPath)
-            return Promise.all(promises).then(() => {})
+            return Promise.all(promises).then(() => { })
 
         let repl = (
             e: CheerioElement,
@@ -499,7 +506,7 @@ function expandAsync(cfg: ExpansionConfig) {
             )
         })
 
-        return Promise.all(promises).then(() => {})
+        return Promise.all(promises).then(() => { })
     }
 
     function setLocations(e: Cheerio, filename: string, fileContent: string) {
@@ -647,7 +654,7 @@ function expandAsync(cfg: ExpansionConfig) {
         }
 
         let arr = elt.length > 1 ? elt.toArray() : elt.children().toArray()
-        return bluebird.each(arr, ee => recAsync(ctx, h(ee))).then(() => {})
+        return bluebird.each(arr, ee => recAsync(ctx, h(ee))).then(() => { })
     }
 }
 
