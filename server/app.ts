@@ -50,7 +50,7 @@ if (gitfs.config && gitfs.config.proxy) {
 }
 
 app.use((req, res, next) => {
-    winston.debug(req.method + " " + req.url)
+    winston.debug(req.method + " " + req.url + " " + req.header("user-agent"))
     req._response = res
     lastUse = Date.now()
     next()
