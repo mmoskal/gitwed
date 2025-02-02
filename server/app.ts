@@ -50,7 +50,8 @@ if (gitfs.config && gitfs.config.proxy) {
 }
 
 app.use((req, res, next) => {
-    winston.debug(req.method + " " + req.url + " " + req.header("user-agent"))
+    winston.debug(req.method + " " + req.header("host") +
+        req.url + " " + req.header("user-agent"))
     req._response = res
     lastUse = Date.now()
     next()
@@ -212,7 +213,7 @@ app.post("/api/post-count", async (req, res) => {
         if (
             cfg.countPassword &&
             simplifyPassword(cfg.countPassword) !=
-                simplifyPassword(body.password)
+            simplifyPassword(body.password)
         )
             tools.throwError(403)
 
@@ -460,8 +461,8 @@ async function genericGet(req: express.Request, res: express.Response) {
         if (req.appuser) return res.redirect(redirpath)
         return res.redirect(
             gitfs.config.authDomain +
-                "/gw/login?redirect=" +
-                encodeURIComponent(redirpath)
+            "/gw/login?redirect=" +
+            encodeURIComponent(redirpath)
         )
     }
 
@@ -594,16 +595,16 @@ async function genericGet(req: express.Request, res: express.Response) {
                             base + "/" + filename,
                             ref
                         )
-                    } catch {}
+                    } catch { }
                     res({ name: templates[filename], content, filename })
                 })
             )
         )
 
         const ts: Template[] = []
-        ;(await Promise.all(templateArray)).forEach(p =>
-            p.content ? ts.push(p) : null
-        )
+            ; (await Promise.all(templateArray)).forEach(p =>
+                p.content ? ts.push(p) : null
+            )
         return ts
     }
 
@@ -632,8 +633,8 @@ async function genericGet(req: express.Request, res: express.Response) {
                                 notFound(
                                     req,
                                     base +
-                                        JSON.stringify(templates) +
-                                        " files are missing!"
+                                    JSON.stringify(templates) +
+                                    " files are missing!"
                                 )
                                 return
                             }
@@ -642,20 +643,18 @@ async function genericGet(req: express.Request, res: express.Response) {
                                 notFound(
                                     req,
                                     "<ul>" +
-                                        templates
-                                            .map(
-                                                t =>
-                                                    `<li><a href="${
-                                                        req.path
-                                                    }?create=true&template=${t.filename.replace(
-                                                        ".html",
-                                                        ""
-                                                    )}">Create ${
-                                                        t.name
-                                                    }</a></li>`
-                                            )
-                                            .join("") +
-                                        "</ul>"
+                                    templates
+                                        .map(
+                                            t =>
+                                                `<li><a href="${req.path
+                                                }?create=true&template=${t.filename.replace(
+                                                    ".html",
+                                                    ""
+                                                )}">Create ${t.name
+                                                }</a></li>`
+                                        )
+                                        .join("") +
+                                    "</ul>"
                                 )
                                 return
                             }
@@ -726,8 +725,8 @@ async function genericGet(req: express.Request, res: express.Response) {
         if (cfg.pageConfig.private && !cfg.hasWritePerm && !hasRoPerm) {
             return res.redirect(
                 gitfs.config.authDomain +
-                    "/gw/login?redirect=" +
-                    encodeURIComponent("/" + cleaned)
+                "/gw/login?redirect=" +
+                encodeURIComponent("/" + cleaned)
             )
         }
 
@@ -739,8 +738,8 @@ async function genericGet(req: express.Request, res: express.Response) {
             })
             return res.redirect(
                 gitfs.config.authDomain +
-                    "/oauth/login?redirect=" +
-                    encodeURIComponent(here)
+                "/oauth/login?redirect=" +
+                encodeURIComponent(here)
             )
         }
 
