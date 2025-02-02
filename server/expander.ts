@@ -377,14 +377,11 @@ function expandAsync(cfg: ExpansionConfig) {
 
         if (cfg.lang && cfg.langs.length > 1) {
             let currPath = cfg.origHref || cfg.rootFile
+            currPath = currPath.replace(/\?.*/, "")
             let ht =
                 cfg.langs
                     .map(lang => {
-                        let setlang =
-                            currPath +
-                            (currPath.indexOf("?") >= 0 ? "&" : "?") +
-                            "lang="
-                        let href = setlang + lang
+                        let href = currPath + "?lang=" + lang
                         return `    <link rel="alternate" href="${href}" hreflang="${lang}" />\n`
                     })
                     .join("") +
