@@ -632,10 +632,8 @@ function expandAsync(cfg: ExpansionConfig) {
             let ht = cfg.langs
                 .map(lang => {
                     let currPath = cfg.origHref || cfg.rootFile
-                    let setlang =
-                        currPath +
-                        (currPath.indexOf("?") >= 0 ? "&" : "?") +
-                        "setlang="
+                    currPath = currPath.replace(/\?.*/, "")
+                    let setlang = currPath + "?setlang="
                     let isCurr = lang == cfg.lang
                     let href = setlang + lang
                     let full = tools.getLocale(lang).lang
