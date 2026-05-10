@@ -25,7 +25,7 @@
         "acme-client": "^5.4.0",
         "bluebird": "^3.7.2",
         "body-parser": "^1.20.5",
-        "cheerio": "^0.22.0",
+        "cheerio": "^1.2.0",
         "compression": "^1.8.1",
         "ContentTools": "^1.6.16",
         "cookie-parser": "^1.4.7",
@@ -41,7 +41,6 @@
     },
     "devDependencies": {
         "@types/bluebird": "^3.5.32",
-        "@types/cheerio": "^0.22.21",
         "@types/express": "^4.17.25",
         "@types/express-serve-static-core": "^4.19.8",
         "@types/jest": "^30.0.0",

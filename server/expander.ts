@@ -1,4 +1,4 @@
-import cheerio = require("cheerio")
+import type * as CheerioModule from "cheerio"
 import gitfs = require("./gitfs")
 import auth = require("./auth")
 import events = require("./events")
@@ -10,13 +10,16 @@ import * as bluebird from "bluebird"
 import * as winston from "winston"
 
 let htmlparser2 = require("htmlparser2")
+const cheerio = require("cheerio/slim") as typeof CheerioModule
 
 function toHTML(e: CheerioStatic | Cheerio) {
-    return e.html().replace(/&#x([0-9a-f]{1,6});/gi, (entity, match) => {
-        let code = parseInt(match, 16)
-        if (code < 0x80) return entity
-        return String.fromCodePoint(code)
-    })
+    return (e as any)
+        .html()
+        .replace(/&#x([0-9a-f]{1,6});/gi, (entity: string, match: string) => {
+            let code = parseInt(match, 16)
+            if (code < 0x80) return entity
+            return String.fromCodePoint(code)
+        })
 }
 
 function jsQuote(s: string) {
@@ -135,8 +138,8 @@ export function cleanHtmlFragment(frag: string) {
 
     h("*").each((idx, ee) => {
         let e = h(ee)
-        let attrs: SMap<string> = ee.attribs as any
-        for (let k of Object.keys(ee.attribs)) {
+        let attrs: SMap<string> = (ee as any).attribs
+        for (let k of Object.keys(attrs)) {
             let m = /^data-gw-orig-(.*)/.exec(k)
             if (m) {
                 let v = attrs[k]
@@ -551,7 +554,7 @@ function expandAsync(cfg: ExpansionConfig) {
                     let id = ch2.attr("id")
                     if (id) {
                         subst[id] = ch2
-                        ch2.gw_ctx = ctx // save outer ctx for further expansion and filename tracking
+                        ;(ch2 as any).gw_ctx = ctx // save outer ctx for further expansion and filename tracking
                     }
                 }
                 let n = h(fileContent)
@@ -820,7 +823,7 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     r.html = r.html.replace(
         /@@([\w\.]+)@@/g,
-        (f, v) => cfg.vars[v] || cfg.contentOverride[v] || ""
+        (f: string, v: string) => cfg.vars[v] || cfg.contentOverride[v] || ""
     )
 
     return r
