@@ -131,6 +131,11 @@ let cheerioOptions: any = {
     withStartIndices: true,
 }
 
+export function parseIncludedHtml(fileContent: string) {
+    let h = cheerio.load(fileContent, cheerioOptions, false)
+    return h.root().children()
+}
+
 export function cleanHtmlFragment(frag: string) {
     frag = frag.replace(/\r/g, "")
     frag = frag.replace(/(^\n*)|(\n*$)/g, "\n")
@@ -562,7 +567,7 @@ function expandAsync(cfg: ExpansionConfig) {
                         ;(ch2 as any).gw_ctx = ctx // save outer ctx for further expansion and filename tracking
                     }
                 }
-                let n = h(fileContent)
+                let n = parseIncludedHtml(fileContent)
                 setLocations(n, filename, fileContent)
                 e.replaceWith(n)
                 return recAsync({ subst, filename, fileContent }, n)

@@ -1,4 +1,8 @@
-import { cleanHtmlFragment, replicatePictureSource } from "./expander"
+import {
+    cleanHtmlFragment,
+    parseIncludedHtml,
+    replicatePictureSource,
+} from "./expander"
 import { cheerioFixture } from "./fixtures"
 
 describe("replication", () => {
@@ -76,5 +80,24 @@ describe("cleanHtmlFragment()", () => {
 
         expect(html).not.toMatch(/onload|onclick/i)
         expect(html).toContain(`src="x.png"`)
+    })
+})
+
+describe("parseIncludedHtml()", () => {
+    it("parses XML document include content as markup", () => {
+        const nodes = parseIncludedHtml(
+            `<?xml version="1.0" encoding="utf-8"?>
+<html>
+<body><div edit id="main">content</div></body>
+</html>`
+        )
+
+        expect(nodes.find("[edit]").attr("id")).toBe("main")
+    })
+
+    it("keeps fragment include content as top-level markup", () => {
+        const nodes = parseIncludedHtml(`<p id="fragment">content</p>`)
+
+        expect(nodes.attr("id")).toBe("fragment")
     })
 })
