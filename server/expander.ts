@@ -140,6 +140,11 @@ export function cleanHtmlFragment(frag: string) {
         let e = h(ee)
         let attrs: SMap<string> = (ee as any).attribs
         for (let k of Object.keys(attrs)) {
+            if (/^on/i.test(k)) {
+                delete attrs[k]
+                continue
+            }
+
             let m = /^data-gw-orig-(.*)/.exec(k)
             if (m) {
                 let v = attrs[k]

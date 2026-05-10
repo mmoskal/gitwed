@@ -1,4 +1,4 @@
-import { replicatePictureSource } from "./expander"
+import { cleanHtmlFragment, replicatePictureSource } from "./expander"
 import { cheerioFixture } from "./fixtures"
 
 describe("replication", () => {
@@ -65,5 +65,16 @@ describe("replication", () => {
                 "assets/img.png w100 h100, assets/img2.png w200 h200",
             ])
         })
+    })
+})
+
+describe("cleanHtmlFragment()", () => {
+    it("removes event handler attributes before saving editor HTML", () => {
+        const html = cleanHtmlFragment(
+            `<p onclick="alert(1)">x</p><img src="x.png" onload="alert(2)">`
+        )
+
+        expect(html).not.toMatch(/onload|onclick/i)
+        expect(html).toContain(`src="x.png"`)
     })
 })
