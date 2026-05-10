@@ -1,9 +1,9 @@
 import * as gitfs from "./gitfs"
 import winston = require("winston")
 import * as sendGrid from "@sendgrid/mail"
-import * as MailgunJs from "mailgun-js"
+const Mailgun = require("mailgun.js")
 
-let mailgun: MailgunJs.Mailgun
+let mailgun: any
 
 export type Message = {
     from: string
@@ -55,19 +55,17 @@ const sendgridSend: SendEmailFn = async (msg, config) => {
 }
 
 const mailgunSend: SendEmailFn = (msg, config) => {
-    if (!mailgun)
-        mailgun = MailgunJs({
-            apiKey: config.mailgunApiKey,
-            domain: config.mailgunDomain,
+    if (!mailgun) {
+        const client = new Mailgun(FormData)
+        mailgun = client.client({
+            username: "api",
+            key: config.mailgunApiKey,
         })
+    }
 
-    return new Promise((resolve, reject) =>
-        mailgun
-            .messages()
-            .send(msg, (err: any, body: any) =>
-                err ? reject(err) : resolve(body)
-            )
-    )
+    return mailgun.messages
+        .create(config.mailgunDomain, msg)
+        .then((body: any) => JSON.stringify(body))
 }
 
 export function sendAsync(msg: Message, config?: gitfs.Config) {

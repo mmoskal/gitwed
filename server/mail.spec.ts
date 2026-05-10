@@ -6,15 +6,18 @@ jest.mock("@sendgrid/mail", () => ({
 }))
 import * as sendgrid from "@sendgrid/mail"
 
-jest.mock("mailgun-js", () => {
-    const send = jest.fn((_, cb) => cb(null, "body"))
+jest.mock("mailgun.js", () => {
+    const create = jest.fn(() => Promise.resolve("body"))
+    const client = jest.fn(() => ({
+        messages: {
+            create,
+        },
+    }))
     return jest.fn(() => ({
-        messages: jest.fn(() => ({
-            send,
-        })),
+        client,
     }))
 })
-import * as MailgunJS from "mailgun-js"
+import Mailgun = require("mailgun.js")
 
 import { validateMessage, resetMailgun } from "./mail"
 import { msgFixture, configFixture } from "./fixtures"
@@ -23,7 +26,10 @@ const from = "serviceName <no-reply@mailgunDomain.com>"
 const extend = <T>(o: T, delta: Partial<T>): T => ({ ...o, ...delta })
 
 describe("sendAsync()", () => {
-    beforeEach(jest.clearAllMocks)
+    beforeEach(() => {
+        jest.clearAllMocks()
+        resetMailgun()
+    })
 
     it("throws an error when given config contains no API key", async () => {
         try {
@@ -45,26 +51,25 @@ describe("sendAsync()", () => {
     })
 
     it("uses mailgun when only config.mailgunApiKey is set", async () => {
-        expect.assertions(2)
+        expect.assertions(3)
         await mail.sendAsync(
             msgFixture({ from: null }),
             configFixture({ mailgunApiKey: "mailgunApiKey" })
         )
-        expect(MailgunJS).toHaveBeenCalledWith({
-            domain: "mailgunDomain.com",
-            apiKey: "mailgunApiKey",
+        expect(Mailgun).toHaveBeenCalledWith(FormData)
+        const client = (Mailgun as any).mock.results[0].value.client
+        expect(client).toHaveBeenCalledWith({
+            username: "api",
+            key: "mailgunApiKey",
         })
-        expect(
-            MailgunJS({
-                domain: "mailgunDomain.com",
-                apiKey: "mailgunApiKey",
-                //@ts-ignore second call is a function so we can't test that
-            }).messages().send.mock.calls[0][0]
-        ).toMatchObject(msgFixture({ from }))
+        const messages = client.mock.results[0].value.messages
+        expect(messages.create.mock.calls[0]).toEqual([
+            "mailgunDomain.com",
+            msgFixture({ from }),
+        ])
     })
 
     it("uses mailgun when both apiKeys are set", async () => {
-        resetMailgun()
         await mail.sendAsync(
             msgFixture({ from: null }),
             configFixture({
@@ -72,17 +77,17 @@ describe("sendAsync()", () => {
                 sendgridApiKey: "sendgridApiKey",
             })
         )
-        expect(MailgunJS).toHaveBeenCalledWith({
-            domain: "mailgunDomain.com",
-            apiKey: "mailgunApiKey",
+        expect(Mailgun).toHaveBeenCalledWith(FormData)
+        const client = (Mailgun as any).mock.results[0].value.client
+        expect(client).toHaveBeenCalledWith({
+            username: "api",
+            key: "mailgunApiKey",
         })
-        expect(
-            MailgunJS({
-                domain: "mailgunDomain.com",
-                apiKey: "mailgunApiKey",
-                //@ts-ignore second call is a function so we can't test that
-            }).messages().send.mock.calls[0][0]
-        ).toMatchObject(msgFixture({ from }))
+        const messages = client.mock.results[0].value.messages
+        expect(messages.create.mock.calls[0]).toEqual([
+            "mailgunDomain.com",
+            msgFixture({ from }),
+        ])
         expect(sendgrid.setApiKey).not.toHaveBeenCalled()
         expect(sendgrid.send).not.toHaveBeenCalled()
     })

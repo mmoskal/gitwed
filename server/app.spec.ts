@@ -6,12 +6,15 @@ import {
     responseFixture,
 } from "./fixtures"
 
-jest.mock("mailgun-js", () => {
-    const send = jest.fn((_, cb) => cb(null, "body"))
+jest.mock("mailgun.js", () => {
+    const create = jest.fn(() => Promise.resolve("body"))
+    const client = jest.fn(() => ({
+        messages: {
+            create,
+        },
+    }))
     return jest.fn(() => ({
-        messages: jest.fn(() => ({
-            send,
-        })),
+        client,
     }))
 })
 
