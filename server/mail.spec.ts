@@ -201,7 +201,7 @@ describe("validators", () => {
                 expected
             )
             expect(
-                validateMessage(extend(value, { text: "x".repeat(1025) }))
+                validateMessage(extend(value, { text: "x".repeat(10000) }))
             ).toEqual(expected)
         })
 

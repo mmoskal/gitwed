@@ -36,6 +36,7 @@ const restartMinutes = 120
 
 const startTime = Date.now()
 let lastUse = startTime
+const runningUnderJest = !!process.env.JEST_WORKER_ID
 
 const app = express()
 const bodyParser = require("body-parser")
@@ -57,17 +58,19 @@ app.use((req, res, next) => {
     next()
 })
 
-setInterval(() => {
-    let now = Date.now()
-    let tm = now - startTime
-    if (tm > restartMinutes * 60 * 1000) {
-        // only restart when it's quiet
-        if (now - lastUse > 10 * 1000) {
-            winston.info(`auto-shutdown after ${Math.round(tm / 1000)}s`)
-            gitfs.shutdown()
+if (!runningUnderJest) {
+    setInterval(() => {
+        let now = Date.now()
+        let tm = now - startTime
+        if (tm > restartMinutes * 60 * 1000) {
+            // only restart when it's quiet
+            if (now - lastUse > 10 * 1000) {
+                winston.info(`auto-shutdown after ${Math.round(tm / 1000)}s`)
+                gitfs.shutdown()
+            }
         }
-    }
-}, 60 * 1000)
+    }, 60 * 1000)
+}
 
 app.use(require("cookie-parser")())
 app.use(require("compression")())
@@ -784,87 +787,89 @@ function setupFinalRoutes() {
     )
 }
 
-let cfg: gitfs.Config = {} as any
-if (fs.existsSync("config.json"))
-    cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
-rest.init(cfg.services || [])
-cfg.justDir = true
-let args = process.argv.slice(2)
-if (args[0] == "-i") {
-    args.shift()
-    cfg.justDir = false
-}
-if (args[0] == "-cdn") {
-    args.shift()
-    if (!cfg.cdnPath) {
-        cfg.cdnPath = "/cdn"
+if (!runningUnderJest) {
+    let cfg: gitfs.Config = {} as any
+    if (fs.existsSync("config.json"))
+        cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
+    rest.init(cfg.services || [])
+    cfg.justDir = true
+    let args = process.argv.slice(2)
+    if (args[0] == "-i") {
+        args.shift()
+        cfg.justDir = false
     }
-}
-if (args[0] && fs.existsSync(args[0])) {
-    cfg.repoPath = args[0]
-    args.shift()
-}
-
-if (!cfg.repoPath) cfg.repoPath = "."
-
-if (args[0]) {
-    winston.error("parameter not understood: " + args[0])
-    console.error(`Usage: gitwed [-i] [-cdn] [DIRECTORY]`)
-    process.exit(1)
-}
-if (!cfg.networkInterface) cfg.networkInterface = "localhost"
-
-let port = process.env.PORT ? +process.env.PORT : 3000
-
-if (!cfg.authDomain) cfg.authDomain = `http://${cfg.networkInterface}:${port}`
-
-if (!cfg.serviceName) cfg.serviceName = "GITwed"
-
-if (!cfg.justDir && !cfg.cdnPath) cfg.cdnPath = "/cdn"
-
-if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
-    winston.error(
-        `cannot find repoPath (${cfg.repoPath}) in config.json or as argument`
-    )
-    process.exit(1)
-}
-
-if (!cfg.vhosts) cfg.vhosts = {}
-
-if (cfg.justDir) {
-    winston.info(`using local file modifications`)
-} else {
-    winston.info(`using git push/pull`)
-}
-
-process.on("SIGINT", () => {
-    gitfs.shutdown()
-})
-
-process.on("SIGTERM", () => {
-    gitfs.shutdown()
-})
-
-gitfs.initAsync(cfg).then(() => {
-    for (let r of tools.values(gitfs.repos)) {
-        r.onUpdate(() => pageCache.flush())
-    }
-    oauth.init(app)
-    events.initRoutes(app)
-    events2.initRoutes(app)
-    setupFinalRoutes()
-
-    if (cfg.justDir || cfg.proxy) {
-        winston.info(`listen on http://${cfg.networkInterface}:${port}`)
-        app.listen(port, cfg.networkInterface)
-    } else {
-        if (cfg.production) {
-            winston.info(`setup certs`)
-            ownSSL = true
-            acme.setupCertsAndListen(app, cfg)
-        } else {
-            winston.info(`listen on http://*:${port}`)
-            app.listen(port)
+    if (args[0] == "-cdn") {
+        args.shift()
+        if (!cfg.cdnPath) {
+            cfg.cdnPath = "/cdn"
         }
     }
-})
+    if (args[0] && fs.existsSync(args[0])) {
+        cfg.repoPath = args[0]
+        args.shift()
+    }
+
+    if (!cfg.repoPath) cfg.repoPath = "."
+
+    if (args[0]) {
+        winston.error("parameter not understood: " + args[0])
+        console.error(`Usage: gitwed [-i] [-cdn] [DIRECTORY]`)
+        process.exit(1)
+    }
+    if (!cfg.networkInterface) cfg.networkInterface = "localhost"
+
+    let port = process.env.PORT ? +process.env.PORT : 3000
+
+    if (!cfg.authDomain) cfg.authDomain = `http://${cfg.networkInterface}:${port}`
+
+    if (!cfg.serviceName) cfg.serviceName = "GITwed"
+
+    if (!cfg.justDir && !cfg.cdnPath) cfg.cdnPath = "/cdn"
+
+    if (!cfg.repoPath || !fs.existsSync(cfg.repoPath)) {
+        winston.error(
+            `cannot find repoPath (${cfg.repoPath}) in config.json or as argument`
+        )
+        process.exit(1)
+    }
+
+    if (!cfg.vhosts) cfg.vhosts = {}
+
+    if (cfg.justDir) {
+        winston.info(`using local file modifications`)
+    } else {
+        winston.info(`using git push/pull`)
+    }
+
+    process.on("SIGINT", () => {
+        gitfs.shutdown()
+    })
+
+    process.on("SIGTERM", () => {
+        gitfs.shutdown()
+    })
+
+    gitfs.initAsync(cfg).then(() => {
+        for (let r of tools.values(gitfs.repos)) {
+            r.onUpdate(() => pageCache.flush())
+        }
+        oauth.init(app)
+        events.initRoutes(app)
+        events2.initRoutes(app)
+        setupFinalRoutes()
+
+        if (cfg.justDir || cfg.proxy) {
+            winston.info(`listen on http://${cfg.networkInterface}:${port}`)
+            app.listen(port, cfg.networkInterface)
+        } else {
+            if (cfg.production) {
+                winston.info(`setup certs`)
+                ownSSL = true
+                acme.setupCertsAndListen(app, cfg)
+            } else {
+                winston.info(`listen on http://*:${port}`)
+                app.listen(port)
+            }
+        }
+    })
+}
