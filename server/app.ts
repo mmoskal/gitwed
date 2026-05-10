@@ -260,10 +260,13 @@ app.post("/api/uploadimg", (req, res) => {
 
     let msg = "Image at " + path + " / " + basename + ext
 
-    expander.hasWritePermAsync(req.appuser, path).then(hasPerm => {
-        if (!hasPerm) return res.status(403).end()
+    return expander.hasWritePermAsync(req.appuser, path).then(async hasPerm => {
+        if (!hasPerm) {
+            res.status(403).end()
+            return
+        }
 
-        fileLocks(path, () =>
+        await fileLocks(path, () =>
             gitfs
                 .findRepo(path)
                 .createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
@@ -273,6 +276,7 @@ app.post("/api/uploadimg", (req, res) => {
                     })
                 })
         )
+        return
     })
 })
 
@@ -289,10 +293,13 @@ app.post("/api/replaceimg", (req, res) => {
     let msg =
         "Replace image at " + path + " " + Math.round(buf.length / 1024) + "k"
 
-    expander.hasWritePermAsync(req.appuser, path).then(hasPerm => {
-        if (!hasPerm) return res.status(403).end()
+    return expander.hasWritePermAsync(req.appuser, path).then(async hasPerm => {
+        if (!hasPerm) {
+            res.status(403).end()
+            return
+        }
 
-        fileLocks(path, () =>
+        await fileLocks(path, () =>
             gitfs
                 .findRepo(path)
                 .setBinFileAsync(path, buf, msg, req.appuser)
@@ -300,12 +307,13 @@ app.post("/api/replaceimg", (req, res) => {
                     res.json({})
                 })
         )
+        return
     })
 })
 
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser) return res.status(403).end()
-    gitfs
+    return gitfs
         .findRepo(tools.getQuery(req, "path"))
         .pokeAsync(true)
         .then(() => {
@@ -336,7 +344,7 @@ app.post("/api/update", (req, res) => {
         appuser: req.appuser,
     }
 
-    fileLocks(
+    return fileLocks(
         fn,
         () =>
             expander.expandFileAsync(cfg).then(page => {
@@ -377,7 +385,7 @@ app.post("/api/update", (req, res) => {
 
                 if (cfg.langFileName) {
                     let newCont = expander.setTranslation(cfg, id, val)
-                    repo.setTextFileAsync(
+                    return repo.setTextFileAsync(
                         cfg.langFileName,
                         newCont,
                         "Translate " + cfg.langFileName + " / " + id,
@@ -389,14 +397,14 @@ app.post("/api/update", (req, res) => {
                         cont.slice(0, desc.startIdx) +
                         val +
                         cont.slice(desc.startIdx + desc.length)
-                    repo.setTextFileAsync(
+                    return repo.setTextFileAsync(
                         desc.filename,
                         newCont,
                         "Update " + desc.filename + " / " + id,
                         req.appuser
                     ).then(() => res.end("OK"))
                 } else {
-                    res.status(410).end()
+                    return res.status(410).end()
                 }
             }) as Promise<void>
     )

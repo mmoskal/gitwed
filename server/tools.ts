@@ -53,8 +53,9 @@ export function validateLang(l: string) {
 }
 
 export function mimeLookup(fn: string) {
-    if (mime.getType) return mime.getType(fn)
-    return (mime as any).lookup(fn)
+    const mimeApi: any = mime
+    if (mimeApi.getType) return mimeApi.getType(fn)
+    return mimeApi.lookup(fn)
 }
 
 const localeCache: SMap<Locale> = {}
@@ -152,9 +153,10 @@ function httpRequestCoreAsync(
     else if (u.protocol == "http:") isHttps = false
     else return Promise.reject("bad protocol: " + u.protocol)
 
-    u.headers = options.headers
+    const headers: http.OutgoingHttpHeaders = options.headers
         ? JSON.parse(JSON.stringify(options.headers))
         : {}
+    u.headers = headers
     let data = options.data
     u.method = options.method || (data == null ? "GET" : "POST")
 
@@ -162,14 +164,14 @@ function httpRequestCoreAsync(
 
     let buf: Buffer = null
 
-    u.headers["accept-encoding"] = "gzip"
+    headers["accept-encoding"] = "gzip"
 
     if (data != null) {
         if (Buffer.isBuffer(data)) {
             buf = data
         } else if (typeof data == "object") {
             buf = Buffer.from(JSON.stringify(data), "utf8")
-            u.headers["content-type"] = "application/json; charset=utf8"
+            headers["content-type"] = "application/json; charset=utf8"
         } else if (typeof data == "string") {
             buf = Buffer.from(data, "utf8")
         } else {
@@ -177,7 +179,7 @@ function httpRequestCoreAsync(
         }
     }
 
-    if (buf) u.headers["content-length"] = buf.length
+    if (buf) headers["content-length"] = buf.length
 
     return new Promise<HttpResponse>((resolve, reject) => {
         let req = mod.request(u, (res: any) => {

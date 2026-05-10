@@ -40,8 +40,8 @@ describe("sendAsync()", () => {
             msgFixture({ from: null }),
             configFixture({ sendgridApiKey: "sendgridApiKey" })
         )
-        expect(sendgrid.setApiKey).toBeCalledWith("sendgridApiKey")
-        expect(sendgrid.send).toBeCalledWith(msgFixture({ from }), false)
+        expect(sendgrid.setApiKey).toHaveBeenCalledWith("sendgridApiKey")
+        expect(sendgrid.send).toHaveBeenCalledWith(msgFixture({ from }), false)
     })
 
     it("uses mailgun when only config.mailgunApiKey is set", async () => {
@@ -50,7 +50,7 @@ describe("sendAsync()", () => {
             msgFixture({ from: null }),
             configFixture({ mailgunApiKey: "mailgunApiKey" })
         )
-        expect(MailgunJS).toBeCalledWith({
+        expect(MailgunJS).toHaveBeenCalledWith({
             domain: "mailgunDomain.com",
             apiKey: "mailgunApiKey",
         })
@@ -72,7 +72,7 @@ describe("sendAsync()", () => {
                 sendgridApiKey: "sendgridApiKey",
             })
         )
-        expect(MailgunJS).toBeCalledWith({
+        expect(MailgunJS).toHaveBeenCalledWith({
             domain: "mailgunDomain.com",
             apiKey: "mailgunApiKey",
         })
@@ -83,8 +83,8 @@ describe("sendAsync()", () => {
                 //@ts-ignore second call is a function so we can't test that
             }).messages().send.mock.calls[0][0]
         ).toMatchObject(msgFixture({ from }))
-        expect(sendgrid.setApiKey).not.toBeCalled()
-        expect(sendgrid.send).not.toBeCalled()
+        expect(sendgrid.setApiKey).not.toHaveBeenCalled()
+        expect(sendgrid.send).not.toHaveBeenCalled()
     })
 })
 

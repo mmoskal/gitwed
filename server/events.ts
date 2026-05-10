@@ -677,32 +677,32 @@ export function initRoutes(app: express.Express) {
 
         let err = applyChanges(currElt, delta, lang)
         if (err) {
-            res.status(412).json({ error: err })
+            return res.status(412).json({ error: err })
         } else {
             if (isFresh) index.nextId++
             if (currElt.endDate == currElt.startDate) delete currElt.endDate
 
             await saveEventAsync(currElt, req.appuser)
-            res.json(currElt)
+            return res.json(currElt)
         }
     })
 
     app.get("/api/centers/:id", async (req, res, next) => {
         let c = await getCenterAsync(req.params["id"])
         if (!c) return res.status(404).end()
-        if (req.appuser) res.json(c)
-        else res.json(publicCenter(c))
+        if (req.appuser) return res.json(c)
+        else return res.json(publicCenter(c))
     })
 
     app.get("/api/centers", async (req, res, next) => {
         let centers = await getCentersAsync()
         let lst = tools.values(centers)
         if (req.appuser)
-            res.json({
+            return res.json({
                 centers: lst,
             })
         else
-            res.json({
+            return res.json({
                 centers: lst.map(publicCenter),
             })
     })
@@ -722,7 +722,7 @@ export function initRoutes(app: express.Express) {
 
         let err = applyCenterChanges(center, delta, lang)
         if (err) {
-            res.status(412).json({ error: err })
+            return res.status(412).json({ error: err })
         } else {
             await updateCenterAsync(
                 center.id,
@@ -733,7 +733,7 @@ export function initRoutes(app: express.Express) {
                 "Center " + center.id + " updated",
                 req.appuser
             )
-            res.json(center)
+            return res.json(center)
         }
     })
 }

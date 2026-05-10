@@ -33,7 +33,7 @@ describe("API", () => {
             })
             await onSendEmail(config)(request, responseMock, null)
 
-            expect(responseMock.status).toBeCalledWith(200)
+            expect(responseMock.status).toHaveBeenCalledWith(200)
         })
 
         it("doesnt accept requests with unknown recipients", async () => {
@@ -42,7 +42,7 @@ describe("API", () => {
             })
             await onSendEmail(config)(request, responseMock, null)
 
-            expect(responseMock.status).toBeCalledWith(405)
+            expect(responseMock.status).toHaveBeenCalledWith(405)
         })
 
         it("doesnt accept incorrect body payloads", async () => {
@@ -54,7 +54,7 @@ describe("API", () => {
             })
             await onSendEmail(config)(request, responseMock, null)
 
-            expect(responseMock.status).toBeCalledWith(422)
+            expect(responseMock.status).toHaveBeenCalledWith(422)
         })
     })
 })

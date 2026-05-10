@@ -97,7 +97,7 @@ export function sendAsync(msg: Message, config?: gitfs.Config) {
         winston.info("using sendgrid")
     }
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise<void>(async (resolve, reject) => {
         try {
             if (!send) throw new Error("no sendmail provider")
             winston.debug("mail:", await send(validationResult.value, config))

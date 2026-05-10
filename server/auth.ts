@@ -297,7 +297,7 @@ export function initRoutes(app: express.Express) {
             text: `${req.appuser} has invited you to edit ${editUrl}. To accept, please follow the link below:\n\n    ${acceptLink}\n`,
         })
 
-        res.json({})
+        return res.json({})
     })
 }
 

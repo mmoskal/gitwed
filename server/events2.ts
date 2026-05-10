@@ -397,14 +397,12 @@ export function initRoutes(app: express.Express) {
         for (let ev of bodies) {
             const err = validateEvent(ev)
             if (err) {
-                res.status(412).json({ message: err })
-                return
+                return res.status(412).json({ message: err })
             }
             if (ev.eventId && !(await readEventAsync(ev.eventId))) {
-                res.status(404).json({
+                return res.status(404).json({
                     message: `Event ${ev.eventId} doesn't exists yet`,
                 })
-                return
             }
         }
 
@@ -426,6 +424,6 @@ export function initRoutes(app: express.Express) {
             }
         }
 
-        res.json({ updated: numUpdated })
+        return res.json({ updated: numUpdated })
     })
 }
