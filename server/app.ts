@@ -22,15 +22,13 @@ import rest = require("./rest")
 import acme = require("./acme")
 import oauth = require("./oauth")
 import counter = require("./counter")
+import imageUpload = require("./image-upload")
 
 import { Message } from "./mail"
 import { sendAsync } from "./mail"
 
 bluebird.longStackTraces()
 logs.init()
-
-// the client enforces smaller
-const maxImageSize = 2 * 1024 * 1024
 
 const restartMinutes = 120
 
@@ -124,13 +122,6 @@ oauth.earlyInit(app)
 auth.initRoutes(app)
 epub.init(app)
 acme.init(app)
-
-interface ImgData {
-    page: string
-    full: string
-    filename: string
-    format: string
-}
 
 app.get("/api/logs", (req, res) => {
     if (!req.appuser) tools.throwError(402)
@@ -241,75 +232,72 @@ app.post("/api/post-count", async (req, res) => {
     }
 })
 
-app.post("/api/uploadimg", (req, res) => {
+function imageRoute(
+    handler: (req: express.Request, res: express.Response) => Promise<any>
+): express.RequestHandler {
+    return (req, res, next) => {
+        return Promise.resolve()
+            .then(() => handler(req, res))
+            .catch((error: any) => {
+                if (error && error.statusCode) res.status(error.statusCode).end()
+                else next(error)
+            })
+    }
+}
+
+export const onUploadImage = imageRoute(async (req, res) => {
     if (!req.appuser) return res.status(403).end()
 
-    let data = req.body as ImgData
-    let pathElts = sanitizePath(data.page)
-    pathElts.pop()
-    pathElts.push("img")
-    let path = pathElts.join("/")
-    let basename = data.filename
-        .replace(/.*[\/\\]/, "")
-        .toLowerCase()
-        .replace(/\.[a-z]+$/, "")
-        .replace(/[^\w\-]+/g, "_")
-    let ext = "." + data.format
-    let buf = Buffer.from(data.full, "base64")
-    if (buf.length > maxImageSize) return res.status(413).end()
+    const data = imageUpload.uploadRequestData(req.body)
+    const path = imageUpload.imageDirectoryForPage(data.page)
+    const basename = imageUpload.imageBasename(data.filename)
+    const image = await imageUpload.validateImageAsync(data.full, data.format)
+    const msg = "Image at " + path + " / " + basename + image.ext
 
-    let msg = "Image at " + path + " / " + basename + ext
+    const hasPerm = await expander.hasWritePermAsync(req.appuser, path)
+    if (!hasPerm) return res.status(403).end()
 
-    return expander.hasWritePermAsync(req.appuser, path).then(async hasPerm => {
-        if (!hasPerm) {
-            res.status(403).end()
-            return
-        }
-
-        await fileLocks(path, () =>
-            gitfs
-                .findRepo(path)
-                .createBinFileAsync(path, basename, ext, buf, msg, req.appuser)
-                .then(imgName => {
-                    res.json({
-                        url: "img/" + imgName,
-                    })
-                })
-        )
-        return
-    })
+    const imgName = await fileLocks(path, () =>
+        gitfs
+            .findRepo(path)
+            .createBinFileAsync(
+                path,
+                basename,
+                image.ext,
+                image.buffer,
+                msg,
+                req.appuser
+            )
+    )
+    return res.json({ url: "img/" + imgName })
 })
 
-app.post("/api/replaceimg", (req, res) => {
+export const onReplaceImage = imageRoute(async (req, res) => {
     if (!req.appuser) return res.status(403).end()
 
-    let data = req.body as ImgData
-    let pathElts = sanitizePath(data.filename)
-    let path = pathElts.join("/")
+    const data = imageUpload.replacementRequestData(req.body)
+    const path = imageUpload.replacementImagePath(data.filename)
+    const image = await imageUpload.validateImageAsync(data.full, path, true)
+    const msg =
+        "Replace image at " +
+        path +
+        " " +
+        Math.round(image.buffer.length / 1024) +
+        "k"
 
-    let buf = Buffer.from(data.full, "base64")
-    if (buf.length > maxImageSize) return res.status(413).end()
+    const hasPerm = await expander.hasWritePermAsync(req.appuser, path)
+    if (!hasPerm) return res.status(403).end()
 
-    let msg =
-        "Replace image at " + path + " " + Math.round(buf.length / 1024) + "k"
-
-    return expander.hasWritePermAsync(req.appuser, path).then(async hasPerm => {
-        if (!hasPerm) {
-            res.status(403).end()
-            return
-        }
-
-        await fileLocks(path, () =>
-            gitfs
-                .findRepo(path)
-                .setBinFileAsync(path, buf, msg, req.appuser)
-                .then(() => {
-                    res.json({})
-                })
-        )
-        return
-    })
+    await fileLocks(path, () =>
+        gitfs
+            .findRepo(path)
+            .replaceBinFileAsync(path, image.buffer, msg, req.appuser)
+    )
+    return res.json({})
 })
+
+app.post("/api/uploadimg", onUploadImage)
+app.post("/api/replaceimg", onReplaceImage)
 
 app.get("/api/refresh", (req, res) => {
     if (!req.appuser) return res.status(403).end()

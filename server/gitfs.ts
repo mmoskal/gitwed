@@ -1,4 +1,5 @@
 import fs = require("fs")
+import path = require("path")
 import crypto = require("crypto")
 import tools = require("./tools")
 import logs = require("./logs")
@@ -113,6 +114,12 @@ export interface GitFs {
         msg: string,
         useremail: string
     ) => Promise<void>
+    replaceBinFileAsync: (
+        name: string,
+        val: Buffer,
+        msg: string,
+        useremail: string
+    ) => Promise<void>
     createBinFileAsync: (
         dir: string,
         basename: string,
@@ -157,9 +164,34 @@ function join(a: string, b: string) {
 const readAsync: (fn: string) => Promise<Buffer> = bluebird.promisify(
     fs.readFile
 ) as any
-const writeAsync: (fn: string, v: Buffer | string) => Promise<void> =
+const readFdAsync: (fd: number) => Promise<Buffer> = bluebird.promisify(
+    fs.readFile
+) as any
+const writeFdAsync: (fd: number, v: Buffer | string) => Promise<void> =
     bluebird.promisify(fs.writeFile) as any
+const truncateFdAsync: (fd: number, len: number) => Promise<void> =
+    bluebird.promisify(fs.ftruncate) as any
+const closeAsync: (fd: number) => Promise<void> = bluebird.promisify(
+    fs.close
+) as any
 const readdirAsync = bluebird.promisify(fs.readdir)
+
+let secureWriteBeforeOpenTestHook: ((name: string) => void) | null = null
+let secureReadBeforeOpenTestHook: ((name: string) => void) | null = null
+
+// This is intentionally synchronous so tests can deterministically exercise the
+// otherwise tiny pathname-validation/open race without affecting production.
+export function setSecureWriteBeforeOpenTestHook(
+    hook: ((name: string) => void) | null
+) {
+    secureWriteBeforeOpenTestHook = hook
+}
+
+export function setSecureReadBeforeOpenTestHook(
+    hook: ((name: string) => void) | null
+) {
+    secureReadBeforeOpenTestHook = hook
+}
 
 export function githash(buf: Buffer) {
     let h = crypto.createHash("sha1")
@@ -287,6 +319,366 @@ export async function mkGitFsAsync(
     let onUpdate: ((isPull: boolean) => void)[] = []
 
     repoPath = repoPath.replace(/\/$/, "") + "/"
+    const repoRoot = fs.realpathSync(repoPath.slice(0, -1))
+
+    type WriteMode = "create" | "replace" | "upsert"
+
+    interface FileIdentity {
+        dev: number
+        ino: number
+    }
+
+    interface DirectorySnapshot {
+        name: string
+        directory: string
+        identities: FileIdentity[]
+    }
+
+    function invalidWritePath(message: string): Error {
+        return new Error("Invalid repository write path: " + message)
+    }
+
+    function invalidReadPath(message: string): Error {
+        return new Error("Invalid repository read path: " + message)
+    }
+
+    function directoryReadError(name: string): NodeJS.ErrnoException {
+        const error: NodeJS.ErrnoException = new Error(
+            "EISDIR: illegal operation on a directory, read: " + name
+        )
+        error.code = "EISDIR"
+        return error
+    }
+
+    function replacementTargetNotFound(name: string): Error {
+        const error: any = new Error(
+            "Invalid repository write path: replacement target does not exist: " +
+                name
+        )
+        error.statusCode = 404
+        error.code = "ENOENT"
+        return error
+    }
+
+    function normalizeWritePath(name: string, allowEmpty = false): string {
+        if (
+            typeof name != "string" ||
+            /[\\\0\r\n]/.test(name) ||
+            name.startsWith("//") ||
+            /^[a-zA-Z]:/.test(name)
+        )
+            throw invalidWritePath(name + "")
+
+        // A leading slash has historically meant "from the repository root".
+        // Strip that logical marker; never pass an absolute path to fs or git.
+        if (name[0] == "/") name = name.slice(1)
+        if (!name && allowEmpty) return ""
+
+        const parts = name.split("/")
+        if (
+            !name ||
+            parts.some(
+                part =>
+                    !part ||
+                    part == "." ||
+                    part == ".." ||
+                    /[\x00-\x1f\x7f]/.test(part)
+            )
+        )
+            throw invalidWritePath(name)
+        return parts.join("/")
+    }
+
+    function containedPath(name: string): string {
+        const target = path.resolve(repoRoot, name)
+        if (target != repoRoot && !target.startsWith(repoRoot + path.sep))
+            throw invalidWritePath(name)
+        return target
+    }
+
+    function containedReadPath(name: string): string {
+        const target = path.resolve(repoRoot, name)
+        if (target != repoRoot && !target.startsWith(repoRoot + path.sep))
+            throw invalidReadPath(name)
+
+        return target
+    }
+
+    function readDirectorySnapshot(
+        target: string,
+        name: string
+    ): DirectorySnapshot {
+        const directory = target == repoRoot ? repoRoot : path.dirname(target)
+        const relative = path.relative(repoRoot, directory)
+        if (relative == ".." || relative.startsWith(".." + path.sep))
+            throw invalidReadPath(name)
+
+        let current = repoRoot
+        const identities: FileIdentity[] = []
+        const recordDirectory = (candidate: string) => {
+            const stat = fs.lstatSync(candidate)
+            if (stat.isSymbolicLink())
+                throw invalidReadPath(
+                    "path contains a symbolic link: " + name
+                )
+            if (!stat.isDirectory()) throw invalidReadPath(name)
+            identities.push({ dev: stat.dev, ino: stat.ino })
+        }
+
+        recordDirectory(current)
+        for (const part of relative.split(path.sep).filter(part => !!part)) {
+            current = path.join(current, part)
+            recordDirectory(current)
+        }
+        return { name, directory, identities }
+    }
+
+    function verifyReadDirectorySnapshot(
+        target: string,
+        expected: DirectorySnapshot
+    ) {
+        const actual = readDirectorySnapshot(target, expected.name)
+        if (
+            actual.identities.length != expected.identities.length ||
+            actual.identities.some(
+                (identity, index) =>
+                    !sameIdentity(identity, expected.identities[index])
+            )
+        )
+            throw invalidReadPath(expected.name)
+    }
+
+    async function secureReadFileAsync(name: string): Promise<Buffer> {
+        const target = containedReadPath(name)
+        const parentSnapshot = readDirectorySnapshot(target, name)
+        const initialTarget = fs.lstatSync(target)
+        if (initialTarget.isSymbolicLink())
+            throw invalidReadPath("path contains a symbolic link: " + name)
+        if (initialTarget.isDirectory()) throw directoryReadError(name)
+        if (!initialTarget.isFile()) throw invalidReadPath(name)
+        const initialIdentity = {
+            dev: initialTarget.dev,
+            ino: initialTarget.ino,
+        }
+
+        if (secureReadBeforeOpenTestHook)
+            secureReadBeforeOpenTestHook(name)
+
+        let flags = fs.constants.O_RDONLY
+        if (fs.constants.O_NOFOLLOW) flags |= fs.constants.O_NOFOLLOW
+
+        let fd: number = null
+        try {
+            fd = fs.openSync(target, flags)
+            const openedTarget = fs.fstatSync(fd)
+            if (
+                !openedTarget.isFile() ||
+                !sameIdentity(openedTarget, initialIdentity)
+            )
+                throw invalidReadPath(name)
+
+            verifyReadDirectorySnapshot(target, parentSnapshot)
+            const currentTarget = fs.lstatSync(target)
+            if (
+                currentTarget.isSymbolicLink() ||
+                !currentTarget.isFile() ||
+                !sameIdentity(openedTarget, currentTarget)
+            )
+                throw invalidReadPath(name)
+            verifyReadDirectorySnapshot(target, parentSnapshot)
+
+            return await readFdAsync(fd)
+        } finally {
+            if (fd !== null) await closeAsync(fd)
+        }
+    }
+
+    function sameIdentity(a: FileIdentity, b: FileIdentity): boolean {
+        return a.dev == b.dev && a.ino == b.ino
+    }
+
+    function safeDirectorySnapshot(
+        name: string,
+        create: boolean
+    ): DirectorySnapshot {
+        name = normalizeWritePath(name, true)
+        let current = repoRoot
+        const identities: FileIdentity[] = []
+        const recordDirectory = (directory: string) => {
+            const stat = fs.lstatSync(directory)
+            if (stat.isSymbolicLink() || !stat.isDirectory())
+                throw invalidWritePath(name)
+            identities.push({ dev: stat.dev, ino: stat.ino })
+        }
+
+        recordDirectory(current)
+        for (const part of name ? name.split("/") : []) {
+            current = path.join(current, part)
+            let stat: fs.Stats
+            try {
+                stat = fs.lstatSync(current)
+            } catch (error) {
+                if (
+                    !create ||
+                    (error as NodeJS.ErrnoException).code != "ENOENT"
+                )
+                    throw error
+                try {
+                    fs.mkdirSync(current)
+                } catch (mkdirError) {
+                    if ((mkdirError as NodeJS.ErrnoException).code != "EEXIST")
+                        throw mkdirError
+                }
+                stat = fs.lstatSync(current)
+            }
+            if (stat.isSymbolicLink() || !stat.isDirectory())
+                throw invalidWritePath(name)
+            identities.push({ dev: stat.dev, ino: stat.ino })
+        }
+
+        const resolved = fs.realpathSync(current)
+        if (resolved != repoRoot && !resolved.startsWith(repoRoot + path.sep))
+            throw invalidWritePath(name)
+        return { name, directory: current, identities }
+    }
+
+    function ensureSafeDirectory(name: string): string {
+        return safeDirectorySnapshot(name, true).directory
+    }
+
+    function verifyDirectorySnapshot(expected: DirectorySnapshot) {
+        const actual = safeDirectorySnapshot(expected.name, false)
+        if (
+            actual.identities.length != expected.identities.length ||
+            actual.identities.some(
+                (identity, index) =>
+                    !sameIdentity(identity, expected.identities[index])
+            )
+        )
+            throw invalidWritePath(expected.name)
+    }
+
+    // Node does not expose unlinkat(), so pathname cleanup cannot be made fully
+    // atomic with the identity check. Only remove an entry while it still names
+    // the inode created by this write; otherwise leave it alone rather than risk
+    // deleting a file substituted by another process.
+    function rollbackCreatedFile(target: string, identity: FileIdentity): boolean {
+        try {
+            const current = fs.lstatSync(target)
+            if (
+                current.isSymbolicLink() ||
+                !current.isFile() ||
+                !sameIdentity(current, identity)
+            )
+                return false
+            fs.unlinkSync(target)
+            return true
+        } catch (error) {
+            return (error as NodeJS.ErrnoException).code == "ENOENT"
+        }
+    }
+
+    async function secureWriteFileAsync(
+        name: string,
+        val: Buffer,
+        mode: WriteMode
+    ): Promise<string> {
+        name = normalizeWritePath(name)
+        const spl = splitName(name)
+        const parent = spl.parent == "/" ? "" : spl.parent
+        let parentSnapshot: DirectorySnapshot
+        try {
+            parentSnapshot = safeDirectorySnapshot(parent, mode != "replace")
+        } catch (error) {
+            if (
+                mode == "replace" &&
+                (error as NodeJS.ErrnoException).code == "ENOENT"
+            )
+                throw replacementTargetNotFound(name)
+            throw error
+        }
+        const target = containedPath(name)
+
+        let exists = false
+        let targetIdentity: FileIdentity = null
+        try {
+            const stat = fs.lstatSync(target)
+            exists = true
+            if (stat.isSymbolicLink() || !stat.isFile())
+                throw invalidWritePath(name)
+            targetIdentity = { dev: stat.dev, ino: stat.ino }
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code != "ENOENT") throw error
+        }
+        if (mode == "replace" && !exists)
+            throw replacementTargetNotFound(name)
+
+        if (secureWriteBeforeOpenTestHook)
+            secureWriteBeforeOpenTestHook(name)
+
+        // Do not truncate until the descriptor and every parent directory have
+        // also been revalidated after open. O_NOFOLLOW protects the final
+        // component. If an external process wins the irreducible check/open
+        // race, roll back a newly-created inode after checking its identity.
+        let flags = fs.constants.O_WRONLY
+        if (fs.constants.O_NOFOLLOW) flags |= fs.constants.O_NOFOLLOW
+        if (mode == "create") flags |= fs.constants.O_CREAT | fs.constants.O_EXCL
+        else if (mode == "upsert") {
+            flags |= fs.constants.O_CREAT
+            if (!exists) flags |= fs.constants.O_EXCL
+        }
+
+        const createdByOpen = !exists && (mode == "create" || mode == "upsert")
+        let fd: number = null
+        let openedIdentity: FileIdentity = null
+        try {
+            // Revalidate after the last pathname-dependent work and open
+            // synchronously. This prevents in-process work from landing between
+            // the check and O_CREAT; a swapped ancestor is rejected before it
+            // can leave even an empty outside entry.
+            verifyDirectorySnapshot(parentSnapshot)
+            fd = fs.openSync(target, flags, 0o666)
+            const stat = fs.fstatSync(fd)
+            openedIdentity = { dev: stat.dev, ino: stat.ino }
+            if (!stat.isFile()) throw invalidWritePath(name)
+
+            verifyDirectorySnapshot(parentSnapshot)
+            const currentTarget = fs.lstatSync(target)
+            if (
+                currentTarget.isSymbolicLink() ||
+                !currentTarget.isFile() ||
+                !sameIdentity(stat, currentTarget) ||
+                (targetIdentity && !sameIdentity(stat, targetIdentity))
+            )
+                throw invalidWritePath(name)
+
+            verifyDirectorySnapshot(parentSnapshot)
+            await truncateFdAsync(fd, 0)
+            await writeFdAsync(fd, val)
+        } catch (error) {
+            if (fd !== null) {
+                fs.closeSync(fd)
+                fd = null
+            }
+            if (
+                createdByOpen &&
+                openedIdentity &&
+                !rollbackCreatedFile(target, openedIdentity)
+            )
+                winston.error(
+                    `Could not safely roll back created repository file ${name}`
+                )
+            if (
+                mode == "replace" &&
+                (error as NodeJS.ErrnoException).code == "ENOENT"
+            )
+                throw replacementTargetNotFound(name)
+            throw error
+        } finally {
+            if (fd !== null) await closeAsync(fd)
+        }
+        return name
+    }
 
     let iface: GitFs = {
         pokeAsync,
@@ -296,6 +688,7 @@ export async function mkGitFsAsync(
         setTextFileAsync,
         setJsonFileAsync,
         setBinFileAsync,
+        replaceBinFileAsync,
         createBinFileAsync,
         logAsync,
         onUpdate: f => onUpdate.push(f),
@@ -426,31 +819,72 @@ export async function mkGitFsAsync(
         msg: string,
         user: string
     ) {
-        let fspath = repoPath + dir + "/"
-        tools.mkdirP(fspath)
-        let ents = fs.readdirSync(fspath)
-        for (let bn of ents) {
-            let st = fs.statSync(fspath + bn)
-            if (st.size == buf.length) {
-                let buf0 = fs.readFileSync(fspath + bn)
-                if (buf0.equals(buf)) {
-                    return Promise.resolve(bn)
+        return apiLockAsync("commit", async () => {
+            dir = normalizeWritePath(dir)
+            if (
+                !/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(basename) ||
+                basename.length > 120 ||
+                !/^\.(?:jpe?g|png)$/i.test(ext)
+            )
+                throw invalidWritePath(basename + ext)
+
+            const fspath = ensureSafeDirectory(dir)
+            const ents = fs.readdirSync(fspath)
+            const requestedType = /^\.png$/i.test(ext) ? "png" : "jpeg"
+            for (const bn of ents) {
+                const existingType = /\.png$/i.test(bn)
+                    ? "png"
+                    : /\.jpe?g$/i.test(bn)
+                    ? "jpeg"
+                    : ""
+                if (existingType != requestedType) continue
+
+                const existing = path.join(fspath, bn)
+                const stat = fs.lstatSync(existing)
+                if (stat.isSymbolicLink() || !stat.isFile() || stat.size != buf.length)
+                    continue
+
+                let fd: number = null
+                try {
+                    let flags = fs.constants.O_RDONLY
+                    if (fs.constants.O_NOFOLLOW) flags |= fs.constants.O_NOFOLLOW
+                    fd = fs.openSync(existing, flags)
+                    const oldBuffer = fs.readFileSync(fd)
+                    if (oldBuffer.equals(buf)) return bn
+                } finally {
+                    if (fd !== null) fs.closeSync(fd)
                 }
             }
-        }
 
-        let fn = basename + ext
-        if (ents.indexOf(fn) >= 0) {
-            let no = 1
-            while (ents.indexOf(basename + "-" + no + ext) >= 0) no++
-            fn = basename + "-" + no + ext
-        }
+            // Treat case variants as collisions on every platform so behavior is
+            // stable on case-insensitive filesystems. O_EXCL remains the final
+            // arbiter; retry if another writer (or the filesystem) reports one.
+            const usedNames = new Set(ents.map(entry => entry.toLowerCase()))
+            let no = 0
+            while (true) {
+                const fn = basename + (no ? "-" + no : "") + ext
+                if (usedNames.has(fn.toLowerCase())) {
+                    no++
+                    continue
+                }
 
-        // write it, so we get a lock on the name
-        fs.writeFileSync(fspath + fn, buf)
-
-        // this will write the file again
-        return setBinFileAsync(dir + "/" + fn, buf, msg, user).then(() => fn)
+                try {
+                    await writeAndCommitAsync(
+                        dir + "/" + fn,
+                        buf,
+                        msg,
+                        user,
+                        "create"
+                    )
+                    return fn
+                } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code != "EEXIST")
+                        throw error
+                    usedNames.add(fn.toLowerCase())
+                    no++
+                }
+            }
+        })
     }
 
     // export
@@ -482,7 +916,7 @@ export async function mkGitFsAsync(
             }
         }
 
-        if (ref == "master") return readAsync(repoPath + name)
+        if (ref == "master") return secureReadFileAsync(name)
         return getGitObjectAsync(ref == "SHA" ? name : ref + ":" + name).then(
             obj => {
                 if (obj.type == "blob") {
@@ -732,35 +1166,54 @@ export async function mkGitFsAsync(
         msg: string,
         useremail: string
     ) {
-        name = name.replace(/^\/+/, "")
-        return apiLockAsync("commit", async () => {
-            winston.info(
-                `write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`
-            )
-            let spl = splitName(name)
-            tools.mkdirP(repoPath + spl.parent)
-            await writeAsync(repoPath + name, val)
+        return apiLockAsync("commit", () =>
+            writeAndCommitAsync(name, val, msg, useremail, "upsert")
+        )
+    }
 
-            if (justDir) return
+    // Image replacement must never silently create a new path.
+    function replaceBinFileAsync(
+        name: string,
+        val: Buffer,
+        msg: string,
+        useremail: string
+    ) {
+        return apiLockAsync("commit", () =>
+            writeAndCommitAsync(name, val, msg, useremail, "replace")
+        )
+    }
 
-            let uname = useremail.replace(/@.*/, "")
+    async function writeAndCommitAsync(
+        name: string,
+        val: Buffer,
+        msg: string,
+        useremail: string,
+        mode: WriteMode
+    ) {
+        name = normalizeWritePath(name)
+        winston.info(
+            `write file ${name} ${val.length} bytes; msg: ${msg}; author: ${useremail}`
+        )
+        await secureWriteFileAsync(name, val, mode)
 
-            await runGitAsync(["add", name])
-            await runGitAsync([
-                "-c",
-                "user.name=" + uname,
-                "-c",
-                "user.email=" + useremail,
-                "commit",
-                "-m",
-                msg,
-            ])
-            await getHeadRevAsync()
+        if (justDir) return
 
-            pushNeeded++
-            // run in background
-            maybeSyncAsync()
-        })
+        const uname = useremail.replace(/@.*/, "")
+        await runGitAsync(["--literal-pathspecs", "add", "--", name])
+        await runGitAsync([
+            "-c",
+            "user.name=" + uname,
+            "-c",
+            "user.email=" + useremail,
+            "commit",
+            "-m",
+            msg,
+        ])
+        await getHeadRevAsync()
+
+        pushNeeded++
+        // run in background
+        maybeSyncAsync()
     }
 
     function statusCleanAsync() {

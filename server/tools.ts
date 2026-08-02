@@ -237,7 +237,9 @@ export function promiseQueue() {
             if (lst.length == 0) delete awaiting[id]
             else Promise.resolve().then(() => poke(id))
         }
-        ent.run().then(
+        // Convert a synchronous callback failure into a rejected queue item.
+        // This also guarantees that the next item is released normally.
+        Promise.resolve().then(ent.run).then(
             v => {
                 shift()
                 ent.resolve(v)
