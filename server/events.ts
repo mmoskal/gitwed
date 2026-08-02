@@ -298,13 +298,16 @@ function genericUpdate(
     let trg = getUpdateTarget(curr, lang)
     for (let k of fields) {
         let limit = 200
+        let richText = k == "address"
         if (k[0] == "*") {
             limit = 4000
             k = k.slice(1)
+            richText = true
         }
         if (delta.hasOwnProperty(k)) {
             let v = delta[k] + ""
             if (v.length > limit) return k + " too long"
+            if (richText) v = expander.cleanHtmlFragment(v)
             if (v == "" && trg !== curr) delete trg[k]
             else trg[k] = v
         }
@@ -517,7 +520,19 @@ async function setMapImgAsync(
     for (let k of Object.keys(addrObj)) {
         let v = base[k]
         if (tr && tr.hasOwnProperty(k)) v = tr[k]
-        cfg.contentOverride[pref + k] = v + ""
+        const id = pref + k
+        const richText = /(?:description|program|about|address|speakerBio)$/.test(
+            k
+        )
+        cfg.contentOverride[id] = richText
+            ? expander.cleanHtmlFragment(v + "")
+            : v + ""
+        if (richText) {
+            if (!cfg.htmlContentOverride) cfg.htmlContentOverride = {}
+            if (!cfg.trustedHtmlVars) cfg.trustedHtmlVars = {}
+            cfg.htmlContentOverride[id] = true
+            cfg.trustedHtmlVars[id] = cfg.contentOverride[id]
+        }
     }
 
     let addr = gmaps.cleanAddress(addrObj.address)
@@ -585,7 +600,8 @@ export function initRoutes(app: express.Express) {
             routing.sendMsg(
                 req,
                 "Which center?",
-                "<ul>" + body.join("\n") + "</ul>"
+                "<ul>" + body.join("\n") + "</ul>",
+                true
             )
             return
         }

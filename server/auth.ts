@@ -197,7 +197,8 @@ export function initRoutes(app: express.Express) {
                     routing.sendMsg(
                         req,
                         "Token expired",
-                        `The token you used has expired. You can <a href="${again}">resend authenication email</a>.`
+                        `The token you used has expired. You can <a href="${again}">resend authenication email</a>.`,
+                        true
                     )
                 } else {
                     // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2

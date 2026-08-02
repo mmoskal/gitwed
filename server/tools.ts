@@ -502,9 +502,9 @@ export function jsonFlatten(v: any) {
 
 export function expandTemplate(templ: string, vars: any) {
     vars = jsonFlatten(vars)
-    return templ.replace(/@@([\w\.]+)@@/g, (f, v) =>
-        htmlQuote((vars[v] || "") + "")
-    )
+    return require("./html").expandHtmlTemplate(templ, vars, {
+        protectValues: true,
+    })
 }
 
 export function expandTemplateList(templ: string, objs: any[]) {

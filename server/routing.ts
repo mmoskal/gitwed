@@ -34,7 +34,8 @@ export function getVHostDir(req: express.Request) {
 export function sendTemplate(
     req: express.Request,
     cleaned: string,
-    vars: SMap<string> = {}
+    vars: SMap<string> = {},
+    trustedHtmlVars?: SMap<string>
 ) {
     gitfs.main.getTextFileAsync(cleaned, "master").then(str => {
         let cfg: expander.ExpansionConfig = {
@@ -44,6 +45,7 @@ export function sendTemplate(
             appuser: req.appuser,
             oauthuser: req.oauthuser,
             vars,
+            trustedHtmlVars,
         }
         expander
             .expandFileAsync(cfg)
@@ -64,16 +66,30 @@ export function sendTemplate(
     })
 }
 
-export function sendMsg(req: express.Request, header: string, body: string) {
-    sendTemplate(req, "/gw/msg.html", {
-        header,
-        body,
-    })
+export function sendMsg(
+    req: express.Request,
+    header: string,
+    body: string,
+    bodyIsHtml = false
+) {
+    sendTemplate(
+        req,
+        "/gw/msg.html",
+        { header, body },
+        bodyIsHtml ? { body: expander.cleanHtmlFragment(body) } : undefined
+    )
 }
 
-export function sendError(req: express.Request, header: string, body: string) {
-    sendTemplate(req, "/gw/error.html", {
-        header,
-        body,
-    })
+export function sendError(
+    req: express.Request,
+    header: string,
+    body: string,
+    bodyIsHtml = false
+) {
+    sendTemplate(
+        req,
+        "/gw/error.html",
+        { header, body },
+        bodyIsHtml ? { body: expander.cleanHtmlFragment(body) } : undefined
+    )
 }

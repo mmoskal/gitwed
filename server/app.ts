@@ -503,7 +503,7 @@ async function genericGet(req: express.Request, res: express.Response) {
             routing.sendError(
                 req,
                 "Page not found",
-                "Something went wrong. " + tools.htmlQuote(e.message)
+                "Something went wrong. " + e.message
             )
         } else {
             notFound(req)
@@ -653,7 +653,8 @@ async function genericGet(req: express.Request, res: express.Response) {
                                                 }</a></li>`
                                         )
                                         .join("") +
-                                    "</ul>"
+                                    "</ul>",
+                                    true
                                 )
                                 return
                             }
@@ -756,13 +757,14 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 }
 
-function notFound(req: express.Request, msg = "") {
+function notFound(req: express.Request, msg = "", msgIsHtml = false) {
     let res = req._response as express.Response
     res.status(404)
     routing.sendError(
         req,
         "Page not found",
-        "Whoops! We couldn't find the page your were looking for. " + msg
+        "Whoops! We couldn't find the page your were looking for. " + msg,
+        msgIsHtml
     )
 }
 

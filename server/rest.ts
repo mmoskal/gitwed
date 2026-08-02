@@ -1,5 +1,6 @@
 import tools = require("./tools")
 import * as winston from "winston"
+import htmlSafety = require("./html")
 
 export interface ServiceConfig {
     id: string
@@ -87,8 +88,9 @@ export class Service {
             this.cache[url] = c
         }
 
-        let nhtml = e.html().replace(/@@([\w\.]+)@@/g, (f, id: string) => {
-            return c.data[id] || ""
+        let nhtml = htmlSafety.expandHtmlTemplate(e.html(), c.data, {
+            protectValues: true,
+            preserveUnknown: true,
         })
 
         e.html(nhtml)

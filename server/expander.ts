@@ -6,6 +6,7 @@ import events2 = require("./events2")
 import tools = require("./tools")
 import rest = require("./rest")
 import counter = require("./counter")
+import htmlSafety = require("./html")
 import * as bluebird from "bluebird"
 import * as winston from "winston"
 
@@ -105,6 +106,12 @@ export interface ExpansionConfig {
     hasWritePerm?: boolean
     vars?: SMap<string>
     contentOverride?: SMap<string>
+    /** Content overrides that are deliberately rich text; sanitized on use. */
+    htmlContentOverride?: SMap<boolean>
+    /** Pre-sanitized markup explicitly allowed in normal element content. */
+    trustedHtmlVars?: SMap<string>
+    /** Trusted raw-text substitutions (for safely serialized inline JS). */
+    trustedRawVars?: SMap<string>
     eventInfo?: events.FullEvent | events2.FullEvent
     centerInfo?: events.Center
     eventId?: number
@@ -137,31 +144,7 @@ export function parseIncludedHtml(fileContent: string) {
 }
 
 export function cleanHtmlFragment(frag: string) {
-    frag = frag.replace(/\r/g, "")
-    frag = frag.replace(/(^\n*)|(\n*$)/g, "\n")
-    let h = cheerio.load(frag, cheerioOptions)
-
-    h("*").each((idx, ee) => {
-        let e = h(ee)
-        let attrs: SMap<string> = (ee as any).attribs
-        for (let k of Object.keys(attrs)) {
-            if (/^on/i.test(k)) {
-                delete attrs[k]
-                continue
-            }
-
-            let m = /^data-gw-orig-(.*)/.exec(k)
-            if (m) {
-                let v = attrs[k]
-                if (v) {
-                    attrs[m[1]] = v
-                    delete attrs[k]
-                }
-            }
-        }
-    })
-
-    return toHTML(h)
+    return htmlSafety.sanitizeHtmlFragment(frag)
 }
 
 export function setTranslation(cfg: ExpansionConfig, key: string, val: string) {
@@ -285,7 +268,11 @@ function expandAsync(cfg: ExpansionConfig) {
                     let ee = h(e)
                     let id = ee.attr("data-gw-id")
                     if (langMap[id]) {
-                        ee.html(langMap[id])
+                        ee.html(
+                            htmlSafety.protectTemplatePlaceholders(
+                                cleanHtmlFragment(langMap[id])
+                            )
+                        )
                     }
                 })
             }
@@ -585,8 +572,18 @@ function expandAsync(cfg: ExpansionConfig) {
         if (elt.attr("edit") != null) {
             eltId = elt.attr("edit") || eltId
             if (!eltId) error("no id on element marked with 'edit'", ctx, elt)
-            if (cfg.contentOverride && cfg.contentOverride[eltId]) {
-                elt.html(cfg.contentOverride[eltId])
+            if (
+                cfg.contentOverride &&
+                Object.prototype.hasOwnProperty.call(
+                    cfg.contentOverride,
+                    eltId
+                )
+            ) {
+                let override = cfg.contentOverride[eltId] || ""
+                override = htmlSafety.protectTemplatePlaceholders(override)
+                if (cfg.htmlContentOverride && cfg.htmlContentOverride[eltId])
+                    elt.html(cleanHtmlFragment(override))
+                else elt.text(override)
             }
             if (elt.find("p, ul, ol, h1, h2, h3, h4, h5, h6").length > 0)
                 elt.attr("data-editable", "true")
@@ -823,7 +820,16 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
         pageInfo.centerInfo = null
     }
     cfg.vars["pageInfo"] =
-        "\nvar gitwedPageInfo = " + JSON.stringify(pageInfo, null, 4) + ";\n"
+        "\nvar gitwedPageInfo = " +
+        JSON.stringify(pageInfo, null, 4)
+            .replace(/&/g, "\\u0026")
+            .replace(/</g, "\\u003c")
+            .replace(/>/g, "\\u003e")
+            .replace(/\u2028/g, "\\u2028")
+            .replace(/\u2029/g, "\\u2029") +
+        ";\n"
+    if (!cfg.trustedRawVars) cfg.trustedRawVars = {}
+    cfg.trustedRawVars["pageInfo"] = cfg.vars["pageInfo"]
     cfg.vars["gw_lang"] = cfg.lang
     cfg.langs = avlangs
 
@@ -831,9 +837,16 @@ export async function expandFileAsync(cfg: ExpansionConfig) {
 
     if (!cfg.contentOverride) cfg.contentOverride = {}
 
-    r.html = r.html.replace(
-        /@@([\w\.]+)@@/g,
-        (f: string, v: string) => cfg.vars[v] || cfg.contentOverride[v] || ""
+    const templateValues: SMap<string> = {}
+    Object.keys(cfg.contentOverride).forEach(
+        key => (templateValues[key] = cfg.contentOverride[key])
+    )
+    Object.keys(cfg.vars).forEach(key => (templateValues[key] = cfg.vars[key]))
+    r.html = htmlSafety.restoreTemplatePlaceholders(
+        htmlSafety.expandHtmlTemplate(r.html, templateValues, {
+            trustedHtml: cfg.trustedHtmlVars,
+            trustedRawText: cfg.trustedRawVars,
+        })
     )
 
     return r

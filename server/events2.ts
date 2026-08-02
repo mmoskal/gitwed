@@ -336,6 +336,9 @@ function validateEvent(ev: FullEvent) {
             return "some translations have invalid 'lang' property"
     }
     if (!ev.endDate) ev.endDate = ev.startDate
+    ev.description = expander.cleanHtmlFragment(ev.description || "")
+    if (ev.speakerBio != null)
+        ev.speakerBio = expander.cleanHtmlFragment(ev.speakerBio)
     return null
 }
 
@@ -349,7 +352,17 @@ export async function addVarsAsync(cfg: expander.ExpansionConfig) {
         let base = tools.jsonFlatten(ei)
         for (let k of Object.keys(base)) {
             let v = base[k]
-            cfg.contentOverride["ev_" + k] = v + ""
+            const id = "ev_" + k
+            const richText = /(?:description|speakerBio)$/.test(k)
+            cfg.contentOverride[id] = richText
+                ? expander.cleanHtmlFragment(v + "")
+                : v + ""
+            if (richText) {
+                if (!cfg.htmlContentOverride) cfg.htmlContentOverride = {}
+                if (!cfg.trustedHtmlVars) cfg.trustedHtmlVars = {}
+                cfg.htmlContentOverride[id] = true
+                cfg.trustedHtmlVars[id] = cfg.contentOverride[id]
+            }
         }
 
         await setMapImgAsync("ev_", ei.location, cfg)
