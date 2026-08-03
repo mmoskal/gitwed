@@ -7,11 +7,29 @@ import expander = require("./expander")
 import events = require("./events")
 import winston = require("winston")
 import * as jwt from "jwt-simple"
+import * as crypto from "crypto"
 
 // two weeks and half day - so that it tends to expire at night
 let cookieValidity = (14 * 24 + 12) * 3600
 // 10min
 let emailValidity = 10 * 60
+// This application runs as a single process. Invalidating outstanding links on
+// restart prevents an already-consumed link from becoming usable again when
+// the in-memory consumption ledger is necessarily lost.
+const magicLinkProcessEpoch = crypto.randomBytes(32).toString("hex")
+
+const usedMagicLinks = new Map<string, number>()
+
+function consumeMagicLink(token: string, now: number, expiresAt: number) {
+    for (const [key, expiry] of usedMagicLinks) {
+        if (expiry <= now) usedMagicLinks.delete(key)
+    }
+
+    const key = crypto.createHash("sha256").update(token).digest("hex")
+    if (usedMagicLinks.has(key)) return false
+    usedMagicLinks.set(key, expiresAt)
+    return true
+}
 
 interface User {
     email: string
@@ -147,6 +165,8 @@ export function initRoutes(app: express.Express) {
                     sub: email,
                     iat: Math.floor(Date.now() / 1000),
                     rdr: redir,
+                    jti: crypto.randomBytes(16).toString("hex"),
+                    epc: magicLinkProcessEpoch,
                 },
                 gitfs.config.jwtSecret
             )
@@ -188,8 +208,23 @@ export function initRoutes(app: express.Express) {
         let tok: string = tools.getQuery(req, "tok")
         try {
             let dwauth = jwt.decode(tok, gitfs.config.jwtSecret)
-            if (dwauth.iss == "GITwed-email") {
-                if (Date.now() / 1000 - dwauth.iat > emailValidity) {
+            if (
+                dwauth.iss == "GITwed-email" &&
+                dwauth.epc == magicLinkProcessEpoch &&
+                typeof dwauth.jti == "string" &&
+                /^[0-9a-f]{32}$/.test(dwauth.jti)
+            ) {
+                const now = Date.now() / 1000
+                const issuedAt = dwauth.iat
+                if (
+                    !Number.isSafeInteger(issuedAt) ||
+                    issuedAt > now ||
+                    !Number.isSafeInteger(issuedAt + emailValidity)
+                )
+                    throw new Error("invalid magic-link timestamp")
+                const expiresAt = issuedAt + emailValidity
+
+                if (now >= expiresAt) {
                     let again =
                         "/gw/login?email=" +
                         encodeURIComponent(dwauth.sub) +
@@ -202,6 +237,11 @@ export function initRoutes(app: express.Express) {
                         true
                     )
                 } else {
+                    if (
+                        !consumeMagicLink(tok, now, expiresAt)
+                    )
+                        throw new Error("magic link already used")
+
                     // sub/iat fields from https://tools.ietf.org/html/rfc7519#section-4.1.2
                     let jwtToken = jwt.encode(
                         {
