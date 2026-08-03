@@ -127,6 +127,7 @@ export function initRoutes(app: express.Express) {
                 "Invalid email",
                 "The email address you have supplied doesn't look valid."
             )
+            return
         }
 
         lookupUserAsync(email).then(u => {
