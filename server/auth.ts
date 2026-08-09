@@ -42,7 +42,18 @@ interface UserConfig {
 }
 
 function noSecurity() {
-    return !gitfs.config.jwtSecret && gitfs.config.repoPath
+    const cfg = gitfs.config
+    const iface = (cfg.networkInterface || "localhost").toLowerCase()
+    const loopback =
+        iface == "localhost" || iface == "127.0.0.1" || iface == "::1"
+    return (
+        !cfg.jwtSecret &&
+        !!cfg.repoPath &&
+        !!cfg.justDir &&
+        !cfg.production &&
+        !cfg.proxy &&
+        loopback
+    )
 }
 
 export function initCheck(app: express.Express) {

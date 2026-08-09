@@ -46,6 +46,36 @@ describe("login route validation", () => {
         }
     }
 
+    function checkedUser(config: Partial<gitfs.Config>) {
+        ;(gitfs as any).config = config
+        let check: Function
+        auth.initCheck({
+            use: jest.fn((handler: Function) => {
+                check = handler
+            }),
+        } as any)
+        const request: any = { cookies: {} }
+        check(request, {}, jest.fn())
+        return request.appuser
+    }
+
+    it("only disables authentication for local directory mode", () => {
+        const local = {
+            jwtSecret: "",
+            repoPath: "/repo",
+            justDir: true,
+            networkInterface: "127.0.0.1",
+        }
+
+        expect(checkedUser(local)).toBe("admin")
+        expect(checkedUser({ ...local, justDir: false })).toBeUndefined()
+        expect(checkedUser({ ...local, production: true })).toBeUndefined()
+        expect(checkedUser({ ...local, proxy: true })).toBeUndefined()
+        expect(
+            checkedUser({ ...local, networkInterface: "0.0.0.0" })
+        ).toBeUndefined()
+    })
+
     async function issueMagicLink(
         routes: { [index: string]: Function },
         sendMail: jest.SpyInstance,
