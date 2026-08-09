@@ -766,93 +766,9 @@ namespace gw {
             })
         }
 
-        const blockTags: SMap<string> = {
-            p: "p",
-            h1: "h1",
-            h2: "h2",
-            h3: "h3",
-            h4: "h4",
-            h5: "h5",
-            h6: "h6",
-            blockquote: "blockquote",
-        }
-
-        const inlineTags: SMap<string> = {
-            strong: "b",
-            em: "i",
-            b: "b",
-            i: "i",
-        }
-
         function pasteHTML(element: any, html: string, text: string) {
             let isBlock = false
             let cleaned = ""
-
-            function addInline(s: string) {
-                if (!s) return
-                cleaned += s
-            }
-
-            function append(ee: Element) {
-                if (ee.nodeType != 1) {
-                    addInline(ee.textContent)
-                    return
-                }
-
-                let tag = ee.tagName.toLowerCase()
-
-                if (tag == "meta") return
-
-                if (tag == "br") {
-                    cleaned += "<br/>\n"
-                    return
-                }
-
-                if (blockTags.hasOwnProperty(tag)) {
-                    tag = blockTags[tag]
-                    if (tag == "p") {
-                        let st = ee.getAttribute("style")
-                        if (/font-weight:\s*(bold|900|800|700)/.test(st))
-                            tag = "h3"
-                    }
-                    cleaned += `<${tag}>`
-                    isBlock = true
-                } else if (tag == "a") {
-                    addInline(`<a href="${ee.getAttribute("href")}">`)
-                } else if (inlineTags.hasOwnProperty(tag)) {
-                    tag = inlineTags[tag]
-                    addInline(`<${tag}>`)
-                } else if (
-                    tag == "div" &&
-                    /^\s*<div [^>]*>\s*<img [^>]*>\s*<\/div>\s*$/.test(
-                        ee.innerHTML
-                    )
-                ) {
-                    addInline('<p class="text-center">* * *</p>\n')
-                    return
-                } else {
-                    tag = ""
-                }
-
-                if (!tag) {
-                    // style parsing
-                    let st = ee.getAttribute("style")
-                    if (st) {
-                        if (/font-style:\s*(oblique|italic)/.test(st)) tag = "i"
-                        if (/font-weight:\s*(bold|900|800|700)/.test(st))
-                            tag = "b"
-                        if (/vertical-align:\s*super/.test(st)) tag = "sup"
-                        if (tag) addInline(`<${tag}>`)
-                    }
-                }
-
-                for (let i = 0; i < ee.childNodes.length; ++i)
-                    append(ee.childNodes[i] as Element)
-
-                if (tag) {
-                    cleaned += `</${tag}>`
-                }
-            }
 
             let wrap0 = document.createElement("div")
             // remove word-breaks
@@ -863,19 +779,10 @@ namespace gw {
                 cleaned = html
                 isBlock = true
             } else {
-                append(wrap0)
+                let result = cleanPastedContent(wrap0)
+                cleaned = result.html
+                isBlock = result.isBlock
             }
-            cleaned = cleaned.replace(/-\n/g, "")
-            cleaned = cleaned.replace(/\n/g, " ")
-            cleaned = cleaned.replace(/\u00A0/g, " ")
-            cleaned = cleaned.replace(/<\/b>(\s*)<b>/g, (f, x) => x)
-            cleaned = cleaned.replace(/<b>(\s*)<\/b>/g, (f, x) => x)
-            cleaned = cleaned.replace(/<\/i>(\s*)<i>/g, (f, x) => x)
-            cleaned = cleaned.replace(/<p>\s*<\/p>/g, "")
-            cleaned = cleaned.replace(
-                /<p><b>([^<>]+)<\/b><\/p>/g,
-                (f, x) => "<h3>" + x + "</h3>"
-            )
             console.log(cleaned)
             let wrap1 = document.createElement("div")
             wrap1.innerHTML = cleaned
@@ -920,10 +827,12 @@ namespace gw {
             }
 
             if (lastItem) {
-                lastItem.focus()
-                if (lastItem.content) {
-                    let lineLength = lastItem.content.length()
-                    lastItem.selection(
+                let focusItem = lastFocusablePasteElement(lastItem)
+                if (!focusItem) return
+                focusItem.focus()
+                if (focusItem.content) {
+                    let lineLength = focusItem.content.length()
+                    focusItem.selection(
                         new ContentSelect.Range(lineLength, lineLength)
                     )
                 }
