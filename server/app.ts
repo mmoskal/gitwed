@@ -36,7 +36,7 @@ const startTime = Date.now()
 let lastUse = startTime
 const runningUnderJest = !!process.env.JEST_WORKER_ID
 
-const app = express()
+export const app = express()
 const bodyParser = require("body-parser")
 const pageCache = new tools.HtmlCache()
 
@@ -122,12 +122,6 @@ oauth.earlyInit(app)
 auth.initRoutes(app)
 epub.init(app)
 acme.init(app)
-
-app.get("/api/logs", (req, res) => {
-    if (!req.appuser) tools.throwError(402)
-    res.contentType("text/plain")
-    res.send(logs.getLogs())
-})
 
 function sanitizePath(p: string) {
     p = p + ""
@@ -439,6 +433,8 @@ function needsOAuth(cfg: expander.PageConfig) {
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
+    if (unsafeContentPath(req.path)) return notFound(req, "Invalid path.")
+
     let cleaned = req.path.replace(/\/index(\.html?)?$/, "/")
     if (cleaned != req.path) {
         return res.redirect(cleaned + req.url.slice(req.path.length + 1))
@@ -453,7 +449,13 @@ async function genericGet(req: express.Request, res: express.Response) {
         cleaned = routing.getVHostDir(req) + cleaned
     }
 
-    cleaned = cleaned.slice(1)
+    // Vhost roots are configured with a leading slash and request paths also
+    // begin with one. Strip the whole root marker so an empty-root vhost (or a
+    // repeated-slash request) cannot leave a leading slash that bypasses the
+    // repository-private path checks below.
+    cleaned = normalizeRepositoryContentPath(cleaned)
+    if (unsafeRepositoryContentPath(cleaned))
+        return notFound(req, "Invalid path.")
 
     if (cleaned.endsWith("/edit")) {
         let redirpath = "/" + cleaned.slice(0, cleaned.length - 5)
@@ -477,7 +479,8 @@ async function genericGet(req: express.Request, res: express.Response) {
         cleaned = cleaned.slice(41)
     }
 
-    if (/^(private|logs\/)/.test(cleaned)) return notFound(req, "Private.")
+    if (isRestrictedRepositoryContentPath(cleaned))
+        return notFound(req, "Private.")
 
     cleaned = cleaned.replace(/\.html?$/i, "")
 
@@ -755,6 +758,44 @@ async function genericGet(req: express.Request, res: express.Response) {
     } catch (err) {
         errHandler(err)
     }
+}
+
+export function unsafeContentPath(pathname: unknown) {
+    if (
+        typeof pathname != "string" ||
+        /^\/\//.test(pathname) ||
+        /[\\\0\r\n]/.test(pathname)
+    )
+        return true
+
+    let decoded: string
+    try {
+        decoded = decodeURIComponent(pathname)
+    } catch (_error) {
+        return true
+    }
+    if (/^\/\//.test(decoded) || /[\\\0\r\n]/.test(decoded)) return true
+    return decoded.split("/").some(part => part == "." || part == "..")
+}
+
+export function normalizeRepositoryContentPath(pathname: string) {
+    return pathname.replace(/^\/+/, "")
+}
+
+export function unsafeRepositoryContentPath(pathname: unknown) {
+    if (typeof pathname != "string") return true
+    return unsafeContentPath(
+        "/" + normalizeRepositoryContentPath(pathname)
+    )
+}
+
+export function isRestrictedRepositoryContentPath(pathname: string) {
+    // Preserve the historical private* namespace policy. Match log storage
+    // case-insensitively because the deployment filesystem may do so even when
+    // the URL and this process compare strings case-sensitively.
+    return /^(?:private|logs(?:\/|$))/i.test(
+        normalizeRepositoryContentPath(pathname)
+    )
 }
 
 function notFound(req: express.Request, msg = "", msgIsHtml = false) {

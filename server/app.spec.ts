@@ -1,7 +1,16 @@
 import sharp = require("sharp")
 import * as expander from "./expander"
 import * as gitfs from "./gitfs"
-import { onReplaceImage, onSendEmail, onUploadImage } from "./app"
+import {
+    app,
+    onReplaceImage,
+    onSendEmail,
+    onUploadImage,
+    isRestrictedRepositoryContentPath,
+    normalizeRepositoryContentPath,
+    unsafeContentPath,
+    unsafeRepositoryContentPath,
+} from "./app"
 import {
     configFixture,
     requestFixture,
@@ -22,6 +31,72 @@ jest.mock("mailgun.js", () => {
 })
 
 describe("API", () => {
+    describe("log endpoint removal", () => {
+        it("does not register /api/logs", () => {
+            const routes = (app as any)._router.stack
+                .map((layer: any) => layer.route && layer.route.path)
+                .filter((route: any) => !!route)
+            expect(routes).not.toContain("/api/logs")
+        })
+
+        it.each([
+            "/sample/../logs/info.log",
+            "/sample/./logs/info.log",
+            "/sample/%2e%2e/logs/debug.log",
+            "/sample/%2E/logs/warn.log",
+            "/sample/%5clogs/info.log",
+            "/sample/\\logs/info.log",
+            "//logs/info.log",
+            "/%2f/logs/info.log",
+            "/sample/%",
+        ])("rejects an unsafe catch-all path: %s", pathname => {
+            expect(unsafeContentPath(pathname)).toBe(true)
+        })
+
+        it.each([
+            "/sample/logs-and-metrics.html",
+            "/sample/v1.2/page.html",
+            "/.well-known/acme-challenge/token",
+        ])("keeps an ordinary dotted path valid: %s", pathname => {
+            expect(unsafeContentPath(pathname)).toBe(false)
+        })
+
+        it("denies logs after empty-root vhost and repeated-slash normalization", () => {
+            const emptyRootVhostPath = "/" + "/logs/info.log"
+            expect(normalizeRepositoryContentPath(emptyRootVhostPath)).toBe(
+                "logs/info.log"
+            )
+            expect(
+                isRestrictedRepositoryContentPath(emptyRootVhostPath)
+            ).toBe(true)
+            expect(
+                isRestrictedRepositoryContentPath("logs-and-metrics.html")
+            ).toBe(false)
+        })
+
+        it.each([
+            "logs/info.log",
+            "LOGS/info.log",
+            "private.html",
+            "private-backup/page.html",
+        ])("denies a protected repository path: %s", pathname => {
+            expect(isRestrictedRepositoryContentPath(pathname)).toBe(true)
+        })
+
+        it.each(["./logs/info.log", "site/../logs/info.log"])(
+            "rejects a dot-segment vhost result: %s",
+            pathname => {
+                expect(unsafeRepositoryContentPath(pathname)).toBe(true)
+            }
+        )
+
+        it("allows an ordinary vhost repository path", () => {
+            expect(
+                unsafeRepositoryContentPath("site/v1.2/page.html")
+            ).toBe(false)
+        })
+    })
+
     describe("image upload routes", () => {
         function routeResponse() {
             const response: any = {
