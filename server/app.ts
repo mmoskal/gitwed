@@ -462,6 +462,27 @@ function needsOAuth(cfg: expander.PageConfig) {
     return cfg.oauth && !!gitfs.config.oauth
 }
 
+export function isPageCreationRequest(
+    req: Pick<express.Request, "method" | "body">
+) {
+    return (
+        req.method.toUpperCase() == "POST" &&
+        !!req.body &&
+        req.body["create"] === "true"
+    )
+}
+
+function escapeHtml(value: string) {
+    const entities: SMap<string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    }
+    return (value + "").replace(/[&<>"']/g, ch => entities[ch])
+}
+
 async function genericGet(req: express.Request, res: express.Response) {
     if (!tools.reqSetup(req)) return
 
@@ -673,28 +694,37 @@ async function genericGet(req: express.Request, res: express.Response) {
                                 return
                             }
 
-                            if (req.query["create"] !== "true") {
-                                notFound(
-                                    req,
+                            if (!isPageCreationRequest(req)) {
+                                const body =
+                                    "Whoops! We couldn't find the page your were looking for. " +
                                     "<ul>" +
                                     templates
                                         .map(
                                             t =>
-                                                `<li><a href="${req.path
-                                                }?create=true&template=${t.filename.replace(
-                                                    ".html",
-                                                    ""
-                                                )}">Create ${t.name
-                                                }</a></li>`
+                                                `<li><form method="post">` +
+                                                `<input type="hidden" name="create" value="true">` +
+                                                `<button type="submit" name="template" value="${escapeHtml(
+                                                    t.filename.replace(
+                                                        ".html",
+                                                        ""
+                                                    )
+                                                )}">Create ${escapeHtml(
+                                                    t.name
+                                                )}</button></form></li>`
                                         )
                                         .join("") +
-                                    "</ul>",
-                                    true
+                                    "</ul>"
+                                res.status(404)
+                                routing.sendTemplate(
+                                    req,
+                                    "/gw/error.html",
+                                    { header: "Page not found", body },
+                                    { body }
                                 )
                                 return
                             }
                             const templateFilename =
-                                req.query["template"] + ".html"
+                                req.body["template"] + ".html"
                             if (
                                 !/^[a-zA-Z0-9_-]+.html$/.test(
                                     templateFilename
@@ -792,6 +822,11 @@ async function genericGet(req: express.Request, res: express.Response) {
     }
 }
 
+function genericPost(req: express.Request, res: express.Response) {
+    if (!isPageCreationRequest(req)) return notFound(req)
+    return genericGet(req, res)
+}
+
 export function unsafeContentPath(pathname: unknown) {
     if (
         typeof pathname != "string" ||
@@ -842,6 +877,7 @@ function notFound(req: express.Request, msg = "", msgIsHtml = false) {
 }
 
 function setupFinalRoutes() {
+    app.post(/.*/, genericPost)
     app.get(/.*/, genericGet)
 
     app.use((req, res) => notFound(req))

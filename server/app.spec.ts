@@ -11,6 +11,7 @@ import {
     onUploadImage,
     configureProxyTrust,
     requireSameOriginForMutation,
+    isPageCreationRequest,
     isRestrictedRepositoryContentPath,
     normalizeRepositoryContentPath,
     unsafeContentPath,
@@ -88,6 +89,24 @@ describe("API", () => {
                     "https"
                 ).next
             ).toHaveBeenCalled()
+        })
+
+        it("only creates missing pages from a POST body", () => {
+            expect(
+                isPageCreationRequest({
+                    method: "GET",
+                    body: { create: "true" },
+                } as any)
+            ).toBe(false)
+            expect(
+                isPageCreationRequest({
+                    method: "POST",
+                    body: { create: "true" },
+                } as any)
+            ).toBe(true)
+            expect(
+                isPageCreationRequest({ method: "POST" } as any)
+            ).toBe(false)
         })
     })
 
