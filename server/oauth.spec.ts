@@ -895,6 +895,11 @@ describe("OAuth state lifecycle", () => {
             )
         )
         expect(final.response.cookie).toHaveBeenCalledTimes(1)
+        expect(final.response.cookie).toHaveBeenCalledWith(
+            "GWOAUTH",
+            expect.any(String),
+            expect.objectContaining({ sameSite: "lax" })
+        )
         expect(final.response.redirect).toHaveBeenCalledWith(
             "https://tenant.example.test/after-login"
         )

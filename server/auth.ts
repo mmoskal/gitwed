@@ -278,6 +278,7 @@ export function initRoutes(app: express.Express) {
 
                     res.cookie("GWAUTH", jwtToken, {
                         httpOnly: true,
+                        sameSite: "lax",
                         // assume proxy runs HTTPS
                         secure: req.secure || gitfs.config.proxy,
                         maxAge: cookieValidity * 1000,

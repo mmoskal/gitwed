@@ -184,6 +184,11 @@ describe("login route validation", () => {
         )
 
         expect(firstResponse.cookie).toHaveBeenCalledTimes(1)
+        expect(firstResponse.cookie).toHaveBeenCalledWith(
+            "GWAUTH",
+            expect.any(String),
+            expect.objectContaining({ sameSite: "lax" })
+        )
         expect(firstResponse.redirect).toHaveBeenCalledWith("/private")
         expect(sendError).not.toHaveBeenCalled()
 

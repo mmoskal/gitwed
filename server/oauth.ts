@@ -865,6 +865,7 @@ export function init(app: express.Application) {
 
             res.cookie(cookieName, jwtToken, {
                 httpOnly: true,
+                sameSite: "lax",
                 secure: !!gitfs.config.production,
                 maxAge: cookieValidity * 1000,
             })
