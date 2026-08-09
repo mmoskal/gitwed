@@ -462,6 +462,26 @@ function needsOAuth(cfg: expander.PageConfig) {
     return cfg.oauth && !!gitfs.config.oauth
 }
 
+export function shouldShowOAuthNotConfigured(
+    cfg: expander.PageConfig,
+    appuser?: string,
+    oauthConfigured = !!gitfs.config.oauth
+) {
+    return !!cfg.oauth && !oauthConfigured && !appuser
+}
+
+function showOAuthNotConfigured(
+    req: express.Request,
+    res: express.Response
+) {
+    res.status(503)
+    routing.sendError(
+        req,
+        "OAuth not configured",
+        "This site requires OAuth, but OAuth is not configured."
+    )
+}
+
 export function isPageCreationRequest(
     req: Pick<express.Request, "method" | "body">
 ) {
@@ -585,7 +605,9 @@ async function genericGet(req: express.Request, res: express.Response) {
             .then(async buf => {
                 if (!buf) return Promise.resolve()
                 let cfg = await expander.getPageConfigAsync(cleaned)
-                if (
+                if (shouldShowOAuthNotConfigured(cfg, req.appuser)) {
+                    showOAuthNotConfigured(req, res)
+                } else if (
                     cfg.private &&
                     !(await auth.hasWritePermAsync(req.appuser, cfg.users))
                 ) {
@@ -786,6 +808,12 @@ async function genericGet(req: express.Request, res: express.Response) {
         }
 
         let page = await expander.expandFileAsync(cfg)
+
+        if (
+            shouldShowOAuthNotConfigured(cfg.pageConfig, req.appuser)
+        ) {
+            return showOAuthNotConfigured(req, res)
+        }
 
         if (cfg.pageConfig.private && !cfg.hasWritePerm && !hasRoPerm) {
             return res.redirect(

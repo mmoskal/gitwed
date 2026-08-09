@@ -12,6 +12,7 @@ import {
     configureProxyTrust,
     requireSameOriginForMutation,
     isPageCreationRequest,
+    shouldShowOAuthNotConfigured,
     isRestrictedRepositoryContentPath,
     normalizeRepositoryContentPath,
     unsafeContentPath,
@@ -106,6 +107,30 @@ describe("API", () => {
             ).toBe(true)
             expect(
                 isPageCreationRequest({ method: "POST" } as any)
+            ).toBe(false)
+        })
+
+        it("reports missing OAuth only to anonymous visitors", () => {
+            expect(
+                shouldShowOAuthNotConfigured(
+                    { oauth: true },
+                    undefined,
+                    false
+                )
+            ).toBe(true)
+            expect(
+                shouldShowOAuthNotConfigured(
+                    { oauth: true },
+                    "editor@example.test",
+                    false
+                )
+            ).toBe(false)
+            expect(
+                shouldShowOAuthNotConfigured(
+                    { oauth: true },
+                    undefined,
+                    true
+                )
             ).toBe(false)
         })
     })
