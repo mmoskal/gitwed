@@ -55,6 +55,31 @@ export function configureProxyTrust(
     application.set("trust proxy", cfg.proxy ? 1 : false)
 }
 
+export function requireSameOriginForMutation(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) {
+    if (/^(GET|HEAD|OPTIONS)$/i.test(req.method)) return next()
+    const origin = req.header("origin")
+    if (!origin) return next()
+    const host =
+        (gitfs.config.proxy && req.header("x-forwarded-host")) ||
+        req.header("host")
+    const forwardedProtocol = req.header("x-forwarded-protocol")
+    const protocol =
+        gitfs.config.proxy && /^(https?)$/.test(forwardedProtocol || "")
+            ? forwardedProtocol
+            : req.protocol
+    try {
+        const expected = new url.URL(`${protocol}://${host}`).origin
+        if (new url.URL(origin).origin == expected) return next()
+    } catch (error) {}
+    return res.status(403).end()
+}
+
+app.use(requireSameOriginForMutation)
+
 app.use((req, res, next) => {
     winston.debug(req.method + " " + req.header("host") +
         req.url + " " + req.header("user-agent"))

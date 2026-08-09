@@ -10,6 +10,7 @@ import {
     onSendEmail,
     onUploadImage,
     configureProxyTrust,
+    requireSameOriginForMutation,
     isRestrictedRepositoryContentPath,
     normalizeRepositoryContentPath,
     unsafeContentPath,
@@ -35,6 +36,61 @@ jest.mock("mailgun.js", () => {
 })
 
 describe("API", () => {
+    describe("mutation origin checks", () => {
+        const originalConfig = gitfs.config
+
+        afterEach(() => {
+            ;(gitfs as any).config = originalConfig
+        })
+
+        function check(
+            origin?: string,
+            forwardedHost?: string,
+            protocol = "https",
+            forwardedProtocol?: string
+        ) {
+            ;(gitfs as any).config = { proxy: !!forwardedHost }
+            const request = {
+                method: "POST",
+                protocol,
+                header: jest.fn((name: string) => {
+                    if (name == "origin") return origin
+                    if (name == "host") return "internal.example.test"
+                    if (name == "x-forwarded-host") return forwardedHost
+                    if (name == "x-forwarded-protocol")
+                        return forwardedProtocol
+                    return undefined
+                }),
+            } as any
+            const response = {
+                status: jest.fn().mockReturnThis(),
+                end: jest.fn(),
+            } as any
+            const next = jest.fn()
+            requireSameOriginForMutation(request, response, next)
+            return { response, next }
+        }
+
+        it("rejects a sibling-origin form post", () => {
+            const result = check("https://attacker.example.test")
+            expect(result.response.status).toHaveBeenCalledWith(403)
+            expect(result.next).not.toHaveBeenCalled()
+        })
+
+        it("allows matching and non-browser mutation requests", () => {
+            expect(check("https://internal.example.test").next).toHaveBeenCalled()
+            expect(check().next).toHaveBeenCalled()
+            expect(
+                check(
+                    "https://public.example.test",
+                    "public.example.test",
+                    "http",
+                    "https"
+                ).next
+            ).toHaveBeenCalled()
+        })
+    })
+
     describe("proxy trust for IP rate limiting", () => {
         function startLimitedApp(proxy: boolean) {
             const testApp = express()
