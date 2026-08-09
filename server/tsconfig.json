@@ -5,6 +5,10 @@
         "noImplicitReturns": true,
         "outDir": "../built",
         "module": "commonjs",
+        "baseUrl": ".",
+        "paths": {
+            "sharp": ["../node_modules/sharp/lib/index"]
+        },
         "rootDir": ".",
         "newLine": "LF",
         "sourceMap": false,

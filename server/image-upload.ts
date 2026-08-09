@@ -156,6 +156,22 @@ function decodeBase64(value: unknown): Buffer {
     return buffer
 }
 
+function detectedExtension(buffer: Buffer): ".jpg" | ".png" | null {
+    if (
+        buffer.length >= 8 &&
+        buffer.slice(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))
+    )
+        return ".png"
+    if (
+        buffer.length >= 3 &&
+        buffer[0] == 0xff &&
+        buffer[1] == 0xd8 &&
+        buffer[2] == 0xff
+    )
+        return ".jpg"
+    return null
+}
+
 export async function validateImageAsync(
     full: unknown,
     expected: unknown,
@@ -165,6 +181,11 @@ export async function validateImageAsync(
     const expectedExt = expectedIsFilename
         ? imageExtension(expected as string)
         : claimedExtension(expected)
+    const detectedExt = detectedExtension(buffer)
+    if (!detectedExt)
+        throw requestError(415, "Only JPEG and PNG images are supported")
+    if (detectedExt != expectedExt)
+        throw requestError(415, "Image content does not match its extension")
 
     let format: string
     try {

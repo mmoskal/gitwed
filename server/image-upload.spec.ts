@@ -51,6 +51,19 @@ describe("image upload validation", () => {
         ).rejects.toMatchObject({ statusCode: 415 })
     })
 
+    it("rejects unsupported formats before image decoding", async () => {
+        const gif = Buffer.from(
+            "R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",
+            "base64"
+        )
+        await expect(
+            validateImageAsync(gif.toString("base64"), "png")
+        ).rejects.toMatchObject({
+            statusCode: 415,
+            message: "Only JPEG and PNG images are supported",
+        })
+    })
+
     it("derives normal upload and replacement paths", () => {
         expect(imageDirectoryForPage("/site/article.html")).toBe("site/img")
         expect(imageDirectoryForPage("/site/")).toBe("site/img")
