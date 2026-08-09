@@ -835,8 +835,10 @@ function setupFinalRoutes() {
 
 if (!runningUnderJest) {
     let cfg: gitfs.Config = {} as any
-    if (fs.existsSync("config.json"))
+    if (fs.existsSync("config.json")) {
+        fs.chmodSync("config.json", 0o600)
         cfg = JSON.parse(fs.readFileSync("config.json", "utf8"))
+    }
     rest.init(cfg.services || [])
     cfg.justDir = true
     let args = process.argv.slice(2)

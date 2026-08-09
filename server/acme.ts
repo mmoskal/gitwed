@@ -46,6 +46,13 @@ const letsEncryptDirectoryUrl =
 const preferredProfile = "tlsserver"
 const emergencyRenewBeforeExpiry = 7 * 24 * 3600 * 1000
 
+function writeSavedCert(savedCert: SavedCert) {
+    fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4), {
+        mode: 0o600,
+    })
+    fs.chmodSync(certPath, 0o600)
+}
+
 export async function setupCertsAndListen(
     app: express.Express,
     cfg: gitfs.Config
@@ -69,6 +76,7 @@ export async function setupCertsAndListen(
     let savedCert: SavedCert
     let needsRenew = true
     try {
+        fs.chmodSync(certPath, 0o600)
         savedCert = JSON.parse(fs.readFileSync(certPath, "utf8"))
         needsRenew = false
     } catch (e) {}
@@ -114,7 +122,7 @@ export async function setupCertsAndListen(
                 // don't try to renew for another 24h
                 savedCert.renewTime = Date.now() + 24 * 3600 * 1000
                 savedCert.domains = domains
-                fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4))
+                writeSavedCert(savedCert)
             }
         }
     } else {
@@ -205,7 +213,7 @@ async function renewAsync(
         )
     }
 
-    fs.writeFileSync(certPath, JSON.stringify(certObj, null, 4))
+    writeSavedCert(certObj)
 }
 
 async function createOrderWithFallbackAsync(client: any, payload: any) {
@@ -321,7 +329,7 @@ async function updateRenewTimeFromAriAsync(savedCert: SavedCert) {
             end: window.end,
         }
         savedCert.renewTime = savedCert.ariRenewTime
-        fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4))
+        writeSavedCert(savedCert)
         winston.info(
             "ACME ARI renewal time: " +
                 new Date(savedCert.renewTime).toISOString()
