@@ -44,8 +44,15 @@ const fileLocks = tools.promiseQueue()
 
 let ownSSL = false
 
-if (gitfs.config && gitfs.config.proxy) {
-    app.enable("trust proxy") // Rate limiter - only if you're behind a reverse proxy (Heroku, Bluemix, AWS ELB, Nginx, etc)
+export function configureProxyTrust(
+    application: express.Application,
+    cfg: Pick<gitfs.Config, "proxy">
+) {
+    // Proxy mode means exactly one reverse-proxy hop. Trusting an arbitrary
+    // chain would let clients prepend X-Forwarded-For values and evade IP
+    // limiters; leaving the default disabled collapses every proxied request
+    // onto the proxy address.
+    application.set("trust proxy", cfg.proxy ? 1 : false)
 }
 
 app.use((req, res, next) => {
@@ -873,6 +880,8 @@ if (!runningUnderJest) {
     }
 
     if (!cfg.vhosts) cfg.vhosts = {}
+
+    configureProxyTrust(app, cfg)
 
     if (cfg.justDir) {
         winston.info(`using local file modifications`)

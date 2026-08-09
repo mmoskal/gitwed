@@ -1,4 +1,7 @@
 import sharp = require("sharp")
+import express = require("express")
+import http = require("http")
+import RateLimit = require("express-rate-limit")
 import * as expander from "./expander"
 import * as gitfs from "./gitfs"
 import {
@@ -6,6 +9,7 @@ import {
     onReplaceImage,
     onSendEmail,
     onUploadImage,
+    configureProxyTrust,
     isRestrictedRepositoryContentPath,
     normalizeRepositoryContentPath,
     unsafeContentPath,
@@ -31,6 +35,92 @@ jest.mock("mailgun.js", () => {
 })
 
 describe("API", () => {
+    describe("proxy trust for IP rate limiting", () => {
+        function startLimitedApp(proxy: boolean) {
+            const testApp = express()
+            configureProxyTrust(testApp, { proxy })
+            testApp.get(
+                "/limited",
+                RateLimit({ max: 1, headers: false }),
+                (req, res) => res.status(200).end(req.ip)
+            )
+            return new Promise<http.Server>((resolve, reject) => {
+                const server = testApp.listen(0, "127.0.0.1", () =>
+                    resolve(server)
+                )
+                server.once("error", reject)
+            })
+        }
+
+        function limitedRequest(server: http.Server, forwardedFor: string) {
+            const address = server.address() as any
+            return new Promise<{ status: number; body: string }>(
+                (resolve, reject) => {
+                    const request = http.request(
+                        {
+                            host: "127.0.0.1",
+                            port: address.port,
+                            path: "/limited",
+                            headers: { "x-forwarded-for": forwardedFor },
+                        },
+                        response => {
+                            const chunks: Buffer[] = []
+                            response.on("data", chunk => chunks.push(chunk))
+                            response.on("end", () =>
+                                resolve({
+                                    status: response.statusCode,
+                                    body: Buffer.concat(chunks).toString("utf8"),
+                                })
+                            )
+                        }
+                    )
+                    request.once("error", reject)
+                    request.end()
+                }
+            )
+        }
+
+        it("trusts exactly one configured proxy hop for limiter keys", async () => {
+            const server = await startLimitedApp(true)
+            try {
+                const first = await limitedRequest(server, "198.51.100.10")
+                const prependedSpoof = await limitedRequest(
+                    server,
+                    "192.0.2.99, 198.51.100.10"
+                )
+                const secondClient = await limitedRequest(
+                    server,
+                    "203.0.113.20"
+                )
+
+                expect(first).toEqual({
+                    status: 200,
+                    body: "198.51.100.10",
+                })
+                expect(prependedSpoof.status).toBe(429)
+                expect(secondClient).toEqual({
+                    status: 200,
+                    body: "203.0.113.20",
+                })
+            } finally {
+                await new Promise(resolve => server.close(resolve))
+            }
+        })
+
+        it("ignores forwarded addresses when proxy mode is disabled", async () => {
+            const server = await startLimitedApp(false)
+            try {
+                const first = await limitedRequest(server, "198.51.100.10")
+                const second = await limitedRequest(server, "203.0.113.20")
+                expect(first.status).toBe(200)
+                expect(first.body).toBe("127.0.0.1")
+                expect(second.status).toBe(429)
+            } finally {
+                await new Promise(resolve => server.close(resolve))
+            }
+        })
+    })
+
     describe("log endpoint removal", () => {
         it("does not register /api/logs", () => {
             const routes = (app as any)._router.stack
