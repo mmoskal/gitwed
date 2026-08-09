@@ -116,6 +116,14 @@ describe("GitFs repository access", () => {
         ).rejects.toThrow("Invalid repository write path")
     })
 
+    it("treats history paths as pathspecs rather than Git options", async () => {
+        const output = path.join(outsideDir, "injected-history-output")
+
+        await repo.logAsync(`--output=${output}`)
+
+        expect(fs.existsSync(output)).toBe(false)
+    })
+
     it("requires replacement targets to be existing regular files", async () => {
         const missing = repo.replaceBinFileAsync(
             "site/img/missing.png",

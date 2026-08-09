@@ -843,6 +843,7 @@ export async function mkGitFsAsync(
                 "--name-status",
                 "--pretty=fuller",
                 "--max-count=200",
+                "--",
                 path,
             ]).then(buf => parseLog(buf))
         )
