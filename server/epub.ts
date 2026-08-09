@@ -465,29 +465,40 @@ async function genEPubAsync(opts: EPubOptions) {
 }
 
 export function init(app: express.Express) {
-    function getFolder(req: express.Request): string {
+    function asyncRoute(
+        handler: express.RequestHandler
+    ): express.RequestHandler {
+        return (req, res, next) => {
+            return Promise.resolve(handler(req, res, next)).catch(next)
+        }
+    }
+
+    async function getFolder(req: express.Request): Promise<string> {
         if (!req.appuser) tools.throwError(402)
         let folder = tools.getQuery(req, "folder")
         if (!folder || !/^[\w\.\-]+$/i.test(folder)) tools.throwError(400)
         if (folder.indexOf("private") >= 0) tools.throwError(403)
+        const cfg = await expander.getPageConfigAsync(folder)
+        if (!cfg.epub) tools.throwError(403)
+        if (!(await auth.hasWritePermAsync(req.appuser, cfg.users)))
+            tools.throwError(403)
         return folder
     }
 
-    app.get("/api/epubtoc", (req, res) => {
-        genTOCAsync(getFolder(req)).then(toc => {
-            res.json({
-                toc: toc,
-            })
+    app.get(
+        "/api/epubtoc",
+        asyncRoute(async (req, res) => {
+            const toc = await genTOCAsync(await getFolder(req))
+            res.json({ toc })
         })
-    })
+    )
 
-    app.get("/api/epub", (req, res) => {
-        let folder = getFolder(req)
-        let isKindle = !!req.query["kindle"]
-        genEPubAsync({
-            folder,
-            isKindle,
-        }).then(buf => {
+    app.get(
+        "/api/epub",
+        asyncRoute(async (req, res) => {
+            const folder = await getFolder(req)
+            const isKindle = !!req.query["kindle"]
+            const buf = await genEPubAsync({ folder, isKindle })
             res.contentType("application/epub+zip")
             res.header(
                 "Content-Disposition",
@@ -497,5 +508,5 @@ export function init(app: express.Express) {
             )
             res.send(buf)
         })
-    })
+    )
 }
