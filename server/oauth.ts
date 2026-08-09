@@ -585,6 +585,11 @@ export function earlyInit(app: express.Application) {
 export function init(app: express.Application) {
     config = gitfs.config.oauth
     if (!config || !config.redirect_uris) return
+    if (
+        typeof gitfs.config.jwtSecret != "string" ||
+        !gitfs.config.jwtSecret.trim()
+    )
+        throw new Error("OAuth requires jwtSecret")
 
     jwtKey = "oauth:" + gitfs.config.jwtSecret
     stateKey = crypto

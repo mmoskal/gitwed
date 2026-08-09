@@ -87,6 +87,17 @@ describe("OAuth state lifecycle", () => {
         return routes
     }
 
+    it.each([undefined, "", " "])(
+        "refuses OAuth without a signing secret",
+        jwtSecret => {
+            expect(() =>
+                captureRoutes(false, value => {
+                    value.jwtSecret = jwtSecret
+                })
+            ).toThrow("OAuth requires jwtSecret")
+        }
+    )
+
     function makeResponse(): TestResponse {
         const response: TestResponse = {
             status: jest.fn(),
