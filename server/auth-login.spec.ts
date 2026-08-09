@@ -79,13 +79,14 @@ describe("login route validation", () => {
     async function issueMagicLink(
         routes: { [index: string]: Function },
         sendMail: jest.SpyInstance,
-        requestId: string
+        requestId: string,
+        redirect = "/private"
     ) {
         const previousCalls = sendMail.mock.calls.length
         routes["/gw/login"](
             {
                 body: { email: "person@example.test" },
-                query: { redirect: "/private" },
+                query: { redirect },
                 connection: { remoteAddress: requestId },
                 header: jest.fn(),
                 _response: {},
@@ -206,6 +207,48 @@ describe("login route validation", () => {
         expect(warn).toHaveBeenCalledWith(
             expect.stringContaining("magic link already used")
         )
+    })
+
+    it("keeps login and logout redirects on the local origin", async () => {
+        const routes = captureRoutes()
+        configureMagicLinkUser()
+        jest.spyOn(routing, "getVHostDir").mockReturnValue("")
+        jest.spyOn(routing, "sendError").mockImplementation()
+        jest.spyOn(routing, "sendMsg").mockImplementation()
+        const sendMail = jest
+            .spyOn(mail, "sendAsync")
+            .mockResolvedValue(undefined)
+        const token = await issueMagicLink(
+            routes,
+            sendMail,
+            "open-redirect-" + Date.now(),
+            "https://attacker.example/"
+        )
+        const claims = jwt.decode(token, "test-secret")
+        expect(claims.rdr).toBe("/")
+
+        const sinkToken = jwt.encode(
+            { ...claims, rdr: "//attacker.example/", jti: "a".repeat(32) },
+            "test-secret"
+        )
+        const authResponse = { cookie: jest.fn(), redirect: jest.fn() }
+        routes["/gw/auth"](
+            { query: { tok: sinkToken }, secure: true },
+            authResponse,
+            jest.fn()
+        )
+        expect(authResponse.redirect).toHaveBeenCalledWith("/")
+
+        const logoutResponse = {
+            clearCookie: jest.fn(),
+            redirect: jest.fn(),
+        }
+        routes["/gw/logout"](
+            { query: { redirect: "/\\attacker.example/" } },
+            logoutResponse,
+            jest.fn()
+        )
+        expect(logoutResponse.redirect).toHaveBeenCalledWith("/")
     })
 
     it("rejects a magic link at the exact expiry boundary", async () => {

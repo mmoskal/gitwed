@@ -116,10 +116,21 @@ export function throttle(req: express.Request, seconds: number) {
     timestamps[ip] = newTime
 }
 
+function safeLocalRedirect(value: string) {
+    if (
+        typeof value != "string" ||
+        value[0] != "/" ||
+        value.startsWith("//") ||
+        value.indexOf("\\") >= 0
+    )
+        return "/"
+    return value
+}
+
 export function initRoutes(app: express.Express) {
     app.get("/gw/logout", (req, res, next) => {
         res.clearCookie("GWAUTH")
-        res.redirect(tools.getQuery(req, "redirect", "/"))
+        res.redirect(safeLocalRedirect(tools.getQuery(req, "redirect", "/")))
     })
 
     function vhost(req: express.Request) {
@@ -137,7 +148,9 @@ export function initRoutes(app: express.Express) {
     app.all("/gw/login", (req, res, next) => {
         if (vhost(req)) return
 
-        let redir: string = tools.getQuery(req, "redirect", "/").slice(0, 200)
+        let redir = safeLocalRedirect(
+            tools.getQuery(req, "redirect", "/").slice(0, 200)
+        )
         let email: string =
             (req.body ? req.body["email"] || "" : "") ||
             req.query["email"] ||
@@ -269,7 +282,7 @@ export function initRoutes(app: express.Express) {
                         secure: req.secure || gitfs.config.proxy,
                         maxAge: cookieValidity * 1000,
                     })
-                    res.redirect(dwauth["rdr"] || "/")
+                    res.redirect(safeLocalRedirect(dwauth["rdr"] || "/"))
                 }
             } else {
                 throw new Error("bad issuer")
