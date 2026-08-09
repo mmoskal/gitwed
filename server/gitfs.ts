@@ -178,6 +178,19 @@ const readdirAsync = bluebird.promisify(fs.readdir)
 
 let secureWriteBeforeOpenTestHook: ((name: string) => void) | null = null
 let secureReadBeforeOpenTestHook: ((name: string) => void) | null = null
+let bundledAssetRootAfterValidationTestHook: ((root: string) => void) | null =
+    null
+
+interface BundledAssetRootIdentity {
+    path: string
+    dev: number
+    ino: number
+}
+
+interface BundledAssetRootSnapshot {
+    root: string
+    identities: BundledAssetRootIdentity[]
+}
 
 // This is intentionally synchronous so tests can deterministically exercise the
 // otherwise tiny pathname-validation/open race without affecting production.
@@ -191,6 +204,12 @@ export function setSecureReadBeforeOpenTestHook(
     hook: ((name: string) => void) | null
 ) {
     secureReadBeforeOpenTestHook = hook
+}
+
+export function setBundledAssetRootAfterValidationTestHook(
+    hook: ((root: string) => void) | null
+) {
+    bundledAssetRootAfterValidationTestHook = hook
 }
 
 export function githash(buf: Buffer) {
@@ -396,9 +415,34 @@ export async function mkGitFsAsync(
         return target
     }
 
-    function containedReadPath(name: string): string {
-        const target = path.resolve(repoRoot, name)
-        if (target != repoRoot && !target.startsWith(repoRoot + path.sep))
+    function normalizeSpecialReadPath(name: string): string {
+        if (
+            typeof name != "string" ||
+            !name ||
+            /[\\\0\r\n]/.test(name) ||
+            /%(?:2e|2f|5c)/i.test(name) ||
+            name.startsWith("/") ||
+            /^[a-zA-Z]:/.test(name)
+        )
+            throw invalidReadPath(name + "")
+
+        const parts = name.split("/")
+        if (
+            parts.some(
+                part =>
+                    !part ||
+                    part == "." ||
+                    part == ".." ||
+                    /[\x00-\x1f\x7f]/.test(part)
+            )
+        )
+            throw invalidReadPath(name)
+        return parts.join("/")
+    }
+
+    function containedReadPath(name: string, root = repoRoot): string {
+        const target = path.resolve(root, name)
+        if (target != root && !target.startsWith(root + path.sep))
             throw invalidReadPath(name)
 
         return target
@@ -406,14 +450,15 @@ export async function mkGitFsAsync(
 
     function readDirectorySnapshot(
         target: string,
-        name: string
+        name: string,
+        root = repoRoot
     ): DirectorySnapshot {
-        const directory = target == repoRoot ? repoRoot : path.dirname(target)
-        const relative = path.relative(repoRoot, directory)
+        const directory = target == root ? root : path.dirname(target)
+        const relative = path.relative(root, directory)
         if (relative == ".." || relative.startsWith(".." + path.sep))
             throw invalidReadPath(name)
 
-        let current = repoRoot
+        let current = root
         const identities: FileIdentity[] = []
         const recordDirectory = (candidate: string) => {
             const stat = fs.lstatSync(candidate)
@@ -435,9 +480,10 @@ export async function mkGitFsAsync(
 
     function verifyReadDirectorySnapshot(
         target: string,
-        expected: DirectorySnapshot
+        expected: DirectorySnapshot,
+        root = repoRoot
     ) {
-        const actual = readDirectorySnapshot(target, expected.name)
+        const actual = readDirectorySnapshot(target, expected.name, root)
         if (
             actual.identities.length != expected.identities.length ||
             actual.identities.some(
@@ -448,9 +494,16 @@ export async function mkGitFsAsync(
             throw invalidReadPath(expected.name)
     }
 
-    async function secureReadFileAsync(name: string): Promise<Buffer> {
-        const target = containedReadPath(name)
-        const parentSnapshot = readDirectorySnapshot(target, name)
+    async function secureReadFileAsync(
+        name: string,
+        root = repoRoot,
+        invokeTestHook = true,
+        verifyRoot: (() => void) | null = null
+    ): Promise<Buffer> {
+        if (verifyRoot) verifyRoot()
+        const target = containedReadPath(name, root)
+        const parentSnapshot = readDirectorySnapshot(target, name, root)
+        if (verifyRoot) verifyRoot()
         const initialTarget = fs.lstatSync(target)
         if (initialTarget.isSymbolicLink())
             throw invalidReadPath("path contains a symbolic link: " + name)
@@ -461,9 +514,10 @@ export async function mkGitFsAsync(
             ino: initialTarget.ino,
         }
 
-        if (secureReadBeforeOpenTestHook)
+        if (invokeTestHook && secureReadBeforeOpenTestHook)
             secureReadBeforeOpenTestHook(name)
 
+        if (verifyRoot) verifyRoot()
         let flags = fs.constants.O_RDONLY
         if (fs.constants.O_NOFOLLOW) flags |= fs.constants.O_NOFOLLOW
 
@@ -477,7 +531,8 @@ export async function mkGitFsAsync(
             )
                 throw invalidReadPath(name)
 
-            verifyReadDirectorySnapshot(target, parentSnapshot)
+            verifyReadDirectorySnapshot(target, parentSnapshot, root)
+            if (verifyRoot) verifyRoot()
             const currentTarget = fs.lstatSync(target)
             if (
                 currentTarget.isSymbolicLink() ||
@@ -485,12 +540,49 @@ export async function mkGitFsAsync(
                 !sameIdentity(openedTarget, currentTarget)
             )
                 throw invalidReadPath(name)
-            verifyReadDirectorySnapshot(target, parentSnapshot)
+            verifyReadDirectorySnapshot(target, parentSnapshot, root)
+            if (verifyRoot) verifyRoot()
 
-            return await readFdAsync(fd)
+            const value = await readFdAsync(fd)
+            if (verifyRoot) verifyRoot()
+            verifyReadDirectorySnapshot(target, parentSnapshot, root)
+            return value
         } finally {
             if (fd !== null) await closeAsync(fd)
         }
+    }
+
+    async function secureSpecialReadFileAsync(
+        root: string,
+        name: string
+    ): Promise<Buffer> {
+        name = normalizeSpecialReadPath(name)
+        const rootSnapshot = validatedBundledAssetRoot(root)
+        if (bundledAssetRootAfterValidationTestHook)
+            bundledAssetRootAfterValidationTestHook(rootSnapshot.root)
+        return secureReadFileAsync(
+            name,
+            rootSnapshot.root,
+            false,
+            () => verifyBundledAssetRoot(rootSnapshot)
+        )
+    }
+
+    async function firstSpecialReadAsync(
+        roots: string[],
+        name: string
+    ): Promise<Buffer> {
+        let lastError: any = null
+        for (const root of roots) {
+            try {
+                return await secureSpecialReadFileAsync(root, name)
+            } catch (error) {
+                lastError = error
+                if ((error as NodeJS.ErrnoException).code != "ENOENT")
+                    throw error
+            }
+        }
+        throw lastError || invalidReadPath(name)
     }
 
     function sameIdentity(a: FileIdentity, b: FileIdentity): boolean {
@@ -892,27 +984,23 @@ export async function mkGitFsAsync(
         name = name.replace(/^\/+/, "")
         let m = /^gw\/(.*)/.exec(name)
         if (m)
-            return readAsync("gw/" + m[1])
-                .then(
-                    v => v,
-                    err => readAsync("built/gw/" + m[1])
-                )
-                .then(
-                    v => v,
-                    err => readAsync("node_modules/gitwed/gw/" + m[1])
-                )
-                .then(
-                    v => v,
-                    err => readAsync("node_modules/gitwed/built/gw/" + m[1])
-                )
+            return firstSpecialReadAsync(
+                [
+                    "gw",
+                    "built/gw",
+                    "node_modules/gitwed/gw",
+                    "node_modules/gitwed/built/gw",
+                ],
+                m[1]
+            )
 
         m = /^gwcdn\/(.*)/.exec(name)
-        if (m) return readAsync(gwcdnDir + m[1])
+        if (m) return secureSpecialReadFileAsync(gwcdnDir, m[1])
 
         if (ref == "SHA") {
             let fn = tools.lookup(gwcdnBySHA, name)
             if (fn) {
-                return readAsync(gwcdnDir + fn)
+                return secureSpecialReadFileAsync(gwcdnDir, fn)
             }
         }
 
@@ -1231,12 +1319,120 @@ export async function mkGitFsAsync(
 }
 
 function readGWCDN() {
-    let ndir = "node_modules/gitwed/gwcdn/"
-    if (fs.existsSync(ndir)) gwcdnDir = ndir
-    for (let fn of fs.readdirSync(gwcdnDir)) {
-        let sha = githash(fs.readFileSync(gwcdnDir + fn))
-        gwcdnByName[fn] = sha
-        gwcdnBySHA[sha] = fn
+    const installed = "node_modules/gitwed/gwcdn/"
+    const rootSnapshot = validatedBundledAssetRoot(
+        fs.existsSync(installed) ? installed : "gwcdn/"
+    )
+    if (bundledAssetRootAfterValidationTestHook)
+        bundledAssetRootAfterValidationTestHook(rootSnapshot.root)
+    verifyBundledAssetRoot(rootSnapshot)
+    const root = rootSnapshot.root
+    const nextByName: SMap<string> = {}
+    const nextBySHA: SMap<string> = {}
+    const files = fs.readdirSync(root)
+    verifyBundledAssetRoot(rootSnapshot)
+    for (let fn of files) {
+        let sha = githash(readBundledCdnFileSync(rootSnapshot, fn))
+        nextByName[fn] = sha
+        nextBySHA[sha] = fn
+    }
+    verifyBundledAssetRoot(rootSnapshot)
+    gwcdnDir = root
+    gwcdnByName = nextByName
+    gwcdnBySHA = nextBySHA
+}
+
+function readBundledCdnFileSync(
+    rootSnapshot: BundledAssetRootSnapshot,
+    name: string
+) {
+    verifyBundledAssetRoot(rootSnapshot)
+    const lexicalRoot = rootSnapshot.root
+    const rootBefore = fs.lstatSync(lexicalRoot)
+    const expectedRoot =
+        rootSnapshot.identities[rootSnapshot.identities.length - 1]
+    if (
+        rootBefore.isSymbolicLink() ||
+        !rootBefore.isDirectory() ||
+        rootBefore.dev != expectedRoot.dev ||
+        rootBefore.ino != expectedRoot.ino
+    )
+        throw new Error("Invalid bundled asset directory")
+
+    const target = path.resolve(lexicalRoot, name)
+    if (!target.startsWith(lexicalRoot + path.sep))
+        throw new Error("Invalid bundled asset path")
+    const before = fs.lstatSync(target)
+    if (before.isSymbolicLink() || !before.isFile())
+        throw new Error("Invalid bundled asset file")
+    verifyBundledAssetRoot(rootSnapshot)
+
+    let flags = fs.constants.O_RDONLY
+    if (fs.constants.O_NOFOLLOW) flags |= fs.constants.O_NOFOLLOW
+    let fd: number = null
+    try {
+        fd = fs.openSync(target, flags)
+        const opened = fs.fstatSync(fd)
+        verifyBundledAssetRoot(rootSnapshot)
+        if (
+            !opened.isFile() ||
+            opened.dev != before.dev ||
+            opened.ino != before.ino
+        )
+            throw new Error("Invalid bundled asset file")
+
+        const value = fs.readFileSync(fd)
+        verifyBundledAssetRoot(rootSnapshot)
+        const after = fs.lstatSync(target)
+        const rootAfter = fs.lstatSync(lexicalRoot)
+        if (
+            after.isSymbolicLink() ||
+            !after.isFile() ||
+            after.dev != opened.dev ||
+            after.ino != opened.ino ||
+            !rootAfter.isDirectory() ||
+            rootAfter.dev != rootBefore.dev ||
+            rootAfter.ino != rootBefore.ino
+        )
+            throw new Error("Invalid bundled asset file")
+        return value
+    } finally {
+        if (fd !== null) fs.closeSync(fd)
+    }
+}
+
+function validatedBundledAssetRoot(root: string): BundledAssetRootSnapshot {
+    const absolute = path.resolve(root)
+    const parsed = path.parse(absolute)
+    let current = parsed.root
+    const identities: BundledAssetRootIdentity[] = []
+    const record = (candidate: string) => {
+        const stat = fs.lstatSync(candidate)
+        if (stat.isSymbolicLink() || !stat.isDirectory())
+            throw new Error("Invalid bundled asset directory")
+        identities.push({ path: candidate, dev: stat.dev, ino: stat.ino })
+    }
+    record(current)
+    for (const part of path
+        .relative(parsed.root, absolute)
+        .split(path.sep)
+        .filter(part => !!part)) {
+        current = path.join(current, part)
+        record(current)
+    }
+    return { root: absolute, identities }
+}
+
+function verifyBundledAssetRoot(snapshot: BundledAssetRootSnapshot) {
+    for (const expected of snapshot.identities) {
+        const stat = fs.lstatSync(expected.path)
+        if (
+            stat.isSymbolicLink() ||
+            !stat.isDirectory() ||
+            stat.dev != expected.dev ||
+            stat.ino != expected.ino
+        )
+            throw new Error("Invalid bundled asset directory")
     }
 }
 

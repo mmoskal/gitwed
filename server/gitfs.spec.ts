@@ -164,6 +164,200 @@ describe("GitFs repository access", () => {
         )
     })
 
+    it("contains gw and gwcdn reads while preserving valid assets", async () => {
+        const suffix = Date.now() + "-" + Math.random().toString(16).slice(2)
+        const outsideName = ".gitfs-special-outside-" + suffix
+        const outsideFile = path.join(process.cwd(), outsideName)
+        const linkedName = ".gitfs-special-link-" + suffix
+        const linkedFile = path.join(process.cwd(), "gw", linkedName)
+        const outsideBytes = Buffer.from("SPECIAL_READ_OUTSIDE_BYTES_" + suffix)
+        fs.writeFileSync(outsideFile, outsideBytes)
+        fs.symlinkSync(outsideFile, linkedFile, "file")
+
+        try {
+            await expect(repo.getFileAsync("gw/login.html")).resolves.toEqual(
+                fs.readFileSync(path.join(process.cwd(), "gw", "login.html"))
+            )
+            await expect(repo.getFileAsync("gwcdn/gw.css")).resolves.toEqual(
+                fs.readFileSync(path.join(process.cwd(), "gwcdn", "gw.css"))
+            )
+            const cdnBytes = fs.readFileSync(
+                path.join(process.cwd(), "gwcdn", "gw.css")
+            )
+            await expect(
+                repo.getFileAsync(gitfs.githash(cdnBytes), "SHA")
+            ).resolves.toEqual(cdnBytes)
+
+            for (const name of [
+                "gw/../" + outsideName,
+                "gw/%2e%2e%2f" + outsideName,
+                "gw/..\\" + outsideName,
+                "gwcdn/../../" + outsideName,
+                "gw/" + linkedName,
+            ]) {
+                await expect(repo.getFileAsync(name)).rejects.toThrow(
+                    "Invalid repository read path"
+                )
+            }
+            expect(fs.readFileSync(outsideFile)).toEqual(outsideBytes)
+        } finally {
+            if (fs.existsSync(linkedFile)) fs.unlinkSync(linkedFile)
+            if (fs.existsSync(outsideFile)) fs.unlinkSync(outsideFile)
+        }
+    })
+
+    it("rejects symlinked files while inventorying gwcdn", async () => {
+        const suffix = Date.now() + "-" + Math.random().toString(16).slice(2)
+        const outsideFile = path.join(
+            process.cwd(),
+            ".gitfs-cdn-inventory-outside-" + suffix
+        )
+        const linkedFile = path.join(
+            process.cwd(),
+            "gwcdn",
+            ".gitfs-cdn-inventory-link-" + suffix
+        )
+        fs.writeFileSync(outsideFile, "outside")
+        fs.symlinkSync(outsideFile, linkedFile, "file")
+
+        try {
+            await expect(
+                gitfs.initAsync({
+                    repoPath: repoDir,
+                    justDir: true,
+                } as gitfs.Config)
+            ).rejects.toThrow("Invalid bundled asset file")
+        } finally {
+            if (fs.existsSync(linkedFile)) fs.unlinkSync(linkedFile)
+            if (fs.existsSync(outsideFile)) fs.unlinkSync(outsideFile)
+        }
+    })
+
+    it("rejects a symlinked gwcdn root before inventory", async () => {
+        const originalCwd = process.cwd()
+        const fixtureRoot = fs.mkdtempSync(
+            path.join(os.tmpdir(), "gitwed-cdn-root-")
+        )
+        const outsideRoot = path.join(fixtureRoot, "outside")
+        fs.mkdirSync(outsideRoot)
+        fs.writeFileSync(path.join(outsideRoot, "outside.js"), "outside")
+        fs.symlinkSync(outsideRoot, path.join(fixtureRoot, "gwcdn"), "dir")
+
+        try {
+            process.chdir(fixtureRoot)
+            await expect(
+                gitfs.initAsync({
+                    repoPath: repoDir,
+                    justDir: true,
+                } as gitfs.Config)
+            ).rejects.toThrow("Invalid bundled asset directory")
+        } finally {
+            process.chdir(originalCwd)
+            fs.rmSync(fixtureRoot, { recursive: true, force: true })
+        }
+    })
+
+    it("rejects a gw root changed to a symlink after a valid read", async () => {
+        const originalCwd = process.cwd()
+        const fixtureRoot = fs.mkdtempSync(
+            path.join(os.tmpdir(), "gitwed-gw-root-")
+        )
+        const gwRoot = path.join(fixtureRoot, "gw")
+        const parkedRoot = path.join(fixtureRoot, "gw-parked")
+        const outsideRoot = path.join(fixtureRoot, "outside")
+        fs.mkdirSync(gwRoot)
+        fs.mkdirSync(outsideRoot)
+        fs.writeFileSync(path.join(gwRoot, "asset.js"), "inside")
+        fs.writeFileSync(path.join(outsideRoot, "asset.js"), "outside")
+
+        try {
+            process.chdir(fixtureRoot)
+            await expect(repo.getFileAsync("gw/asset.js")).resolves.toEqual(
+                Buffer.from("inside")
+            )
+            fs.renameSync(gwRoot, parkedRoot)
+            fs.symlinkSync(outsideRoot, gwRoot, "dir")
+            await expect(repo.getFileAsync("gw/asset.js")).rejects.toThrow(
+                "Invalid bundled asset directory"
+            )
+        } finally {
+            process.chdir(originalCwd)
+            fs.rmSync(fixtureRoot, { recursive: true, force: true })
+        }
+    })
+
+    it("rejects a bundled gw ancestor swapped after validation", async () => {
+        const originalCwd = process.cwd()
+        const fixtureRoot = fs.mkdtempSync(
+            path.join(os.tmpdir(), "gitwed-gw-ancestor-race-")
+        )
+        const packageRoot = path.join(fixtureRoot, "node_modules/gitwed")
+        const parkedPackage = path.join(
+            fixtureRoot,
+            "node_modules/gitwed-parked"
+        )
+        const outsidePackage = path.join(fixtureRoot, "outside-gitwed")
+        fs.mkdirSync(path.join(packageRoot, "gw"), { recursive: true })
+        fs.mkdirSync(path.join(outsidePackage, "gw"), { recursive: true })
+        fs.writeFileSync(path.join(packageRoot, "gw/asset.js"), "inside")
+        fs.writeFileSync(path.join(outsidePackage, "gw/asset.js"), "outside")
+
+        try {
+            process.chdir(fixtureRoot)
+            gitfs.setBundledAssetRootAfterValidationTestHook(root => {
+                if (root != path.resolve("node_modules/gitwed/gw")) return
+                fs.renameSync(packageRoot, parkedPackage)
+                fs.symlinkSync(outsidePackage, packageRoot, "dir")
+            })
+            await expect(repo.getFileAsync("gw/asset.js")).rejects.toThrow(
+                "Invalid bundled asset directory"
+            )
+        } finally {
+            gitfs.setBundledAssetRootAfterValidationTestHook(null)
+            process.chdir(originalCwd)
+            fs.rmSync(fixtureRoot, { recursive: true, force: true })
+        }
+    })
+
+    it("rejects a gwcdn ancestor swapped during inventory", async () => {
+        const originalCwd = process.cwd()
+        const fixtureRoot = fs.mkdtempSync(
+            path.join(os.tmpdir(), "gitwed-cdn-ancestor-race-")
+        )
+        const packageRoot = path.join(fixtureRoot, "node_modules/gitwed")
+        const parkedPackage = path.join(
+            fixtureRoot,
+            "node_modules/gitwed-parked"
+        )
+        const outsidePackage = path.join(fixtureRoot, "outside-gitwed")
+        fs.mkdirSync(path.join(packageRoot, "gwcdn"), { recursive: true })
+        fs.mkdirSync(path.join(outsidePackage, "gwcdn"), { recursive: true })
+        fs.writeFileSync(path.join(packageRoot, "gwcdn/asset.js"), "inside")
+        fs.writeFileSync(
+            path.join(outsidePackage, "gwcdn/asset.js"),
+            "outside"
+        )
+
+        try {
+            process.chdir(fixtureRoot)
+            gitfs.setBundledAssetRootAfterValidationTestHook(root => {
+                if (root != path.resolve("node_modules/gitwed/gwcdn")) return
+                fs.renameSync(packageRoot, parkedPackage)
+                fs.symlinkSync(outsidePackage, packageRoot, "dir")
+            })
+            await expect(
+                gitfs.initAsync({
+                    repoPath: repoDir,
+                    justDir: true,
+                } as gitfs.Config)
+            ).rejects.toThrow("Invalid bundled asset directory")
+        } finally {
+            gitfs.setBundledAssetRootAfterValidationTestHook(null)
+            process.chdir(originalCwd)
+            fs.rmSync(fixtureRoot, { recursive: true, force: true })
+        }
+    })
+
     it("preserves EISDIR for root and nested working-tree directory reads", async () => {
         fs.mkdirSync(path.join(repoDir, "read-directory"))
 
