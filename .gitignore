@@ -7,4 +7,8 @@ logs
 *-cache/
 tmp
 certificate.json
+certificates.json
+certificates.json.tmp
+certificates-staging.json
+certificates-staging.json.tmp
 counters

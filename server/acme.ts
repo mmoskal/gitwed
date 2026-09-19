@@ -1,6 +1,7 @@
 import express = require("express")
 import crypto = require("crypto")
 import fs = require("fs")
+import path = require("path")
 import http = require("http")
 import https = require("https")
 import winston = require("winston")
@@ -8,11 +9,18 @@ import winston = require("winston")
 import gitfs = require("./gitfs")
 import mail = require("./mail")
 
-const wellKnowns: any = {}
+const wellKnowns: { [key: string]: string } = Object.create(null)
+const minute = 60 * 1000
+const day = 24 * 60 * minute
+const letsEncryptDirectoryUrl = "https://acme-v02.api.letsencrypt.org/directory"
+const stagingDirectoryUrl = "https://acme-staging-v02.api.letsencrypt.org/directory"
+let acmeHttpConfigured = false
 
+/** Serve temporary probes and ACME tokens before normal host routing. */
 export function init(app: express.Express) {
     app.get(/^\/\.well-known\/(.*)/, (req, res) => {
-        if (wellKnowns.hasOwnProperty(req.params[0])) {
+        if (Object.prototype.hasOwnProperty.call(wellKnowns, req.params[0])) {
+            res.setHeader("Cache-Control", "no-store")
             res.contentType("text/plain")
             res.send(wellKnowns[req.params[0]])
         } else {
@@ -21,247 +29,380 @@ export function init(app: express.Express) {
     })
 }
 
-interface SavedCert {
-    duration: number // days
-    lastWrite: number // ms
-    renewTime: number // ms
+/**
+ * Start serving saved certificates immediately, then maintain one SNI certificate
+ * per hostname in the background. DNS and CA failures never hold up startup.
+ */
+export async function setupCertsAndListen(app: express.Express, cfg: gitfs.Config) {
+    let server: https.Server
+    const manager = new CertificateManager(cfg, (domain, cert) => {
+        const options = httpsOptions(cert)
+        server.addContext(domain, options)
+        if (domain === manager.domains[0]) server.setSecureContext(options)
+    })
+    const defaultCert = manager.state.domains[manager.domains[0]].certificate ||
+        manager.state.legacyCertificate
+    server = https.createServer(defaultCert ? httpsOptions(defaultCert) : {}, app)
+    for (const domain of manager.domains) {
+        const cert = manager.state.domains[domain].certificate ||
+            manager.state.legacyCertificate
+        if (cert) server.addContext(domain, httpsOptions(cert))
+    }
+    server.listen(443, () => winston.info("Starting HTTPS server"))
+
+    const challengeServer = http.createServer(app)
+    challengeServer.listen(80, () => {
+        winston.info("Listening for ACME http-01 challenges")
+        void manager.checkAsync().catch(error => winston.error(error.stack))
+    })
+    const timer = setInterval(() => {
+        void manager.checkAsync().catch(error => winston.error(error.stack))
+    }, minute)
+    timer.unref()
+    server.on("close", () => clearInterval(timer))
+}
+
+/**
+ * Coordinates independent hostname certificates and durable retry state. Only one
+ * scan runs at a time, so account registration and state writes cannot race.
+ */
+export class CertificateManager {
+    readonly state: CertificateState
+    readonly domains: string[]
+    readonly directoryUrl: string
+    private running = false
+    private client: any
+
+    /** Load saved state, or migrate the old shared certificate without deleting it. */
+    constructor(
+        private cfg: gitfs.Config,
+        private install: (domain: string, cert: SavedCert) => void,
+        private statePath = cfg.certStaging ? "certificates-staging.json" : "certificates.json"
+    ) {
+        this.directoryUrl = cfg.certStaging
+            ? stagingDirectoryUrl : letsEncryptDirectoryUrl
+        const configuredDomains = [
+            new URL(cfg.authDomain).hostname,
+            ...Object.keys(cfg.vhosts || {}),
+            ...Object.keys(cfg.vhostRedirs || {}),
+        ]
+        this.domains = Array.from(new Set(configuredDomains.map(
+            domain => domain.toLowerCase().replace(/\.$/, "")
+        )))
+        for (const domain of this.domains) {
+            const labels = domain.split(".")
+            if (domain.length > 253 || labels.length < 2 || labels.some(
+                label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)
+            ))
+                throw new Error("Invalid certificate hostname: " + domain)
+        }
+        try {
+            this.state = JSON.parse(fs.readFileSync(this.statePath, "utf8"))
+            if (this.state.version !== 1 || !this.state.account || !this.state.domains)
+                throw new Error("Invalid certificate state: " + this.statePath)
+        } catch (error) {
+            if (error.code !== "ENOENT") throw error
+            this.state = { version: 1, account: {}, domains: {} }
+            if (!cfg.certStaging) {
+                try {
+                    const legacy: SavedCert = JSON.parse(fs.readFileSync(
+                        path.join(path.dirname(this.statePath), "certificate.json"), "utf8"
+                    ))
+                    this.state.account = { key: legacy.accountKey, url: legacy.accountUrl }
+                    delete legacy.accountKey
+                    delete legacy.accountUrl
+                    if (legacy.certPem) {
+                        const info = new crypto.X509Certificate(legacy.certPem)
+                        legacy.expiresAt = Date.parse(info.validTo)
+                        // Older failure handling could record names absent from the actual cert.
+                        legacy.domains = this.domains.filter(
+                            domain => !!info.checkHost(domain)
+                        )
+                    }
+                    this.state.legacyCertificate = legacy
+                    if (legacy.domains.length === 1 &&
+                        this.domains.includes(legacy.domains[0])) {
+                        this.state.domains[legacy.domains[0]] = { certificate: legacy }
+                    }
+                } catch (error) {
+                    if (error.code !== "ENOENT") throw error
+                }
+            }
+        }
+        for (const domain of this.domains) {
+            if (!this.state.domains[domain]) this.state.domains[domain] = {}
+        }
+        this.save()
+    }
+
+    /** Check due work without overlapping scans; failures remain local to each name. */
+    async checkAsync() {
+        if (this.running) return
+        this.running = true
+        try {
+            for (const domain of this.domains) {
+                const entry = this.state.domains[domain]
+                const cert = entry.certificate
+                if (cert && (!cert.ariCheckTime || cert.ariCheckTime <= Date.now())) {
+                    // A failed ARI request also gets a cooldown; retry/email state is separate.
+                    cert.ariCheckTime = Date.now() + 6 * 60 * minute
+                    await this.refreshAriAsync(cert)
+                    this.save()
+                }
+                if (cert && cert.renewTime > Date.now()) continue
+                if (entry.nextAttemptAt > Date.now()) continue
+                if (this.state.account.nextAttemptAt > Date.now()) continue
+
+                let phase = "probe"
+                try {
+                    await this.probeAsync(domain)
+                    phase = "issuance"
+                    // Reserve a retry delay before contacting the CA, even if we restart mid-order.
+                    entry.nextAttemptAt = Date.now() + 2 * 60 * minute
+                    this.save()
+                    const renewed = await this.renewAsync(domain, cert)
+                    entry.certificate = renewed
+                    entry.failures = 0
+                    delete entry.nextAttemptAt
+                    delete entry.lastError
+                    this.save()
+                    this.install(domain, renewed)
+                    winston.info("Certificate installed for " + domain)
+                } catch (error) {
+                    const now = Date.now()
+                    entry.lastError = phase + ": " + error.message
+                    if (phase === "probe") {
+                        entry.nextAttemptAt = now + 30 * minute
+                    } else {
+                        entry.failures = Math.min((entry.failures || 0) + 1, 20)
+                        const delay = Math.min(
+                            2 * day, 2 * 60 * minute * Math.pow(2, entry.failures - 1)
+                        )
+                        entry.nextAttemptAt = now + delay
+                        const response = error.response
+                        const retryAt = response && parseRetryAfter(
+                            response.headers && response.headers["retry-after"]
+                        )
+                        if (retryAt)
+                            entry.nextAttemptAt = Math.max(entry.nextAttemptAt, retryAt)
+                        if (response && (response.status === 429 || response.status === 503)) {
+                            // The CA may not identify the scope. Conservatively pause this account.
+                            this.state.account.nextAttemptAt = entry.nextAttemptAt
+                        }
+                    }
+                    winston.warn("Certificate failure for " + domain + ": " + entry.lastError)
+                    const notify = !entry.lastFailureEmailAt ||
+                        now - entry.lastFailureEmailAt >= day
+                    // Persist before sending, so a mail failure or restart cannot flood the inbox.
+                    if (notify) entry.lastFailureEmailAt = now
+                    this.save()
+                    if (notify) {
+                        const legacy = this.state.legacyCertificate
+                        const serving = cert || (
+                            legacy && legacy.domains.includes(domain) ? legacy : undefined
+                        )
+                        const expiry = serving && (
+                            serving.expiresAt || serving.lastWrite + serving.duration * day
+                        )
+                        try {
+                            await mail.sendAsync({
+                                to: this.cfg.certEmail,
+                                from: null,
+                                subject: "Certificate failure for " + domain,
+                                text: entry.lastError.slice(0, 6000) +
+                                    "\nNext attempt: " + new Date(entry.nextAttemptAt).toISOString() +
+                                    (expiry
+                                        ? "\nExisting certificate expires: " + new Date(expiry).toISOString()
+                                        : "\nNo existing certificate."),
+                            }, this.cfg)
+                        } catch (mailError) {
+                            winston.warn("Certificate failure email could not be sent: " + mailError.message)
+                        }
+                    }
+                }
+            }
+        } finally {
+            this.running = false
+        }
+    }
+
+    /** Atomically persist keys and all schedules together, with owner-only permissions. */
+    save() {
+        const temporary = this.statePath + ".tmp"
+        fs.writeFileSync(temporary, JSON.stringify(this.state, null, 4), { mode: 0o600 })
+        fs.chmodSync(temporary, 0o600)
+        fs.renameSync(temporary, this.statePath)
+    }
+
+    /** Verify public HTTP routing with an unpredictable token before opening a CA order. */
+    async probeAsync(domain: string) {
+        const token = crypto.randomBytes(24).toString("hex")
+        const key = "acme-challenge/gitwed-probe-" + token
+        wellKnowns[key] = token
+        try {
+            const body = await requestTextAsync(
+                "http://" + domain + "/.well-known/" + key
+            )
+            if (body !== token)
+                throw new Error("HTTP probe returned the wrong token for " + domain)
+        } finally {
+            delete wellKnowns[key]
+        }
+    }
+
+    /** Issue one hostname using the shared account, saving new account keys before any request. */
+    async renewAsync(domain: string, previous?: SavedCert): Promise<SavedCert> {
+        const acme = require("acme-client")
+        if (!acmeHttpConfigured) {
+            // Durable scheduling handles failures, rather than sleeping inside the library.
+            acme.axios.defaults.timeout = 15000
+            acme.axios.defaults.acmeSettings.retryMaxAttempts = 0
+            acme.axios.interceptors.response.use((response: any) => {
+                if (response.status === 429 || response.status >= 500) {
+                    const message = response.data && response.data.detail ||
+                        "ACME HTTP " + response.status
+                    throw Object.assign(new Error(message), { response })
+                }
+                return response
+            })
+            acmeHttpConfigured = true
+        }
+        const account = this.state.account
+        if (!account.key) {
+            account.key = (await acme.crypto.createPrivateKey()).toString()
+            this.save()
+        }
+        if (!this.client) {
+            this.client = new acme.Client({
+                directoryUrl: this.directoryUrl,
+                accountKey: account.key,
+                accountUrl: account.url,
+            })
+        }
+        if (!account.url) {
+            await this.client.createAccount({
+                contact: [`mailto:${this.cfg.certEmail}`],
+                termsOfServiceAgreed: true,
+            })
+            account.url = this.client.getAccountUrl()
+            this.save()
+        }
+        const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
+        const profiles = directory.meta && directory.meta.profiles
+        const profile = profiles && profiles.tlsserver
+            ? "tlsserver" : undefined
+        const [key, csr] = await acme.crypto.createCsr({ altNames: [domain] })
+        const payload: any = { identifiers: [{ type: "dns", value: domain }] }
+        if (profile) payload.profile = profile
+        // Never reuse the old shared certificate as the predecessor of multiple new certs.
+        const replaces = previous && (
+            previous.ariCertId || getAriCertId(previous.certPem)
+        )
+        if (replaces) payload.replaces = replaces
+        let order = await this.client.createOrder(payload)
+        const authorizations = await this.client.getAuthorizations(order)
+        for (const authz of authorizations)
+            await satisfyHttpChallengeAsync(this.client, authz)
+        order = await this.client.finalizeOrder(order, csr)
+        order = await this.client.waitForValidStatus(order)
+        const cert: string = await this.client.getCertificate(order)
+        const info = acme.crypto.readCertificateInfo(cert)
+        const duration = info.notAfter.getTime() - info.notBefore.getTime()
+        const renewTime = info.notBefore.getTime() + randomTimeBetween(
+            duration * 0.57, duration * 0.63
+        )
+        const saved: SavedCert = {
+            duration: duration / day,
+            lastWrite: Date.now(),
+            expiresAt: info.notAfter.getTime(),
+            renewTime,
+            domains: [domain],
+            certPem: cert,
+            keyPem: key.toString(),
+            ariCertId: getAriCertId(cert),
+            ariCheckTime: Date.now() + 6 * 60 * minute,
+            profile,
+        }
+        await this.refreshAriAsync(saved)
+        return saved
+    }
+
+    /** Prefer the CA's randomized ARI window while leaving retry and email cooldowns untouched. */
+    async refreshAriAsync(cert: SavedCert) {
+        const certId = cert.ariCertId || getAriCertId(cert.certPem)
+        if (!certId) return
+        try {
+            const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
+            if (!directory.renewalInfo) return
+            const info = JSON.parse(await requestTextAsync(
+                directory.renewalInfo.replace(/\/$/, "") + "/" + certId
+            ))
+            const start = Date.parse(info.suggestedWindow && info.suggestedWindow.start)
+            const end = Date.parse(info.suggestedWindow && info.suggestedWindow.end)
+            if (!isFinite(start) || !isFinite(end) || end <= start) return
+            if (!cert.ariRenewTime || cert.ariCertId !== certId ||
+                cert.ariRenewTime < start || cert.ariRenewTime > end)
+                cert.ariRenewTime = randomTimeBetween(start, end)
+            cert.ariCertId = certId
+            cert.ariWindow = {
+                start: info.suggestedWindow.start,
+                end: info.suggestedWindow.end,
+            }
+            cert.renewTime = cert.ariRenewTime
+            winston.info("ACME ARI renewal time for " + cert.domains.join(", ") +
+                ": " + new Date(cert.renewTime).toISOString())
+        } catch (error) {
+            // Retain a previously fetched ARI schedule if the CA is temporarily unavailable.
+            winston.warn("ACME ARI check failed: " + error.message)
+        }
+    }
+}
+
+/** Saved certificate material; legacy account fields are moved to shared state on import. */
+export interface SavedCert {
+    duration: number
+    lastWrite: number
+    expiresAt?: number
+    renewTime: number
     domains: string[]
-    cert?: string // legacy base64-encoded PFX with empty password
+    cert?: string
     certPem?: string
     keyPem?: string
     accountKey?: string
     accountUrl?: string
     ariCertId?: string
-    ariRenewTime?: number // ms
-    ariWindow?: {
-        start: string
-        end: string
-    }
+    ariRenewTime?: number
+    ariCheckTime?: number
+    ariWindow?: { start: string; end: string }
     profile?: string
 }
 
-const certPath = "certificate.json"
-const letsEncryptDirectoryUrl =
-    "https://acme-v02.api.letsencrypt.org/directory"
-const preferredProfile = "tlsserver"
-const emergencyRenewBeforeExpiry = 7 * 24 * 3600 * 1000
-
-function writeSavedCert(savedCert: SavedCert) {
-    fs.writeFileSync(certPath, JSON.stringify(savedCert, null, 4), {
-        mode: 0o600,
-    })
-    fs.chmodSync(certPath, 0o600)
+/** Persisted status of one configured hostname, including pending names with no certificate. */
+interface DomainState {
+    certificate?: SavedCert
+    failures?: number
+    nextAttemptAt?: number
+    lastFailureEmailAt?: number
+    lastError?: string
 }
 
-export async function setupCertsAndListen(
-    app: express.Express,
-    cfg: gitfs.Config
-) {
-    http.createServer(app).listen(80, function () {
-        winston.info("Listening for ACME http-01 challenges")
-    })
-
-    const mainDomain = cfg.authDomain
-        .replace(/^https:\/\//, "")
-        .replace(/\/$/, "")
-    let domains0 = Object.keys(cfg.vhosts || {}).concat(
-        Object.keys(cfg.vhostRedirs || {})
-    )
-    domains0.unshift(mainDomain)
-    const domains: string[] = []
-    for (const d of domains0) {
-        if (domains.indexOf(d) < 0) domains.push(d)
-    }
-
-    let savedCert: SavedCert
-    let needsRenew = true
-    try {
-        fs.chmodSync(certPath, 0o600)
-        savedCert = JSON.parse(fs.readFileSync(certPath, "utf8"))
-        needsRenew = false
-    } catch (e) {}
-
-    if (savedCert) {
-        // if domains changed, ignore the cert
-        if (JSON.stringify(domains) != JSON.stringify(savedCert.domains))
-            needsRenew = true
-
-        if (!needsRenew && savedCert.certPem) {
-            await updateRenewTimeFromAriAsync(savedCert)
-        }
-
-        if (savedCert.renewTime < Date.now()) needsRenew = true
-    }
-
-    if (needsRenew) {
-        try {
-            winston.info("renewing cert for " + domains.join(", "))
-            await renewAsync(domains, cfg, savedCert)
-            savedCert = JSON.parse(fs.readFileSync(certPath, "utf8"))
-            await mail
-                .sendAsync({
-                    to: cfg.certEmail,
-                    from: null,
-                    subject: "cert renewed for " + domains[0],
-                    text: "All domains: " + domains.join(", "),
-                })
-                .then(
-                    () => {},
-                    () => {}
-                )
-        } catch (e) {
-            console.error(e)
-            winston.error(e.stack)
-            await mail.sendAsync({
-                to: cfg.certEmail,
-                from: null,
-                subject: "failure to renew certs",
-                text: e.message + "\n" + e.stack,
-            })
-            if (savedCert) {
-                // don't try to renew for another 24h
-                savedCert.renewTime = Date.now() + 24 * 3600 * 1000
-                savedCert.domains = domains
-                writeSavedCert(savedCert)
-            }
-        }
-    } else {
-        winston.info("not renewing cert")
-    }
-
-    if (!savedCert) return
-
-    https
-        .createServer(
-            httpsOptions(savedCert),
-            app
-        )
-        .listen(443, function () {
-            winston.info("Starting HTTPS server")
-        })
+/** Versioned store keeps one ACME account and independent hostname state across restarts. */
+interface CertificateState {
+    version: number
+    account: { key?: string; url?: string; nextAttemptAt?: number }
+    domains: { [domain: string]: DomainState }
+    legacyCertificate?: SavedCert
 }
 
-async function renewAsync(
-    domains: string[],
-    cfg: gitfs.Config,
-    savedCert?: SavedCert
-) {
-    const acme = require("acme-client")
-    const directory = await getJsonAsync(letsEncryptDirectoryUrl)
-    const accountKey =
-        savedCert && savedCert.accountKey
-            ? savedCert.accountKey
-            : (await acme.crypto.createPrivateKey()).toString()
-    const client = new acme.Client({
-        directoryUrl: letsEncryptDirectoryUrl,
-        accountKey,
-        accountUrl: savedCert && savedCert.accountUrl,
-    })
-
-    await client.createAccount({
-        contact: [`mailto:${cfg.certEmail}`],
-        termsOfServiceAgreed: true,
-    })
-    const accountUrl = client.getAccountUrl()
-
-    const [key, csr] = await acme.crypto.createCsr({
-        altNames: domains,
-    })
-    const orderPayload: any = {
-        identifiers: domains.map(value => ({ type: "dns", value })),
-    }
-    const profile = chooseProfile(directory)
-    if (profile) orderPayload.profile = profile
-
-    const replaces = savedCert && getAriCertId(savedCert.certPem)
-    if (replaces && savedCert.accountKey) orderPayload.replaces = replaces
-
-    let order = await createOrderWithFallbackAsync(client, orderPayload)
-    const authorizations = await client.getAuthorizations(order)
-    await Promise.all(
-        authorizations.map((authz: any) =>
-            satisfyHttpChallengeAsync(client, authz)
-        )
-    )
-
-    order = await client.finalizeOrder(order, csr)
-    order = await client.waitForValidStatus(order)
-    const cert: string = await client.getCertificate(order)
-    const certInfo = acme.crypto.readCertificateInfo(cert)
-    const notBefore: number = certInfo.notBefore.getTime()
-    const notAfter: number = certInfo.notAfter.getTime()
-    const duration = notAfter - notBefore
-    const emergencyRenewTime =
-        notAfter - Math.min(emergencyRenewBeforeExpiry, duration / 3)
-
-    const certObj: SavedCert = {
-        duration: duration / 1000 / 3600 / 24,
-        lastWrite: Date.now(),
-        renewTime: emergencyRenewTime,
-        domains,
-        certPem: cert,
-        keyPem: key.toString(),
-        accountKey,
-        accountUrl,
-        ariCertId: getAriCertId(cert),
-        profile: profile || undefined,
-    }
-    if (!(await updateRenewTimeFromAriAsync(certObj))) {
-        winston.warn(
-            "ACME ARI unavailable; using emergency renewal time: " +
-                new Date(certObj.renewTime).toISOString()
-        )
-    }
-
-    writeSavedCert(certObj)
-}
-
-async function createOrderWithFallbackAsync(client: any, payload: any) {
-    const attempts = [
-        Object.assign({}, payload),
-        Object.assign({}, payload, { replaces: undefined }),
-        Object.assign({}, payload, { profile: undefined, replaces: undefined }),
-    ]
-    let lastError: Error = null
-
-    for (const attempt of attempts) {
-        if (attempt.profile === undefined) delete attempt.profile
-        if (attempt.replaces === undefined) delete attempt.replaces
-        try {
-            return await client.createOrder(attempt)
-        } catch (e) {
-            lastError = e
-            if (!attempt.profile && !attempt.replaces) break
-            winston.warn(
-                "ACME order failed, retrying without optional fields: " +
-                    e.message
-            )
-        }
-    }
-
-    throw lastError
-}
-
+/** Serve and self-check the real HTTP challenge before asking the CA to validate it. */
 async function satisfyHttpChallengeAsync(client: any, authz: any) {
     if (authz.status === "valid") return
-
-    const challenge = authz.challenges.filter(
-        (c: any) => c.type === "http-01"
-    )[0]
-    if (!challenge)
-        throw new Error(
-            "No http-01 ACME challenge for " + authz.identifier.value
-        )
-
-    const keyAuthorization = await client.getChallengeKeyAuthorization(
-        challenge
-    )
+    const challenge = authz.challenges.filter((c: any) => c.type === "http-01")[0]
+    if (!challenge) throw new Error("No http-01 ACME challenge for " + authz.identifier.value)
+    const keyAuthorization = await client.getChallengeKeyAuthorization(challenge)
     const key = `acme-challenge/${challenge.token}`
     try {
         wellKnowns[key] = keyAuthorization
-        winston.info(
-            `Creating challenge response for ${authz.identifier.value} at path: ${challenge.token}`
-        )
         await client.verifyChallenge(authz, challenge)
         await client.completeChallenge(challenge)
         await client.waitForValidStatus(challenge)
@@ -270,114 +411,53 @@ async function satisfyHttpChallengeAsync(client: any, authz: any) {
     }
 }
 
+/** Convert saved PEM or legacy PFX material into Node's TLS server options. */
 function httpsOptions(savedCert: SavedCert): https.ServerOptions {
-    if (savedCert.certPem && savedCert.keyPem) {
-        return {
-            key: savedCert.keyPem,
-            cert: savedCert.certPem,
-        }
-    }
-
-    if (savedCert.cert) {
-        return {
-            passphrase: "",
-            pfx: Buffer.from(savedCert.cert, "base64"),
-        }
-    }
-
+    if (savedCert.certPem && savedCert.keyPem) return { key: savedCert.keyPem, cert: savedCert.certPem }
+    if (savedCert.cert) return { passphrase: "", pfx: Buffer.from(savedCert.cert, "base64") }
     throw new Error("No usable saved certificate")
 }
 
-function chooseProfile(directory: any) {
-    const profiles = directory && directory.meta && directory.meta.profiles
-    if (profiles && profiles[preferredProfile]) {
-        winston.info("Using ACME profile: " + preferredProfile)
-        return preferredProfile
-    }
-    winston.warn("ACME profile not available, using CA default")
-    return null
-}
-
-async function updateRenewTimeFromAriAsync(savedCert: SavedCert) {
-    const certId = savedCert.ariCertId || getAriCertId(savedCert.certPem)
-    if (!certId) return false
-
-    try {
-        const directory = await getJsonAsync(letsEncryptDirectoryUrl)
-        if (!directory.renewalInfo) return false
-
-        const renewalInfo = await getJsonAsync(
-            directory.renewalInfo.replace(/\/$/, "") + "/" + certId
-        )
-        const window = renewalInfo && renewalInfo.suggestedWindow
-        const start = Date.parse(window && window.start)
-        const end = Date.parse(window && window.end)
-        if (!isFinite(start) || !isFinite(end) || end <= start) return false
-
-        if (
-            savedCert.ariCertId !== certId ||
-            !savedCert.ariRenewTime ||
-            savedCert.ariRenewTime < start ||
-            savedCert.ariRenewTime > end
-        ) {
-            savedCert.ariRenewTime = randomTimeBetween(start, end)
-        }
-
-        savedCert.ariCertId = certId
-        savedCert.ariWindow = {
-            start: window.start,
-            end: window.end,
-        }
-        savedCert.renewTime = savedCert.ariRenewTime
-        writeSavedCert(savedCert)
-        winston.info(
-            "ACME ARI renewal time: " +
-                new Date(savedCert.renewTime).toISOString()
-        )
-        return true
-    } catch (e) {
-        winston.warn("ACME ARI check failed: " + e.message)
-        return false
-    }
-}
-
+/** Draw a renewal or retry time once; callers persist it so restarts cannot move deadlines. */
 function randomTimeBetween(start: number, end: number) {
-    const span = end - start
     const random = crypto.randomBytes(6).readUIntBE(0, 6) / 0x1000000000000
-    return Math.floor(start + span * random)
+    return Math.floor(start + (end - start) * random)
 }
 
-function getJsonAsync(url: string): Promise<any> {
+/** Parse both HTTP Retry-After forms into an absolute deadline shared by HTTP callers. */
+function parseRetryAfter(value: string) {
+    if (!value) return 0
+    const result = /^\d+$/.test(value) ? Date.now() + Number(value) * 1000 : Date.parse(value)
+    return isFinite(result) ? result : 0
+}
+
+/** Fetch small probe/ARI responses with a total deadline and no redirect or cache ambiguity. */
+function requestTextAsync(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
-        https
-            .get(
-                url,
-                { headers: { Accept: "application/json" } },
-                res => {
-                    let body = ""
-                    res.setEncoding("utf8")
-                    res.on("data", chunk => (body += chunk))
-                    res.on("end", () => {
-                        if (res.statusCode < 200 || res.statusCode >= 300) {
-                            reject(
-                                new Error(
-                                    `GET ${url} returned ${res.statusCode}: ${body}`
-                                )
-                            )
-                            return
-                        }
-                        try {
-                            resolve(JSON.parse(body))
-                        } catch (e) {
-                            reject(e)
-                        }
-                    })
-                }
-            )
-            .on("error", reject)
+        const transport = url.startsWith("https:") ? https : http
+        const request = transport.get(url, { headers: { Accept: "application/json", "Cache-Control": "no-cache" } }, response => {
+            let body = ""
+            response.setEncoding("utf8")
+            response.on("data", chunk => {
+                body += chunk
+                if (body.length > 65536) request.destroy(new Error("HTTP response too large"))
+            })
+            response.on("error", reject)
+            response.on("end", () => {
+                if (response.statusCode < 200 || response.statusCode >= 300) {
+                    reject(Object.assign(new Error("GET " + url + " returned " + response.statusCode), {
+                        response: { status: response.statusCode, headers: response.headers },
+                    }))
+                } else resolve(body)
+            })
+        })
+        const timer = setTimeout(() => request.destroy(new Error("HTTP request timed out: " + url)), 10000)
+        request.on("error", reject)
+        request.on("close", () => clearTimeout(timer))
     })
 }
 
+/** Build the ARI certificate identifier from its authority key identifier and serial number. */
 function getAriCertId(certPem?: string) {
     if (!certPem) return null
 
@@ -400,6 +480,7 @@ function getAriCertId(certPem?: string) {
     }
 }
 
+/** A bounded DER element used to read the certificate fields needed by ARI. */
 interface Asn1Node {
     buf: Buffer
     tag: number
@@ -409,6 +490,7 @@ interface Asn1Node {
     value: Buffer
 }
 
+/** Decode the first certificate in a PEM chain for ARI identification. */
 function pemToDer(pem: string) {
     const match = pem.match(
         /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/
@@ -417,6 +499,7 @@ function pemToDer(pem: string) {
     return Buffer.from(match[1].replace(/\s+/g, ""), "base64")
 }
 
+/** Read one DER element, rejecting lengths beyond the available certificate bytes. */
 function readAsn1(buf: Buffer, start: number): Asn1Node {
     let offset = start
     const tag = buf[offset++]
@@ -439,6 +522,7 @@ function readAsn1(buf: Buffer, start: number): Asn1Node {
     }
 }
 
+/** Enumerate the nested DER elements of a constructed certificate field. */
 function readChildren(node: Asn1Node) {
     const children: Asn1Node[] = []
     let offset = node.valueStart
@@ -450,6 +534,7 @@ function readChildren(node: Asn1Node) {
     return children
 }
 
+/** Locate the authority key identifier extension needed for the ARI CertID. */
 function findAuthorityKeyIdentifier(tbsChildren: Asn1Node[]) {
     const extensions = tbsChildren.filter(c => c.tag === 0xa3)[0]
     if (!extensions) return null
@@ -473,6 +558,7 @@ function findAuthorityKeyIdentifier(tbsChildren: Asn1Node[]) {
     return null
 }
 
+/** Decode the extension OID so ARI can identify the authority key identifier. */
 function oidToString(bytes: Buffer) {
     const parts = [Math.floor(bytes[0] / 40), bytes[0] % 40]
     let value = 0
@@ -486,6 +572,7 @@ function oidToString(bytes: Buffer) {
     return parts.join(".")
 }
 
+/** Encode ARI identifier components using unpadded base64url. */
 function toBase64Url(buf: Buffer) {
     return buf
         .toString("base64")

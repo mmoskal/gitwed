@@ -47,6 +47,8 @@ export interface Config {
     production?: boolean
     vhosts?: SMap<string>
     certEmail?: string
+    /** Use Let's Encrypt staging and separate certificate storage for testing. */
+    certStaging?: boolean
     defaultRedirect?: string // defaults to /events/
     allowedEmailRecipients?: string[]
     services?: rest.ServiceConfig[]

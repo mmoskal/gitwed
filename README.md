@@ -153,11 +153,13 @@ Example config (remove ``// comments` when you create your own):
     "networkInterface": "localhost",
     // one of your domains; authentication is always handled through that one
     "authDomain": "https://example.com",
-    // if set to true, we will ask Let's Encrypt for certs; only set to true if your all the domains
-    // are set to your local IP, otherwise Let's Encrypt will fail and they might throttle you
+    // if set to true, request a separate Let's Encrypt certificate for each configured hostname;
+    // names whose DNS is not ready stay pending and are checked again automatically
     "production": true,
     // email to use for Let's Encrypt
     "certEmail": "me@example.com",
+    // optional: use untrusted staging certificates and separate account/certificate storage
+    "certStaging": false,
     // if set to true, it will listen on ${config.localhost}:3000 and listen to proxy requests from nginx or apache
     // otherwise, run standalone
     "proxy": false,
@@ -187,6 +189,42 @@ Example config (remove ``// comments` when you create your own):
     }
 }
 ```
+
+### Automatic certificates
+
+In standalone production mode, Gitwed maintains one certificate per hostname in
+`authDomain`, `vhosts`, and `vhostRedirs`. `example.com` and `www.example.com` are
+independent names; no aliases are added automatically. All certificates share one
+ACME account and are selected through SNI on the same HTTPS listener.
+
+After restarting to load a configuration change, new names may remain pending
+until their DNS is ready. Before requesting a certificate, Gitwed fetches a random
+token from that hostname over HTTP on port 80. A failed probe is retried every
+30 minutes without opening an ACME order. The probe requires a direct response
+from Gitwed's challenge route and does not follow redirects.
+
+A background scan runs every minute. Renewal follows a random time in Let's
+Encrypt's ARI window, refreshed every six hours. When ARI is unavailable for a new
+certificate, renewal is scheduled at 60% of its actual validity period, with
+5% jitter on that delay (57–63% of validity). These times survive restarts.
+
+Issuance and renewal failures back off independently per hostname: 2, 4, 8, 16,
+32, then 48 hours, capped at 48 hours. A longer CA `Retry-After` takes precedence;
+HTTP 429 and 503 responses conservatively pause the shared account. Probe and
+issuance failures send at most one email per hostname per 24 hours. Successes
+are logged without email. Mail delivery failures do not reset the notification
+cooldown or stop other certificates from being processed.
+
+The account, certificates, retry deadlines, and email cooldowns are saved
+atomically in `certificates.json` with owner-only permissions. Keep this file
+across deployments. The old `certificate.json` is imported on first startup and
+left untouched; its shared certificate continues serving names until their
+individual replacements are ready. Keep both files during migration.
+
+For testing, `certStaging: true` selects Let's Encrypt's staging API and
+`certificates-staging.json`. It does not import the production account or legacy
+certificate. Staging certificates are not trusted by browsers, so use this option
+only on a test instance.
 
 ## User manual
 
