@@ -215,6 +215,11 @@ issuance failures send at most one email per hostname per 24 hours. Successes
 are logged without email. Mail delivery failures do not reset the notification
 cooldown or stop other certificates from being processed.
 
+Accepted ACME orders and their matching keys are saved before validation and
+finalization, so retries and restarts can finish an existing order or download its
+certificate. Status polling waits only for pending operations; CA errors go
+straight to the saved backoff schedule.
+
 The account, certificates, retry deadlines, and email cooldowns are saved
 atomically in `certificates.json` with owner-only permissions. Keep this file
 across deployments. The old `certificate.json` is imported on first startup and

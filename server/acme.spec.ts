@@ -111,10 +111,12 @@ beforeEach(() => {
     ca = {
         createAccount: jest.fn().mockResolvedValue({}),
         getAccountUrl: jest.fn().mockReturnValue("https://ca.test/account/1"),
-        createOrder: jest.fn().mockResolvedValue({ status: "pending" }),
+        createOrder: jest.fn().mockResolvedValue({ status: "ready", url: "https://ca.test/order/1" }),
+        getOrder: jest.fn().mockResolvedValue({ status: "valid", url: "https://ca.test/order/1" }),
         getAuthorizations: jest.fn().mockResolvedValue([]),
-        finalizeOrder: jest.fn().mockResolvedValue({ status: "processing" }),
+        finalizeOrder: jest.fn().mockResolvedValue({ status: "processing", url: "https://ca.test/order/1" }),
         waitForValidStatus: jest.fn().mockResolvedValue({ status: "valid" }),
+        api: { apiRequest: jest.fn().mockResolvedValue({ data: { status: "valid" } }) },
         getCertificate: jest.fn().mockResolvedValue(pem),
     }
     acme.Client.mockImplementation(() => ca)
@@ -129,7 +131,10 @@ beforeEach(() => {
         return respond(callback, token)
     }) as any)
     jest.spyOn(https, "get").mockImplementation(((url: string, options: any, callback: Function) => {
-        return respond(callback, JSON.stringify({ meta: { profiles: { tlsserver: "available" } } }))
+        return respond(callback, JSON.stringify({
+            renewalInfo: "https://ca.test/renewal-info",
+            meta: { profiles: { tlsserver: "available" } },
+        }))
     }) as any)
 })
 
@@ -301,6 +306,171 @@ it("keeps serving the previous certificate when renewal fails", async () => {
     expect(install).not.toHaveBeenCalled()
 })
 
+it.each(["download", "finalize-processing", "finalize-ready"])(
+    "resumes an accepted order with its saved key after a %s failure and restart", async failure => {
+        const { instance } = manager()
+        instance.state.domains["foo.example.test"].certificate = {
+            ...savedCertificate(), renewTime: now - 1, ariCertId: "authority.serial",
+        }
+        const finalize = ca.finalizeOrder.getMockImplementation()
+        ca.finalizeOrder.mockImplementationOnce(async (...args: any[]) => {
+            const state = JSON.parse(fs.readFileSync(path.join(directory, "certificates.json"), "utf8"))
+            expect(state.domains["foo.example.test"].pendingOrder).toEqual({
+                order: { status: "ready", url: "https://ca.test/order/1" },
+                keyPem: key, csrPem: "csr", profile: "tlsserver",
+            })
+            if (failure.startsWith("finalize")) throw new Error("finalize response lost")
+            return finalize(...args)
+        })
+        if (failure === "download") ca.getCertificate.mockRejectedValueOnce(new Error("download failed"))
+        await instance.checkAsync()
+        expect(instance.state.domains["foo.example.test"].pendingOrder).toBeDefined()
+        now += 2 * hour
+        const restored = manager()
+        // An ARI update must not defer finishing an already accepted replacement.
+        restored.instance.state.domains["foo.example.test"].certificate.renewTime = now + day
+        ca.getOrder.mockResolvedValue({
+            status: failure === "finalize-ready" ? "ready" :
+                failure === "finalize-processing" ? "processing" : "valid",
+            url: "https://ca.test/order/1",
+        })
+        await restored.instance.checkAsync()
+        expect(ca.createOrder).toHaveBeenCalledTimes(1)
+        expect(acme.crypto.createCsr).toHaveBeenCalledTimes(1)
+        expect(ca.getOrder).toHaveBeenCalledWith(expect.objectContaining({ url: "https://ca.test/order/1" }))
+        expect(ca.finalizeOrder).toHaveBeenCalledTimes(failure === "finalize-ready" ? 2 : 1)
+        for (const call of ca.finalizeOrder.mock.calls)
+            expect(call[1]).toEqual(Buffer.from("csr"))
+        expect(restored.install).toHaveBeenCalledWith("foo.example.test", expect.objectContaining({ keyPem: key }))
+        expect(manager().instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+    }
+)
+
+it("recovers alreadyReplaced without dropping the profile, and remembers the rejection across restarts", async () => {
+    const { instance } = manager()
+    instance.state.domains["foo.example.test"].certificate = {
+        ...savedCertificate(), renewTime: now - 1, ariCertId: "authority.serial",
+    }
+    ca.createOrder.mockRejectedValueOnce(new Error("newOrder response lost"))
+    await instance.checkAsync()
+    now += 2 * hour
+    const response = {
+        status: 409, headers: {},
+        data: { type: "urn:ietf:params:acme:error:alreadyReplaced", detail: "already replaced" },
+    }
+    ca.createOrder.mockImplementationOnce(async () => acme.axios.responseHandler(response))
+    ca.createOrder.mockRejectedValueOnce(new Error("newOrder unavailable"))
+    await manager().instance.checkAsync()
+    now += 4 * hour
+    const restored = manager()
+    await restored.instance.checkAsync()
+    expect(ca.createOrder.mock.calls.map((call: any[]) => call[0].replaces)).toEqual([
+        "authority.serial", "authority.serial", undefined, undefined,
+    ])
+    for (const call of ca.createOrder.mock.calls) expect(call[0].profile).toBe("tlsserver")
+    expect(restored.install).toHaveBeenCalledTimes(1)
+    expect(manager().instance.state.domains["foo.example.test"].rejectedReplaces).toBeUndefined()
+})
+
+it.each(["invalid", "expired", "missing"])("abandons an %s saved order before a later fresh attempt", async status => {
+    const { instance } = manager()
+    ca.getCertificate.mockRejectedValueOnce(new Error("download failed"))
+    await instance.checkAsync()
+    now += 2 * hour
+    if (status === "missing") {
+        ca.getOrder.mockRejectedValueOnce(Object.assign(new Error("order gone"), { response: { status: 404 } }))
+    } else {
+        ca.getOrder.mockResolvedValueOnce({ status: status === "invalid" ? "invalid" : "pending", expires: new Date(now - 1).toISOString() })
+    }
+    const restored = manager().instance
+    await restored.checkAsync()
+    expect(restored.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    now += 4 * hour
+    await manager().instance.checkAsync()
+    expect(ca.createOrder).toHaveBeenCalledTimes(2)
+})
+
+it("does not retry other CA problems without ARI or the selected profile", async () => {
+    const { instance } = manager()
+    instance.state.domains["foo.example.test"].certificate = {
+        ...savedCertificate(), renewTime: now - 1, ariCertId: "authority.serial",
+    }
+    ca.createOrder.mockRejectedValue(Object.assign(new Error("bad CSR"), {
+        response: { status: 400, data: { type: "urn:ietf:params:acme:error:badCSR" } },
+    }))
+    await instance.checkAsync()
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    expect(instance.state.domains["foo.example.test"].rejectedReplaces).toBeUndefined()
+})
+
+it.each([
+    ["order", 429], ["order", 503], ["challenge", 429], ["challenge", 503],
+])("stops real ACME %s polling on HTTP %s and persists Retry-After", async (phase, status) => {
+    const library = jest.requireActual("acme-client")
+    const client = new library.Client({ directoryUrl: "https://ca.test/directory", accountKey: key,
+        accountUrl: "https://ca.test/account/1",
+        backoffAttempts: 3, backoffMin: 1, backoffMax: 1 })
+    // Keep the real status/API implementation; replace only transport and unrelated operations.
+    const { api, waitForValidStatus, ...operations } = ca
+    Object.assign(client, operations)
+    acme.Client.mockReturnValue(client)
+    if (phase === "challenge") {
+        const challenge = { type: "http-01", token: "challenge-token", url: "https://ca.test/challenge/1" }
+        ca.createOrder.mockResolvedValue({ status: "pending", url: "https://ca.test/order/1" })
+        ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+        jest.spyOn(client, "getChallengeKeyAuthorization").mockResolvedValue("key-authorization")
+        jest.spyOn(client, "verifyChallenge").mockResolvedValue(undefined)
+        jest.spyOn(client, "completeChallenge").mockResolvedValue({})
+    }
+    const libraryPoll = jest.spyOn(client, "waitForValidStatus")
+    const request = jest.spyOn(client.http, "signedRequest").mockImplementation(async () =>
+        acme.axios.responseHandler({ status, headers: { "retry-after": "259200" },
+            data: { detail: "CA cooling down" } }))
+    const { instance } = manager(["www.foo.example.test"])
+    await instance.checkAsync()
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(libraryPoll).not.toHaveBeenCalled()
+    expect(ca.getCertificate).not.toHaveBeenCalled()
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    expect(manager().instance.state.account.nextAttemptAt).toBe(now + 3 * day)
+    now += day
+    await manager().instance.checkAsync()
+    expect(request).toHaveBeenCalledTimes(1)
+})
+
+it("polls pending challenges and processing orders through the real ACME API", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    const library = jest.requireActual("acme-client")
+    const client = new library.Client({ directoryUrl: "https://ca.test/directory", accountKey: key,
+        accountUrl: "https://ca.test/account/1" })
+    const { api, waitForValidStatus, ...operations } = ca
+    Object.assign(client, operations)
+    acme.Client.mockReturnValue(client)
+    const challenge = { type: "http-01", token: "challenge-token", url: "https://ca.test/challenge/1" }
+    ca.createOrder.mockResolvedValue({ status: "pending", url: "https://ca.test/order/1" })
+    ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+    jest.spyOn(client, "getChallengeKeyAuthorization").mockResolvedValue("key-authorization")
+    jest.spyOn(client, "verifyChallenge").mockResolvedValue(undefined)
+    jest.spyOn(client, "completeChallenge").mockResolvedValue({})
+    const statuses = ["pending", "valid", "ready", "processing", "valid"]
+    const request = jest.spyOn(client.http, "signedRequest").mockImplementation(async () =>
+        ({ status: 200, data: { status: statuses.shift() }, headers: {} }))
+    const libraryPoll = jest.spyOn(client, "waitForValidStatus")
+    const { instance, install } = manager()
+    const scan = instance.checkAsync()
+    for (let tick = 0; tick < 50 && !request.mock.calls.length; ++tick)
+        await new Promise<void>(resolve => setImmediate(resolve))
+    expect(request).toHaveBeenCalledTimes(1)
+    await jest.advanceTimersByTimeAsync(10000)
+    await scan
+    expect(request.mock.calls.map(call => call[0])).toEqual([
+        challenge.url, challenge.url, "https://ca.test/order/1", "https://ca.test/order/1", "https://ca.test/order/1",
+    ])
+    expect(libraryPoll).not.toHaveBeenCalled()
+    expect(install).toHaveBeenCalledTimes(1)
+})
+
 it("prevents overlapping scans and persists an in-flight attempt before calling the CA", async () => {
     const { instance } = manager()
     let finish: (order: any) => void
@@ -312,7 +482,7 @@ it("prevents overlapping scans and persists an in-flight attempt before calling 
     expect(ca.createOrder).toHaveBeenCalledTimes(1)
     const state = JSON.parse(fs.readFileSync(path.join(directory, "certificates.json"), "utf8"))
     expect(state.domains["foo.example.test"].nextAttemptAt).toBe(now + 2 * hour)
-    finish({ status: "ready" })
+    finish({ status: "ready", url: "https://ca.test/order/1" })
     await scan
 })
 

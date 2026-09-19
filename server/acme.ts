@@ -149,7 +149,7 @@ export class CertificateManager {
                     await this.refreshAriAsync(cert)
                     this.save()
                 }
-                if (cert && cert.renewTime > Date.now()) continue
+                if (!entry.pendingOrder && cert && cert.renewTime > Date.now()) continue
                 if (entry.nextAttemptAt > Date.now()) continue
                 if (this.state.account.nextAttemptAt > Date.now()) continue
 
@@ -163,6 +163,8 @@ export class CertificateManager {
                     const renewed = await this.renewAsync(domain, cert)
                     entry.certificate = renewed
                     entry.failures = 0
+                    delete entry.pendingOrder
+                    delete entry.rejectedReplaces
                     delete entry.nextAttemptAt
                     delete entry.lastError
                     this.save()
@@ -250,7 +252,7 @@ export class CertificateManager {
         }
     }
 
-    /** Issue one hostname using the shared account, saving new account keys before any request. */
+    /** Resume accepted orders with their original key; save new orders before finalization. */
     async renewAsync(domain: string, previous?: SavedCert): Promise<SavedCert> {
         const acme = require("acme-client")
         if (!acmeHttpConfigured) {
@@ -258,7 +260,9 @@ export class CertificateManager {
             acme.axios.defaults.timeout = 15000
             acme.axios.defaults.acmeSettings.retryMaxAttempts = 0
             acme.axios.interceptors.response.use((response: any) => {
-                if (response.status === 429 || response.status >= 500) {
+                // Keep problem types and Retry-After intact; let the library handle badNonce.
+                if (response.status >= 400 &&
+                    response.data?.type !== "urn:ietf:params:acme:error:badNonce") {
                     const message = response.data && response.data.detail ||
                         "ACME HTTP " + response.status
                     throw Object.assign(new Error(message), { response })
@@ -277,6 +281,7 @@ export class CertificateManager {
                 directoryUrl: this.directoryUrl,
                 accountKey: account.key,
                 accountUrl: account.url,
+                backoffAttempts: 1,
             })
         }
         if (!account.url) {
@@ -287,24 +292,67 @@ export class CertificateManager {
             account.url = this.client.getAccountUrl()
             this.save()
         }
-        const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
-        const profiles = directory.meta && directory.meta.profiles
-        const profile = profiles && profiles.tlsserver
-            ? "tlsserver" : undefined
-        const [key, csr] = await acme.crypto.createCsr({ altNames: [domain] })
-        const payload: any = { identifiers: [{ type: "dns", value: domain }] }
-        if (profile) payload.profile = profile
-        // Never reuse the old shared certificate as the predecessor of multiple new certs.
-        const replaces = previous && (
-            previous.ariCertId || getAriCertId(previous.certPem)
-        )
-        if (replaces) payload.replaces = replaces
-        let order = await this.client.createOrder(payload)
-        const authorizations = await this.client.getAuthorizations(order)
-        for (const authz of authorizations)
-            await satisfyHttpChallengeAsync(this.client, authz)
-        order = await this.client.finalizeOrder(order, csr)
-        order = await this.client.waitForValidStatus(order)
+        const entry = this.state.domains[domain]
+        let pending = entry.pendingOrder
+        if (!pending) {
+            const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
+            const profiles = directory.meta && directory.meta.profiles
+            const profile = profiles && profiles.tlsserver ? "tlsserver" : undefined
+            const [key, csr] = await acme.crypto.createCsr({ altNames: [domain] })
+            const payload: any = { identifiers: [{ type: "dns", value: domain }] }
+            if (profile) payload.profile = profile
+            // A shared legacy cert cannot be the predecessor of several singleton certs.
+            const replaces = directory.renewalInfo && previous && (
+                previous.ariCertId || getAriCertId(previous.certPem)
+            )
+            if (replaces && replaces !== entry.rejectedReplaces) payload.replaces = replaces
+            let order: any
+            try {
+                order = await this.client.createOrder(payload)
+            } catch (error) {
+                if (!payload.replaces ||
+                    error.response?.data?.type !== "urn:ietf:params:acme:error:alreadyReplaced")
+                    throw error
+                // Recover old state or a lost newOrder response without dropping the profile.
+                entry.rejectedReplaces = payload.replaces
+                this.save()
+                order = await this.client.createOrder({ ...payload, replaces: undefined })
+            }
+            pending = entry.pendingOrder = {
+                order, keyPem: key.toString(), csrPem: csr.toString(), profile,
+            }
+            this.save()
+        } else {
+            try {
+                // The CA may have finalized successfully before our last request failed.
+                pending.order = await this.client.getOrder(pending.order)
+            } catch (error) {
+                if (error.response?.status === 404 || error.response?.status === 410) {
+                    delete entry.pendingOrder
+                    this.save()
+                }
+                throw error
+            }
+        }
+        let order = pending.order
+        if (order.status === "invalid" || (order.status !== "valid" &&
+            Date.parse(order.expires) <= Date.now())) {
+            delete entry.pendingOrder
+            this.save()
+            throw new Error("Saved ACME order is invalid or expired")
+        }
+        if (order.status === "pending") {
+            const authorizations = await this.client.getAuthorizations(order)
+            for (const authz of authorizations)
+                await satisfyHttpChallengeAsync(this.client, authz)
+            order = await waitForAcmeStatusAsync(this.client, order)
+        }
+        if (order.status === "ready") {
+            order = await this.client.finalizeOrder(order, Buffer.from(pending.csrPem))
+        }
+        if (order.status !== "valid")
+            order = await waitForAcmeStatusAsync(this.client, order)
+        if (order.status !== "valid") throw new Error("ACME order was not finalized")
         const cert: string = await this.client.getCertificate(order)
         const info = acme.crypto.readCertificateInfo(cert)
         const duration = info.notAfter.getTime() - info.notBefore.getTime()
@@ -318,10 +366,10 @@ export class CertificateManager {
             renewTime,
             domains: [domain],
             certPem: cert,
-            keyPem: key.toString(),
+            keyPem: pending.keyPem,
             ariCertId: getAriCertId(cert),
             ariCheckTime: Date.now() + 6 * 60 * minute,
-            profile,
+            profile: pending.profile,
         }
         await this.refreshAriAsync(saved)
         return saved
@@ -380,10 +428,20 @@ export interface SavedCert {
 /** Persisted status of one configured hostname, including pending names with no certificate. */
 interface DomainState {
     certificate?: SavedCert
+    pendingOrder?: PendingOrder
+    rejectedReplaces?: string
     failures?: number
     nextAttemptAt?: number
     lastFailureEmailAt?: number
     lastError?: string
+}
+
+/** An accepted order and its matching private key/CSR must survive until the cert is saved. */
+interface PendingOrder {
+    order: any
+    keyPem: string
+    csrPem: string
+    profile?: string
 }
 
 /** Versioned store keeps one ACME account and independent hostname state across restarts. */
@@ -405,10 +463,28 @@ async function satisfyHttpChallengeAsync(client: any, authz: any) {
         wellKnowns[key] = keyAuthorization
         await client.verifyChallenge(authz, challenge)
         await client.completeChallenge(challenge)
-        await client.waitForValidStatus(challenge)
+        await waitForAcmeStatusAsync(client, challenge)
     } finally {
         delete wellKnowns[key]
     }
+}
+
+/** Poll only pending states; transport and CA errors immediately reach durable backoff. */
+async function waitForAcmeStatusAsync(client: any, item: any) {
+    if (!item.url) throw new Error("ACME status URL is missing")
+    for (let attempt = 0; attempt < 10; ++attempt) {
+        // Use the library's signed POST-as-GET without its catch-all polling retry loop.
+        const response = await client.api.apiRequest(item.url, null, [200])
+        const status = response.data.status
+        if (status === "ready" || status === "valid")
+            return { ...response.data, url: item.url }
+        if (status !== "pending" && status !== "processing")
+            throw Object.assign(new Error(response.data.error?.detail ||
+                "Unexpected ACME status: " + status), { response })
+        if (attempt < 9)
+            await new Promise(resolve => setTimeout(resolve, Math.min(30000, 5000 * 2 ** attempt)))
+    }
+    throw new Error("ACME operation is still pending or processing")
 }
 
 /** Convert saved PEM or legacy PFX material into Node's TLS server options. */
