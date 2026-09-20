@@ -301,6 +301,48 @@ it("honors a longer Retry-After and pauses the shared account on rate limits", a
     expect(instance.state.account.nextAttemptAt).toBe(Date.parse(deadline))
 })
 
+it.each([
+    ["hostname", 429], ["hostname", 503], ["CA", 429], ["CA", 503],
+])("scopes a %s HTTP %s failure correctly when using the real challenge verifier", async (source, status) => {
+    const library = jest.requireActual("acme-client")
+    const client = new library.Client({ directoryUrl: "https://ca.test/directory", accountKey: key,
+        accountUrl: "https://ca.test/account/1", backoffAttempts: 1 })
+    Object.assign(client, ca)
+    acme.Client.mockReturnValue(client)
+    const challenge = { type: "http-01", status: "pending", token: "scope-test-token", url: "https://ca.test/challenge/1" }
+    const authz = { status: "pending", url: "https://ca.test/authz/1",
+        identifier: { value: "foo.example.test" }, challenges: [challenge] }
+    ca.createOrder.mockResolvedValueOnce({ status: "pending", url: "https://ca.test/order/1" })
+    ca.getAuthorizations.mockResolvedValue([authz])
+    jest.spyOn(client, "getChallengeKeyAuthorization").mockResolvedValue("scope-authorization")
+    const response = { status, headers: { "retry-after": "259200" }, data: { detail: "temporarily unavailable" } }
+    const hostRequest = jest.spyOn(library.axios, "get").mockImplementation(async () =>
+        source === "hostname" ? acme.axios.responseHandler(response) : { status: 200, data: "scope-authorization" })
+    const complete = jest.spyOn(client, "completeChallenge").mockImplementation(async () =>
+        acme.axios.responseHandler(response))
+    const { instance, install } = manager(["www.foo.example.test"])
+    await instance.checkAsync()
+    expect(hostRequest).toHaveBeenCalledTimes(1)
+    expect(hostRequest).toHaveBeenCalledWith(
+        "http://foo.example.test:80/.well-known/acme-challenge/scope-test-token", expect.anything())
+    expect(instance.state.domains["foo.example.test"].nextAttemptAt).toBe(now + 3 * day)
+    const restored = manager(["www.foo.example.test", "other.example.test"])
+    if (source === "hostname") {
+        expect(complete).not.toHaveBeenCalled()
+        expect(install).toHaveBeenCalledWith("www.foo.example.test", expect.anything())
+        expect(restored.instance.state.account.nextAttemptAt).toBeUndefined()
+        await restored.instance.checkAsync()
+        expect(restored.install).toHaveBeenCalledWith("other.example.test", expect.anything())
+        expect(hostRequest).toHaveBeenCalledTimes(1)
+    } else {
+        expect(complete).toHaveBeenCalledTimes(1)
+        expect(install).not.toHaveBeenCalled()
+        expect(restored.instance.state.account.nextAttemptAt).toBe(now + 3 * day)
+        await restored.instance.checkAsync()
+        expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    }
+})
+
 it("saves a generated account key before registration fails and reuses it on retry", async () => {
     ca.createAccount.mockImplementationOnce(async () => {
         const state = JSON.parse(fs.readFileSync(path.join(directory, "certificates.json"), "utf8"))
@@ -396,6 +438,53 @@ it.each(["download", "finalize-processing", "finalize-ready"])(
         expect(manager().instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
     }
 )
+
+it.each(["ready", "processing", "valid"])("resumes a %s saved order after port 80 becomes unavailable", async status => {
+    const { instance } = manager()
+    instance.state.domains["foo.example.test"].certificate = {
+        ...savedCertificate(), renewTime: now - 1, ariCertId: "authority.serial",
+    }
+    ca.getCertificate.mockRejectedValueOnce(new Error("download failed"))
+    await instance.checkAsync()
+    expect(instance.state.domains["foo.example.test"].pendingOrder).toBeDefined()
+    now += 2 * hour
+    ;(http.get as jest.Mock).mockImplementation((url: string, options: any, callback: Function) =>
+        respond(callback, "port 80 unavailable", 503))
+    const restored = manager()
+    const probe = jest.spyOn(restored.instance, "probeAsync")
+    ca.getOrder.mockResolvedValueOnce({ status, url: "https://ca.test/order/1" })
+    await restored.instance.checkAsync()
+    expect(probe).not.toHaveBeenCalled()
+    expect(ca.getOrder).toHaveBeenCalledTimes(1)
+    expect(ca.getCertificate).toHaveBeenCalledTimes(2)
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    expect(restored.install).toHaveBeenCalledWith("foo.example.test", expect.objectContaining({ keyPem: key }))
+    expect(restored.instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+})
+
+it("still verifies HTTP before submitting a pending challenge on a recovered order", async () => {
+    const { instance } = manager()
+    const challenge = { type: "http-01", status: "pending", token: "pending-recovery-token", url: "https://ca.test/challenge/1" }
+    ca.createOrder.mockResolvedValue({ status: "pending", url: "https://ca.test/order/1" })
+    ca.getAuthorizations.mockRejectedValueOnce(new Error("authorization request unavailable"))
+    await instance.checkAsync()
+    now += 2 * hour
+    ca.getOrder.mockResolvedValueOnce({ status: "pending", url: "https://ca.test/order/1" })
+    ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+    ca.getChallengeKeyAuthorization = jest.fn().mockResolvedValue("recovery-authorization")
+    ca.verifyChallenge = jest.fn().mockRejectedValue(new Error("hostname unavailable"))
+    ca.completeChallenge = jest.fn()
+    const restored = manager()
+    const probe = jest.spyOn(restored.instance, "probeAsync")
+    await restored.instance.checkAsync()
+    expect(probe).not.toHaveBeenCalled()
+    expect(ca.getOrder).toHaveBeenCalledTimes(1)
+    expect(ca.verifyChallenge).toHaveBeenCalledTimes(1)
+    expect(ca.completeChallenge).not.toHaveBeenCalled()
+    expect(restored.install).not.toHaveBeenCalled()
+    expect(restored.instance.state.account.nextAttemptAt).toBeUndefined()
+    expect(challengeResponse(challenge.token).send).toHaveBeenCalledWith("recovery-authorization")
+})
 
 it("recovers alreadyReplaced without dropping the profile, and remembers the rejection across restarts", async () => {
     const { instance } = manager()

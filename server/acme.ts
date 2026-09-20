@@ -169,9 +169,10 @@ export class CertificateManager {
                 if (entry.nextAttemptAt > Date.now()) continue
                 if (this.state.account.nextAttemptAt > Date.now()) continue
 
-                let phase = "probe"
+                let phase = entry.pendingOrder ? "issuance" : "probe"
                 try {
-                    await this.probeAsync(domain)
+                    // Accepted orders may already be issued; recovery must not depend on port 80.
+                    if (!entry.pendingOrder) await this.probeAsync(domain)
                     phase = "issuance"
                     // Reserve a retry delay before contacting the CA, even if we restart mid-order.
                     entry.nextAttemptAt = Date.now() + 2 * 60 * minute
@@ -204,7 +205,8 @@ export class CertificateManager {
                         )
                         if (retryAt)
                             entry.nextAttemptAt = Math.max(entry.nextAttemptAt, retryAt)
-                        if (response && (response.status === 429 || response.status === 503)) {
+                        if (!error.hostnameVerification && response &&
+                            (response.status === 429 || response.status === 503)) {
                             // The CA may not identify the scope. Conservatively pause this account.
                             this.state.account.nextAttemptAt = entry.nextAttemptAt
                         }
@@ -441,7 +443,15 @@ export class CertificateManager {
         this.save()
         // A resumed processing challenge was already submitted; keep serving it while polling.
         if (!challenge.status || challenge.status === "pending") {
-            await this.client.verifyChallenge(authz, challenge)
+            try {
+                await this.client.verifyChallenge(authz, challenge)
+            } catch (error) {
+                // This request goes to the hostname, so its Retry-After applies only there.
+                throw Object.assign(new Error("HTTP challenge verification failed: " + error.message), {
+                    response: error.response,
+                    hostnameVerification: true,
+                })
+            }
             await this.client.completeChallenge(challenge)
         }
         if (challenge.status !== "valid")

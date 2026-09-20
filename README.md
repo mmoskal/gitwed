@@ -198,7 +198,7 @@ independent names; no aliases are added automatically. All certificates share on
 ACME account and are selected through SNI on the same HTTPS listener.
 
 After restarting to load a configuration change, new names may remain pending
-until their DNS is ready. Before requesting a certificate, Gitwed fetches a random
+until their DNS is ready. Before opening a new ACME order, Gitwed fetches a random
 token from that hostname over HTTP on port 80. A failed probe is retried every
 30 minutes without opening an ACME order. The probe requires a direct response
 from Gitwed's challenge route and does not follow redirects.
@@ -210,7 +210,8 @@ certificate, renewal is scheduled at 60% of its actual validity period, with
 
 Issuance and renewal failures back off independently per hostname: 2, 4, 8, 16,
 32, then 48 hours, capped at 48 hours. A longer CA `Retry-After` takes precedence;
-HTTP 429 and 503 responses conservatively pause the shared account. Probe and
+HTTP 429 and 503 responses from the CA conservatively pause the shared account;
+HTTP verification failures at a hostname affect only that hostname. Probe and
 issuance failures send at most one email per hostname per 24 hours. Successes
 are logged without email. Mail delivery failures do not reset the notification
 cooldown. Notifications run independently of certificate scans, so a stalled mail
@@ -219,7 +220,9 @@ as timed out.
 
 Accepted ACME orders and their matching keys are saved before validation and
 finalization, so retries and restarts can finish an existing order or download its
-certificate. Status polling waits only for pending operations; CA errors go
+certificate. Recovery queries saved orders without requiring another HTTP probe;
+pending challenges still verify HTTP reachability before submission. Status
+polling waits only for pending operations; CA errors go
 straight to the saved backoff schedule. Active HTTP challenge responses are saved
 before submission and restored at startup, including during backoff. They remain
 available until validation finishes or the order is abandoned or expires.
