@@ -96,6 +96,16 @@ function challengeResponse(token: string, register = init) {
     return response
 }
 
+/** Serve separate directory and ARI responses so tests can exercise real header parsing. */
+function serveAri(body: any, retryAfter?: string, statusCode = 200) {
+    ;(https.get as jest.Mock).mockImplementation((url: string, options: any, callback: Function) => {
+        if (url.endsWith("/directory"))
+            return respond(callback, JSON.stringify({ renewalInfo: "https://ca.test/renewal-info" }))
+        return respond(callback, typeof body === "string" ? body : JSON.stringify(body),
+            statusCode, retryAfter === undefined ? {} : { "retry-after": retryAfter })
+    })
+}
+
 beforeAll(() => {
     fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "gitwed-cert-fixture-"))
     execFileSync("openssl", [
@@ -751,6 +761,94 @@ it("prefers a stable random ARI time and preserves it through an ARI outage", as
     ;(https.get as jest.Mock).mockImplementation((url: string, options: any, callback: Function) => respond(callback, "unavailable", 503))
     await instance.refreshAriAsync(cert)
     expect(cert.renewTime).toBe(chosen)
+})
+
+it.each([
+    ["one hour", "3600", hour],
+    ["twelve hours", "43200", 12 * hour],
+    ["zero seconds", "0", hour / 60],
+    ["one second", "1", hour / 60],
+    ["one week", "604800", day],
+    ["HTTP date", new Date(issuedAt + 3 * hour).toUTCString(), 3 * hour],
+    ["past HTTP date", new Date(issuedAt - day).toUTCString(), hour / 60],
+    ["epoch HTTP date", new Date(0).toUTCString(), hour / 60],
+    ["distant HTTP date", new Date(issuedAt + 7 * day).toUTCString(), day],
+    ["missing header", undefined, 6 * hour],
+    ["invalid header", "not a date", 6 * hour],
+    ["negative seconds", "-1", 6 * hour],
+    ["fractional seconds", "1.5", 6 * hour],
+] as [string, string | undefined, number][])("persists the bounded ARI checking deadline for %s", async (label, header, delay) => {
+    const { instance } = manager()
+    const entry = instance.state.domains["foo.example.test"]
+    entry.certificate = { ...savedCertificate(), ariCertId: "authority.serial" }
+    serveAri({ suggestedWindow: {
+        start: new Date(now + 27 * day).toISOString(), end: new Date(now + 28 * day).toISOString(),
+    } }, header)
+    await instance.checkAsync()
+    expect(entry.certificate.ariCheckTime).toBe(now + delay)
+    const restored = manager().instance
+    expect(restored.state.domains["foo.example.test"].certificate.ariCheckTime).toBe(now + delay)
+    expect(restored.state.domains["foo.example.test"].certificate.renewTime).toBe(entry.certificate.renewTime)
+    expect(ca.createOrder).not.toHaveBeenCalled()
+})
+
+it("uses Retry-After immediately after issuance instead of overwriting it with six hours", async () => {
+    serveAri({ suggestedWindow: {
+        start: new Date(now + 27 * day).toISOString(), end: new Date(now + 28 * day).toISOString(),
+    } }, "3600")
+    const { instance, install } = manager()
+    await instance.checkAsync()
+    expect(install).toHaveBeenCalledTimes(1)
+    expect(manager().instance.state.domains["foo.example.test"].certificate.ariCheckTime).toBe(now + hour)
+})
+
+it("refreshes at the saved one-hour deadline and learns an emergency window without bypassing backoff", async () => {
+    const { instance } = manager()
+    const entry = instance.state.domains["foo.example.test"]
+    entry.certificate = { ...savedCertificate(), ariCertId: "authority.serial" }
+    entry.nextAttemptAt = now + 2 * hour
+    entry.lastFailureEmailAt = now
+    serveAri({ suggestedWindow: {
+        start: new Date(now + 27 * day).toISOString(), end: new Date(now + 28 * day).toISOString(),
+    } }, "3600")
+    await instance.checkAsync()
+    const chosen = entry.certificate.renewTime
+    now += hour - 1
+    const restored = manager().instance
+    await restored.checkAsync()
+    expect(https.get).toHaveBeenCalledTimes(2)
+    expect(restored.state.domains["foo.example.test"].certificate.renewTime).toBe(chosen)
+    now += 1
+    serveAri({ suggestedWindow: {
+        start: new Date(now - hour / 2).toISOString(), end: new Date(now - hour / 4).toISOString(),
+    } }, "3600")
+    await restored.checkAsync()
+    const saved = manager().instance.state.domains["foo.example.test"]
+    expect(https.get).toHaveBeenCalledTimes(4)
+    expect(saved.certificate.renewTime).toBeLessThan(now)
+    expect(saved.certificate.ariCheckTime).toBe(now + hour)
+    expect(saved.nextAttemptAt).toBe(issuedAt + 2 * hour)
+    expect(saved.lastFailureEmailAt).toBe(issuedAt)
+    expect(ca.createOrder).not.toHaveBeenCalled()
+    expect(sendMail).not.toHaveBeenCalled()
+})
+
+it.each(["invalid JSON", "invalid window", "HTTP error"])("keeps the ARI fallback and existing window after an %s", async failure => {
+    const { instance } = manager()
+    const cert = { ...savedCertificate(), ariCertId: "authority.serial", ariRenewTime: now + 27 * day }
+    instance.state.domains["foo.example.test"].certificate = cert
+    serveAri(failure === "invalid JSON" ? "not JSON" : { suggestedWindow: {
+        start: new Date(now + day).toISOString(), end: new Date(now + day).toISOString(),
+    } }, "60", failure === "HTTP error" ? 503 : 200)
+    await instance.checkAsync()
+    const saved = manager().instance.state.domains["foo.example.test"].certificate
+    expect(saved.ariCheckTime).toBe(now + 6 * hour)
+    expect(saved.renewTime).toBe(cert.renewTime)
+    expect(saved.ariRenewTime).toBe(cert.ariRenewTime)
+    now += hour
+    await manager().instance.checkAsync()
+    expect(https.get).toHaveBeenCalledTimes(2)
+    expect(ca.createOrder).not.toHaveBeenCalled()
 })
 
 it("serves and removes the exact random HTTP probe token", async () => {

@@ -160,8 +160,6 @@ export class CertificateManager {
                 }
                 const cert = entry.certificate
                 if (cert && (!cert.ariCheckTime || cert.ariCheckTime <= Date.now())) {
-                    // A failed ARI request also gets a cooldown; retry/email state is separate.
-                    cert.ariCheckTime = Date.now() + 6 * 60 * minute
                     await this.refreshAriAsync(cert)
                     this.save()
                 }
@@ -276,10 +274,10 @@ export class CertificateManager {
         const key = "acme-challenge/gitwed-probe-" + token
         wellKnowns[key] = token
         try {
-            const body = await requestTextAsync(
+            const response = await requestTextAsync(
                 "http://" + domain + "/.well-known/" + key
             )
-            if (body !== token)
+            if (response.body !== token)
                 throw new Error("HTTP probe returned the wrong token for " + domain)
         } finally {
             delete wellKnowns[key]
@@ -329,7 +327,7 @@ export class CertificateManager {
         const entry = this.state.domains[domain]
         let pending = entry.pendingOrder
         if (!pending) {
-            const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
+            const directory = JSON.parse((await requestTextAsync(this.directoryUrl)).body)
             const profiles = directory.meta && directory.meta.profiles
             const profile = profiles && profiles.tlsserver ? "tlsserver" : undefined
             const [key, csr] = await acme.crypto.createCsr({ altNames: [domain] })
@@ -419,7 +417,6 @@ export class CertificateManager {
             certPem: cert,
             keyPem: pending.keyPem,
             ariCertId: getAriCertId(cert),
-            ariCheckTime: Date.now() + 6 * 60 * minute,
             profile: pending.profile,
         }
         await this.refreshAriAsync(saved)
@@ -462,19 +459,28 @@ export class CertificateManager {
         this.save()
     }
 
-    /** Prefer the CA's randomized ARI window while leaving retry and email cooldowns untouched. */
+    /** Set the ARI window and next check together; callers persist them without changing retry state. */
     async refreshAriAsync(cert: SavedCert) {
+        // Unavailable or invalid renewal information must not cause a request every minute.
+        cert.ariCheckTime = Date.now() + 6 * 60 * minute
         const certId = cert.ariCertId || getAriCertId(cert.certPem)
         if (!certId) return
         try {
-            const directory = JSON.parse(await requestTextAsync(this.directoryUrl))
+            const directory = JSON.parse((await requestTextAsync(this.directoryUrl)).body)
             if (!directory.renewalInfo) return
-            const info = JSON.parse(await requestTextAsync(
+            const response = await requestTextAsync(
                 directory.renewalInfo.replace(/\/$/, "") + "/" + certId
-            ))
+            )
+            const info = JSON.parse(response.body)
             const start = Date.parse(info.suggestedWindow && info.suggestedWindow.start)
             const end = Date.parse(info.suggestedWindow && info.suggestedWindow.end)
             if (!isFinite(start) || !isFinite(end) || end <= start) return
+            const retryAt = parseRetryAfter(response.headers["retry-after"])
+            if (retryAt !== undefined) {
+                const now = Date.now()
+                // RFC 9773 permits bounds to prevent excessive polling or stale ARI windows.
+                cert.ariCheckTime = Math.max(now + minute, Math.min(now + day, retryAt))
+            }
             if (!cert.ariRenewTime || cert.ariCertId !== certId ||
                 cert.ariRenewTime < start || cert.ariRenewTime > end)
                 cert.ariRenewTime = randomTimeBetween(start, end)
@@ -579,13 +585,18 @@ function randomTimeBetween(start: number, end: number) {
 
 /** Parse both HTTP Retry-After forms into an absolute deadline shared by HTTP callers. */
 function parseRetryAfter(value: string) {
-    if (!value) return 0
-    const result = /^\d+$/.test(value) ? Date.now() + Number(value) * 1000 : Date.parse(value)
-    return isFinite(result) ? result : 0
+    if (!value) return undefined
+    value = value.trim()
+    let result: number
+    if (/^\d+$/.test(value)) result = Date.now() + Number(value) * 1000
+    // HTTP dates begin with a weekday; Date.parse also accepts invalid values such as "-1".
+    else if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*(?:,? )/i.test(value)) result = Date.parse(value)
+    else return undefined
+    return isFinite(result) ? result : undefined
 }
 
-/** Fetch small probe/ARI responses with a total deadline and no redirect or cache ambiguity. */
-function requestTextAsync(url: string): Promise<string> {
+/** Fetch bounded text and headers so ARI scheduling can use Retry-After; never follow redirects. */
+function requestTextAsync(url: string): Promise<{ body: string; headers: http.IncomingHttpHeaders }> {
     return new Promise((resolve, reject) => {
         const transport = url.startsWith("https:") ? https : http
         const request = transport.get(url, { headers: { Accept: "application/json", "Cache-Control": "no-cache" } }, response => {
@@ -601,7 +612,7 @@ function requestTextAsync(url: string): Promise<string> {
                     reject(Object.assign(new Error("GET " + url + " returned " + response.statusCode), {
                         response: { status: response.statusCode, headers: response.headers },
                     }))
-                } else resolve(body)
+                } else resolve({ body, headers: response.headers })
             })
         })
         const timer = setTimeout(() => request.destroy(new Error("HTTP request timed out: " + url)), 10000)

@@ -204,9 +204,12 @@ token from that hostname over HTTP on port 80. A failed probe is retried every
 from Gitwed's challenge route and does not follow redirects.
 
 A background scan runs every minute. Renewal follows a random time in Let's
-Encrypt's ARI window, refreshed every six hours. When ARI is unavailable for a new
-certificate, renewal is scheduled at 60% of its actual validity period, with
-5% jitter on that delay (57–63% of validity). These times survive restarts.
+Encrypt's ARI window. Successful ARI responses schedule the next check using
+`Retry-After` (delay-seconds or HTTP-date), bounded between one minute and one day.
+Missing or invalid headers and failed ARI checks fall back to six hours. When ARI
+is unavailable for a new certificate, renewal is scheduled at 60% of its actual
+validity period, with 5% jitter on that delay (57–63% of validity). Both renewal
+times and ARI checking deadlines survive restarts.
 
 Issuance and renewal failures back off independently per hostname: 2, 4, 8, 16,
 32, then 48 hours, capped at 48 hours. A longer CA `Retry-After` takes precedence;
