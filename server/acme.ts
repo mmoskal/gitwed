@@ -14,6 +14,8 @@ const minute = 60 * 1000
 const day = 24 * 60 * minute
 const letsEncryptDirectoryUrl = "https://acme-v02.api.letsencrypt.org/directory"
 const stagingDirectoryUrl = "https://acme-staging-v02.api.letsencrypt.org/directory"
+// acme-client returns response bodies; retain polling headers without changing protocol objects.
+const acmeRetryAfter = new WeakMap<object, number>()
 let acmeHttpConfigured = false
 
 /** Serve temporary probes and ACME tokens before normal host routing. */
@@ -188,6 +190,23 @@ export class CertificateManager {
                     winston.info("Certificate installed for " + domain)
                 } catch (error) {
                     const now = Date.now()
+                    if (error instanceof AcmePendingStatus) {
+                        const pending = entry.pendingOrder
+                        if (Date.parse(pending.order.expires) <= now) {
+                            clearHttpChallenges(pending)
+                            delete entry.pendingOrder
+                            error = new Error("Saved ACME order expired while processing")
+                        } else {
+                            if (error.kind === "order") pending.order = { ...pending.order, ...error.item }
+                            pending.poll = {
+                                kind: error.kind,
+                                item: error.kind === "order" ? pending.order : error.item,
+                            }
+                            entry.nextAttemptAt = error.retryAt
+                            this.save()
+                            continue
+                        }
+                    }
                     entry.lastError = phase + ": " + error.message
                     if (phase === "probe") {
                         entry.nextAttemptAt = now + 30 * minute
@@ -299,6 +318,9 @@ export class CertificateManager {
                         "ACME HTTP " + response.status
                     throw Object.assign(new Error(message), { response })
                 }
+                const retryAt = parseRetryAfter(response.headers?.["retry-after"])
+                if (retryAt !== undefined && response.data && typeof response.data === "object")
+                    acmeRetryAfter.set(response.data, retryAt)
                 return response
             })
             acmeHttpConfigured = true
@@ -357,9 +379,19 @@ export class CertificateManager {
         } else {
             try {
                 // The CA may have finalized successfully before our last request failed.
-                pending.order = await this.client.getOrder(pending.order)
+                const poll = pending.poll
+                if (poll) {
+                    const result = await pollAcmeStatusAsync(this.client, poll.item, poll.kind)
+                    delete pending.poll
+                    if (poll.kind === "order") pending.order = result
+                    else clearHttpChallenges(pending)
+                    this.save()
+                }
+                if (!poll || poll.kind === "challenge")
+                    pending.order = await this.client.getOrder(pending.order)
             } catch (error) {
-                if (error.response?.status === 404 || error.response?.status === 410) {
+                if (error.response?.status === 404 || error.response?.status === 410 ||
+                    ["invalid", "expired", "revoked", "deactivated"].includes(error.response?.data?.status)) {
                     clearHttpChallenges(pending)
                     delete entry.pendingOrder
                     this.save()
@@ -387,7 +419,7 @@ export class CertificateManager {
                 this.save()
             }
             if (order.status === "pending")
-                order = await waitForAcmeStatusAsync(this.client, order)
+                order = await pollAcmeStatusAsync(this.client, order, "order")
         } catch (error) {
             if (["invalid", "expired", "revoked", "deactivated"].includes(error.response?.data?.status)) {
                 clearHttpChallenges(pending)
@@ -400,7 +432,7 @@ export class CertificateManager {
             order = await this.client.finalizeOrder(order, Buffer.from(pending.csrPem))
         }
         if (order.status !== "valid")
-            order = await waitForAcmeStatusAsync(this.client, order)
+            order = await pollAcmeStatusAsync(this.client, order, "order")
         if (order.status !== "valid") throw new Error("ACME order was not finalized")
         const cert: string = await this.client.getCertificate(order)
         const info = acme.crypto.readCertificateInfo(cert)
@@ -438,6 +470,7 @@ export class CertificateManager {
         pending.httpChallenges[key] = keyAuthorization
         wellKnowns[key] = keyAuthorization
         this.save()
+        let submitted: any
         // A resumed processing challenge was already submitted; keep serving it while polling.
         if (!challenge.status || challenge.status === "pending") {
             try {
@@ -449,10 +482,10 @@ export class CertificateManager {
                     hostnameVerification: true,
                 })
             }
-            await this.client.completeChallenge(challenge)
+            submitted = await this.client.completeChallenge(challenge)
         }
         if (challenge.status !== "valid")
-            await waitForAcmeStatusAsync(this.client, challenge)
+            await pollAcmeStatusAsync(this.client, challenge, "challenge", submitted)
         delete wellKnowns[key]
         delete pending.httpChallenges[key]
         if (!Object.keys(pending.httpChallenges).length) delete pending.httpChallenges
@@ -536,6 +569,15 @@ interface PendingOrder {
     csrPem: string
     profile?: string
     httpChallenges?: { [path: string]: string }
+    poll?: { kind: "order" | "challenge"; item: any }
+}
+
+/** A successful but unfinished operation yields to the scheduler without failure accounting. */
+class AcmePendingStatus extends Error {
+    /** Carry the exact resource and earliest next poll so the scheduler can save both atomically. */
+    constructor(readonly item: any, readonly kind: "order" | "challenge", readonly retryAt: number) {
+        super("ACME operation is still pending or processing")
+    }
 }
 
 /** Versioned store keeps one ACME account and independent hostname state across restarts. */
@@ -552,22 +594,24 @@ function clearHttpChallenges(pending: PendingOrder) {
     delete pending.httpChallenges
 }
 
-/** Poll only pending states; transport and CA errors immediately reach durable backoff. */
-async function waitForAcmeStatusAsync(client: any, item: any) {
+/** Poll once, yielding pending work until Retry-After or the next minute; real errors propagate. */
+async function pollAcmeStatusAsync(client: any, item: any, kind: "order" | "challenge", submitted?: any) {
     if (!item.url) throw new Error("ACME status URL is missing")
-    for (let attempt = 0; attempt < 10; ++attempt) {
-        // Use the library's signed POST-as-GET without its catch-all polling retry loop.
-        const response = await client.api.apiRequest(item.url, null, [200])
-        const status = response.data.status
-        if (status === "ready" || status === "valid")
-            return { ...response.data, url: item.url }
-        if (status !== "pending" && status !== "processing")
-            throw Object.assign(new Error(response.data.error?.detail ||
-                "Unexpected ACME status: " + status), { response })
-        if (attempt < 9)
-            await new Promise(resolve => setTimeout(resolve, Math.min(30000, 5000 * 2 ** attempt)))
-    }
-    throw new Error("ACME operation is still pending or processing")
+    const retryAt = acmeRetryAfter.get(submitted || item)
+    if (submitted) item = { ...item, ...submitted, url: item.url }
+    if (item.status === "ready" || item.status === "valid") return item
+    if ((item.status === "pending" || item.status === "processing") && retryAt > Date.now())
+        throw new AcmePendingStatus(item, kind, Math.max(Date.now() + minute, retryAt))
+    // Use the library's signed POST-as-GET without its catch-all polling retry loop.
+    const response = await client.api.apiRequest(item.url, null, [200])
+    const status = response.data?.status
+    if (!["ready", "valid", "pending", "processing"].includes(status))
+        throw Object.assign(new Error(response.data?.error?.detail ||
+            "Unexpected ACME status: " + status), { response })
+    item = { ...item, ...response.data, url: item.url }
+    if (status === "ready" || status === "valid") return item
+    const nextPollAt = parseRetryAfter(response.headers?.["retry-after"]) ?? Date.now() + minute
+    throw new AcmePendingStatus(item, kind, Math.max(Date.now() + minute, nextPollAt))
 }
 
 /** Convert saved PEM or legacy PFX material into Node's TLS server options. */

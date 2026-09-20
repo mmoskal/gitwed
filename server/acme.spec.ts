@@ -590,7 +590,6 @@ it.each([
 })
 
 it("polls pending challenges and processing orders through the real ACME API", async () => {
-    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
     const library = jest.requireActual("acme-client")
     const client = new library.Client({ directoryUrl: "https://ca.test/directory", accountKey: key,
         accountUrl: "https://ca.test/account/1" })
@@ -599,7 +598,9 @@ it("polls pending challenges and processing orders through the real ACME API", a
     acme.Client.mockReturnValue(client)
     const challenge = { type: "http-01", token: "challenge-token", url: "https://ca.test/challenge/1" }
     ca.createOrder.mockResolvedValue({ status: "pending", url: "https://ca.test/order/1" })
-    ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+    ca.getOrder.mockResolvedValue({ status: "pending", url: "https://ca.test/order/1" })
+    ca.getAuthorizations.mockResolvedValueOnce([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+        .mockResolvedValue([{ status: "valid" }])
     jest.spyOn(client, "getChallengeKeyAuthorization").mockResolvedValue("key-authorization")
     jest.spyOn(client, "verifyChallenge").mockResolvedValue(undefined)
     jest.spyOn(client, "completeChallenge").mockResolvedValue({})
@@ -608,17 +609,171 @@ it("polls pending challenges and processing orders through the real ACME API", a
         ({ status: 200, data: { status: statuses.shift() }, headers: {} }))
     const libraryPoll = jest.spyOn(client, "waitForValidStatus")
     const { instance, install } = manager()
-    const scan = instance.checkAsync()
-    for (let tick = 0; tick < 50 && !request.mock.calls.length; ++tick)
-        await new Promise<void>(resolve => setImmediate(resolve))
+    await instance.checkAsync()
     expect(request).toHaveBeenCalledTimes(1)
-    await jest.advanceTimersByTimeAsync(10000)
-    await scan
+    now += hour / 60
+    await instance.checkAsync()
+    now += hour / 60
+    await instance.checkAsync()
     expect(request.mock.calls.map(call => call[0])).toEqual([
         challenge.url, challenge.url, "https://ca.test/order/1", "https://ca.test/order/1", "https://ca.test/order/1",
     ])
     expect(libraryPoll).not.toHaveBeenCalled()
     expect(install).toHaveBeenCalledTimes(1)
+    expect(client.completeChallenge).toHaveBeenCalledTimes(1)
+    expect(sendMail).not.toHaveBeenCalled()
+})
+
+it.each([
+    ["order", "600"], ["order", new Date(issuedAt + hour / 6).toUTCString()],
+    ["challenge", "600"], ["challenge", new Date(issuedAt + hour / 6).toUTCString()],
+])("persists a %s polling deadline from %s without blocking siblings or reporting failure", async (kind, header) => {
+    const challenge = { type: "http-01", status: "pending", token: "scheduled-token", url: "https://ca.test/challenge/1" }
+    if (kind === "challenge") {
+        ca.createOrder.mockResolvedValueOnce({ status: "pending", url: "https://ca.test/order/1" })
+        ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+        ca.getChallengeKeyAuthorization = jest.fn().mockResolvedValue("scheduled-authorization")
+        ca.verifyChallenge = jest.fn().mockResolvedValue(undefined)
+        ca.completeChallenge = jest.fn().mockResolvedValue({ status: "processing" })
+        ca.getOrder.mockResolvedValueOnce({ status: "ready", url: "https://ca.test/order/1" })
+    }
+    ca.api.apiRequest.mockResolvedValueOnce({ status: 200, headers: { "retry-after": header },
+        data: { status: kind === "challenge" ? "pending" : "processing" } })
+    const { instance, install } = manager(["www.foo.example.test"])
+    instance.state.domains["foo.example.test"].failures = 2
+    await instance.checkAsync()
+    expect(install).toHaveBeenCalledWith("www.foo.example.test", expect.anything())
+    const restored = manager(["www.foo.example.test"])
+    const entry = restored.instance.state.domains["foo.example.test"]
+    expect(entry.pendingOrder.poll.kind).toBe(kind)
+    expect(entry.nextAttemptAt).toBe(now + hour / 6)
+    expect(entry.failures).toBe(2)
+    expect(entry.lastError).toBeUndefined()
+    expect(entry.lastFailureEmailAt).toBeUndefined()
+    expect(restored.instance.state.account.nextAttemptAt).toBeUndefined()
+    expect(sendMail).not.toHaveBeenCalled()
+    const requests = ca.api.apiRequest.mock.calls.length
+    now += 215000
+    await restored.instance.checkAsync()
+    now = entry.nextAttemptAt - 1
+    await restored.instance.checkAsync()
+    expect(ca.api.apiRequest).toHaveBeenCalledTimes(requests)
+    expect(ca.getOrder).not.toHaveBeenCalled()
+    if (kind === "challenge")
+        expect(challengeResponse(challenge.token).send).toHaveBeenCalledWith("scheduled-authorization")
+    now += 1
+    await restored.instance.checkAsync()
+    expect(restored.install).toHaveBeenCalledWith("foo.example.test", expect.anything())
+    expect(ca.createOrder).toHaveBeenCalledTimes(2)
+    expect(ca.finalizeOrder).toHaveBeenCalledTimes(2)
+    expect(entry.pendingOrder).toBeUndefined()
+    expect(entry.nextAttemptAt).toBeUndefined()
+    expect(entry.failures).toBe(0)
+    expect(sendMail).not.toHaveBeenCalled()
+    if (kind === "challenge") {
+        expect(ca.completeChallenge).toHaveBeenCalledTimes(1)
+        expect(challengeResponse(challenge.token).status).toHaveBeenCalledWith(404)
+    }
+})
+
+it.each([undefined, "invalid", "0"])("keeps headerless or malformed pending responses (%s) out of failure backoff", async header => {
+    ca.api.apiRequest.mockResolvedValue({ status: 200, headers: { "retry-after": header }, data: { status: "processing" } })
+    for (let attempt = 0; attempt < 12; ++attempt) {
+        const instance = manager().instance
+        await instance.checkAsync()
+        const entry = instance.state.domains["foo.example.test"]
+        expect(entry.nextAttemptAt).toBe(now + hour / 60)
+        expect(entry.failures).toBeUndefined()
+        expect(entry.lastError).toBeUndefined()
+        now = entry.nextAttemptAt
+    }
+    expect(ca.api.apiRequest).toHaveBeenCalledTimes(12)
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    expect(ca.finalizeOrder).toHaveBeenCalledTimes(1)
+    expect(sendMail).not.toHaveBeenCalled()
+    ca.api.apiRequest.mockResolvedValue({ data: { status: "valid" } })
+    const restored = manager()
+    await restored.instance.checkAsync()
+    expect(restored.install).toHaveBeenCalledTimes(1)
+})
+
+it.each(["order", "challenge"])("preserves Retry-After on the initial %s submission response before polling", async kind => {
+    const challenge = { type: "http-01", status: "pending", token: "submission-token", url: "https://ca.test/challenge/1" }
+    if (kind === "challenge") {
+        ca.createOrder.mockResolvedValueOnce({ status: "pending", url: "https://ca.test/order/1" })
+        ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }])
+        ca.getChallengeKeyAuthorization = jest.fn().mockResolvedValue("submission-authorization")
+        ca.verifyChallenge = jest.fn().mockResolvedValue(undefined)
+        ca.completeChallenge = jest.fn().mockImplementation(async () => acme.axios.responseHandler({
+            status: 200, headers: { "retry-after": "172800" }, data: { ...challenge, status: "processing" },
+        }).data)
+        ca.getOrder.mockResolvedValueOnce({ status: "ready", url: "https://ca.test/order/1" })
+    } else {
+        ca.finalizeOrder.mockImplementationOnce(async () => acme.axios.responseHandler({
+            status: 200, headers: { "retry-after": "172800" },
+            data: { status: "processing", url: "https://ca.test/order/1" },
+        }).data)
+    }
+    const { instance } = manager()
+    await instance.checkAsync()
+    expect(ca.api.apiRequest).not.toHaveBeenCalled()
+    const restored = manager()
+    expect(restored.instance.state.domains["foo.example.test"].nextAttemptAt).toBe(now + 2 * day)
+    now += day
+    await restored.instance.checkAsync()
+    expect(ca.api.apiRequest).not.toHaveBeenCalled()
+    now += day
+    await restored.instance.checkAsync()
+    expect(restored.install).toHaveBeenCalledTimes(1)
+    expect(sendMail).not.toHaveBeenCalled()
+})
+
+it.each([429, 503])("applies genuine HTTP %s failure backoff when resuming a scheduled poll", async status => {
+    ca.api.apiRequest.mockResolvedValueOnce({ data: { status: "processing" }, headers: { "retry-after": "600" } })
+    await manager().instance.checkAsync()
+    now += hour / 6
+    ca.api.apiRequest.mockRejectedValueOnce(Object.assign(new Error("CA unavailable"), {
+        response: { status, headers: { "retry-after": "259200" } },
+    }))
+    const { instance } = manager()
+    await instance.checkAsync()
+    expect(instance.state.domains["foo.example.test"].failures).toBe(1)
+    expect(instance.state.account.nextAttemptAt).toBe(now + 3 * day)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+    const restored = manager(["www.foo.example.test"])
+    now += 2 * day
+    await restored.instance.checkAsync()
+    expect(ca.api.apiRequest).toHaveBeenCalledTimes(2)
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+})
+
+it.each(["invalid", "expired"])("abandons a scheduled order when it becomes %s", async status => {
+    ca.createOrder.mockResolvedValue({ status: "ready", url: "https://ca.test/order/1", expires: new Date(now + hour / 6).toISOString() })
+    ca.api.apiRequest.mockResolvedValueOnce({ data: { status: "processing" }, headers: { "retry-after": "600" } })
+    await manager().instance.checkAsync()
+    now += hour / 6
+    ca.api.apiRequest.mockResolvedValue({ data: { status: status === "invalid" ? "invalid" : "processing" } })
+    const { instance } = manager()
+    await instance.checkAsync()
+    expect(instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+    expect(instance.state.domains["foo.example.test"].failures).toBe(1)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+})
+
+it("treats a resumed poll with no status as a failure instead of retaining its old processing status", async () => {
+    ca.api.apiRequest.mockResolvedValueOnce({ data: { status: "processing" }, headers: { "retry-after": "600" } })
+    await manager().instance.checkAsync()
+    now += hour / 6
+    ca.api.apiRequest.mockResolvedValueOnce({ data: {} })
+    const { instance, install } = manager()
+    await instance.checkAsync()
+    const entry = instance.state.domains["foo.example.test"]
+    expect(entry.failures).toBe(1)
+    expect(entry.lastError).toContain("Unexpected ACME status: undefined")
+    expect(entry.nextAttemptAt).toBe(now + 2 * hour)
+    expect(entry.pendingOrder.poll.kind).toBe("order")
+    expect(install).not.toHaveBeenCalled()
+    expect(sendMail).toHaveBeenCalledTimes(1)
 })
 
 it.each(["polling", "submission"])("keeps challenges available after a %s failure and resumes validation", async failure => {

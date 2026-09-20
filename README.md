@@ -224,8 +224,10 @@ as timed out.
 Accepted ACME orders and their matching keys are saved before validation and
 finalization, so retries and restarts can finish an existing order or download its
 certificate. Recovery queries saved orders without requiring another HTTP probe;
-pending challenges still verify HTTP reachability before submission. Status
-polling waits only for pending operations; CA errors go
+pending challenges still verify HTTP reachability before submission. Pending or
+processing operations resume at the CA's `Retry-After` deadline, with a one-minute
+minimum and fallback. The poll URL and deadline survive restarts. These normal
+waits do not count as failures, send email, or block other hostnames; CA errors go
 straight to the saved backoff schedule. Active HTTP challenge responses are saved
 before submission and restored at startup, including during backoff. They remain
 available until validation finishes or the order is abandoned or expires.
