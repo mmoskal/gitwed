@@ -213,12 +213,16 @@ Issuance and renewal failures back off independently per hostname: 2, 4, 8, 16,
 HTTP 429 and 503 responses conservatively pause the shared account. Probe and
 issuance failures send at most one email per hostname per 24 hours. Successes
 are logged without email. Mail delivery failures do not reset the notification
-cooldown or stop other certificates from being processed.
+cooldown. Notifications run independently of certificate scans, so a stalled mail
+provider cannot block renewals; a delivery still pending after 30 seconds is logged
+as timed out.
 
 Accepted ACME orders and their matching keys are saved before validation and
 finalization, so retries and restarts can finish an existing order or download its
 certificate. Status polling waits only for pending operations; CA errors go
-straight to the saved backoff schedule.
+straight to the saved backoff schedule. Active HTTP challenge responses are saved
+before submission and restored at startup, including during backoff. They remain
+available until validation finishes or the order is abandoned or expires.
 
 The account, certificates, retry deadlines, and email cooldowns are saved
 atomically in `certificates.json` with owner-only permissions. Keep this file

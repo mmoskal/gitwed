@@ -132,6 +132,17 @@ export class CertificateManager {
         for (const domain of this.domains) {
             if (!this.state.domains[domain]) this.state.domains[domain] = {}
         }
+        for (const domain of Object.keys(this.state.domains)) {
+            const pending = this.state.domains[domain].pendingOrder
+            if (!pending?.httpChallenges) continue
+            if (!this.domains.includes(domain) || pending.order.status !== "pending" ||
+                Date.parse(pending.order.expires) <= Date.now()) {
+                clearHttpChallenges(pending)
+            } else {
+                // Restore before opening port 80, even when the account is backing off.
+                Object.assign(wellKnowns, pending.httpChallenges)
+            }
+        }
         this.save()
     }
 
@@ -142,6 +153,11 @@ export class CertificateManager {
         try {
             for (const domain of this.domains) {
                 const entry = this.state.domains[domain]
+                if (entry.pendingOrder?.httpChallenges &&
+                    Date.parse(entry.pendingOrder.order.expires) <= Date.now()) {
+                    clearHttpChallenges(entry.pendingOrder)
+                    this.save()
+                }
                 const cert = entry.certificate
                 if (cert && (!cert.ariCheckTime || cert.ariCheckTime <= Date.now())) {
                     // A failed ARI request also gets a cooldown; retry/email state is separate.
@@ -163,6 +179,7 @@ export class CertificateManager {
                     const renewed = await this.renewAsync(domain, cert)
                     entry.certificate = renewed
                     entry.failures = 0
+                    if (entry.pendingOrder) clearHttpChallenges(entry.pendingOrder)
                     delete entry.pendingOrder
                     delete entry.rejectedReplaces
                     delete entry.nextAttemptAt
@@ -206,25 +223,40 @@ export class CertificateManager {
                         const expiry = serving && (
                             serving.expiresAt || serving.lastWrite + serving.duration * day
                         )
-                        try {
-                            await mail.sendAsync({
-                                to: this.cfg.certEmail,
-                                from: null,
-                                subject: "Certificate failure for " + domain,
-                                text: entry.lastError.slice(0, 6000) +
-                                    "\nNext attempt: " + new Date(entry.nextAttemptAt).toISOString() +
-                                    (expiry
-                                        ? "\nExisting certificate expires: " + new Date(expiry).toISOString()
-                                        : "\nNo existing certificate."),
-                            }, this.cfg)
-                        } catch (mailError) {
-                            winston.warn("Certificate failure email could not be sent: " + mailError.message)
-                        }
+                        void this.sendFailureEmailAsync({
+                            to: this.cfg.certEmail,
+                            from: null,
+                            subject: "Certificate failure for " + domain,
+                            text: entry.lastError.slice(0, 6000) +
+                                "\nNext attempt: " + new Date(entry.nextAttemptAt).toISOString() +
+                                (expiry
+                                    ? "\nExisting certificate expires: " + new Date(expiry).toISOString()
+                                    : "\nNo existing certificate."),
+                        })
                     }
                 }
             }
         } finally {
             this.running = false
+        }
+    }
+
+    /** Send after saving the cooldown; slow delivery must never hold the renewal scan open. */
+    private async sendFailureEmailAsync(message: mail.Message) {
+        let timer: NodeJS.Timeout
+        try {
+            await Promise.race([
+                mail.sendAsync(message, this.cfg),
+                new Promise((resolve, reject) => {
+                    timer = setTimeout(() => reject(new Error("Email delivery timed out")), 30000)
+                    timer.unref()
+                }),
+            ])
+        } catch (error) {
+            winston.warn("Certificate failure email could not be sent: " + error.message)
+        } finally {
+            // Promise.race also observes a provider rejection that arrives after the timeout.
+            clearTimeout(timer)
         }
     }
 
@@ -328,6 +360,7 @@ export class CertificateManager {
                 pending.order = await this.client.getOrder(pending.order)
             } catch (error) {
                 if (error.response?.status === 404 || error.response?.status === 410) {
+                    clearHttpChallenges(pending)
                     delete entry.pendingOrder
                     this.save()
                 }
@@ -337,15 +370,31 @@ export class CertificateManager {
         let order = pending.order
         if (order.status === "invalid" || (order.status !== "valid" &&
             Date.parse(order.expires) <= Date.now())) {
+            clearHttpChallenges(pending)
             delete entry.pendingOrder
             this.save()
             throw new Error("Saved ACME order is invalid or expired")
         }
-        if (order.status === "pending") {
-            const authorizations = await this.client.getAuthorizations(order)
-            for (const authz of authorizations)
-                await satisfyHttpChallengeAsync(this.client, authz)
-            order = await waitForAcmeStatusAsync(this.client, order)
+        try {
+            if (order.status === "pending") {
+                const authorizations = await this.client.getAuthorizations(order)
+                for (const authz of authorizations)
+                    await this.satisfyHttpChallengeAsync(pending, authz)
+            }
+            // All authorizations are valid, or the order has already moved past validation.
+            if (pending.httpChallenges) {
+                clearHttpChallenges(pending)
+                this.save()
+            }
+            if (order.status === "pending")
+                order = await waitForAcmeStatusAsync(this.client, order)
+        } catch (error) {
+            if (["invalid", "expired", "revoked", "deactivated"].includes(error.response?.data?.status)) {
+                clearHttpChallenges(pending)
+                delete entry.pendingOrder
+                this.save()
+            }
+            throw error
         }
         if (order.status === "ready") {
             order = await this.client.finalizeOrder(order, Buffer.from(pending.csrPem))
@@ -373,6 +422,34 @@ export class CertificateManager {
         }
         await this.refreshAriAsync(saved)
         return saved
+    }
+
+    /** Persist the response before submission and retain it until validation is known to finish. */
+    private async satisfyHttpChallengeAsync(pending: PendingOrder, authz: any) {
+        if (authz.status === "valid") return
+        if (authz.status !== "pending")
+            throw Object.assign(new Error("Unexpected ACME authorization status: " + authz.status), {
+                response: { data: authz },
+            })
+        const challenge = authz.challenges.find((c: any) => c.type === "http-01")
+        if (!challenge) throw new Error("No http-01 ACME challenge for " + authz.identifier.value)
+        const key = `acme-challenge/${challenge.token}`
+        const keyAuthorization = await this.client.getChallengeKeyAuthorization(challenge)
+        if (!pending.httpChallenges) pending.httpChallenges = {}
+        pending.httpChallenges[key] = keyAuthorization
+        wellKnowns[key] = keyAuthorization
+        this.save()
+        // A resumed processing challenge was already submitted; keep serving it while polling.
+        if (!challenge.status || challenge.status === "pending") {
+            await this.client.verifyChallenge(authz, challenge)
+            await this.client.completeChallenge(challenge)
+        }
+        if (challenge.status !== "valid")
+            await waitForAcmeStatusAsync(this.client, challenge)
+        delete wellKnowns[key]
+        delete pending.httpChallenges[key]
+        if (!Object.keys(pending.httpChallenges).length) delete pending.httpChallenges
+        this.save()
     }
 
     /** Prefer the CA's randomized ARI window while leaving retry and email cooldowns untouched. */
@@ -436,12 +513,13 @@ interface DomainState {
     lastError?: string
 }
 
-/** An accepted order and its matching private key/CSR must survive until the cert is saved. */
+/** Keep the accepted order, key/CSR, and active validation responses available across restarts. */
 interface PendingOrder {
     order: any
     keyPem: string
     csrPem: string
     profile?: string
+    httpChallenges?: { [path: string]: string }
 }
 
 /** Versioned store keeps one ACME account and independent hostname state across restarts. */
@@ -452,21 +530,10 @@ interface CertificateState {
     legacyCertificate?: SavedCert
 }
 
-/** Serve and self-check the real HTTP challenge before asking the CA to validate it. */
-async function satisfyHttpChallengeAsync(client: any, authz: any) {
-    if (authz.status === "valid") return
-    const challenge = authz.challenges.filter((c: any) => c.type === "http-01")[0]
-    if (!challenge) throw new Error("No http-01 ACME challenge for " + authz.identifier.value)
-    const keyAuthorization = await client.getChallengeKeyAuthorization(challenge)
-    const key = `acme-challenge/${challenge.token}`
-    try {
-        wellKnowns[key] = keyAuthorization
-        await client.verifyChallenge(authz, challenge)
-        await client.completeChallenge(challenge)
-        await waitForAcmeStatusAsync(client, challenge)
-    } finally {
-        delete wellKnowns[key]
-    }
+/** Remove responses for finished or abandoned validation; the caller persists the state change. */
+function clearHttpChallenges(pending: PendingOrder) {
+    for (const key of Object.keys(pending.httpChallenges || {})) delete wellKnowns[key]
+    delete pending.httpChallenges
 }
 
 /** Poll only pending states; transport and CA errors immediately reach durable backoff. */

@@ -84,6 +84,18 @@ function manager(extraDomains: string[] = []) {
     return { instance, install }
 }
 
+/** Read a challenge through the registered HTTP route without opening a listener. */
+function challengeResponse(token: string, register = init) {
+    let handler: Function
+    register({ get: (pattern: RegExp, route: Function) => { handler = route } } as any)
+    const response = {
+        status: jest.fn().mockReturnThis(), end: jest.fn(),
+        setHeader: jest.fn(), contentType: jest.fn(), send: jest.fn(),
+    }
+    handler({ params: ["acme-challenge/" + token] }, response)
+    return response
+}
+
 beforeAll(() => {
     fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "gitwed-cert-fixture-"))
     execFileSync("openssl", [
@@ -228,6 +240,45 @@ it("lets other hostnames succeed even when both issuance and its failure email f
     ca.createOrder.mockRejectedValueOnce(new Error("different failure"))
     await manager(["www.foo.example.test"]).instance.checkAsync()
     expect(sendMail).toHaveBeenCalledTimes(1)
+})
+
+it("keeps issuing and scanning while notification delivery stalls, and handles a late rejection", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    jest.setSystemTime(now)
+    let rejectMail: (error: Error) => void
+    sendMail.mockImplementationOnce(() => new Promise<void>((resolve, reject) => { rejectMail = reject }))
+    ca.createOrder.mockRejectedValueOnce(new Error("first hostname failed"))
+    const { instance, install } = manager(["www.foo.example.test"])
+    await instance.checkAsync()
+    expect(rejectMail).toBeDefined()
+    expect(install).toHaveBeenCalledTimes(1)
+    expect(install.mock.calls[0][0]).toBe("www.foo.example.test")
+    expect(manager().instance.state.domains["foo.example.test"].lastFailureEmailAt).toBe(now)
+    await jest.advanceTimersByTimeAsync(30000)
+    expect(winston.warn).toHaveBeenCalledWith(expect.stringContaining("Email delivery timed out"))
+    jest.setSystemTime(instance.state.domains["foo.example.test"].nextAttemptAt)
+    await instance.checkAsync()
+    expect(install).toHaveBeenCalledTimes(2)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+    rejectMail(new Error("late provider failure"))
+    await jest.advanceTimersByTimeAsync(0)
+    expect(winston.warn).not.toHaveBeenCalledWith(expect.stringContaining("late provider failure"))
+})
+
+it("retains the notification cooldown across restarts when a provider never responds", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    jest.setSystemTime(now)
+    sendMail.mockImplementation(() => new Promise(() => {}))
+    ca.createOrder.mockRejectedValue(new Error("CA unavailable"))
+    await manager().instance.checkAsync()
+    await jest.advanceTimersByTimeAsync(2 * hour)
+    await manager().instance.checkAsync()
+    expect(ca.createOrder).toHaveBeenCalledTimes(2)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+    await jest.advanceTimersByTimeAsync(22 * hour)
+    await manager().instance.checkAsync()
+    expect(sendMail).toHaveBeenCalledTimes(2)
+    await jest.advanceTimersByTimeAsync(30000)
 })
 
 it("honors a longer Retry-After and pauses the shared account on rate limits", async () => {
@@ -469,6 +520,111 @@ it("polls pending challenges and processing orders through the real ACME API", a
     ])
     expect(libraryPoll).not.toHaveBeenCalled()
     expect(install).toHaveBeenCalledTimes(1)
+})
+
+it.each(["polling", "submission"])("keeps challenges available after a %s failure and resumes validation", async failure => {
+    const challenge = { type: "http-01", status: "pending", token: "durable-test-token", url: "https://ca.test/challenge/1" }
+    const authz = { status: "pending", identifier: { value: "foo.example.test" }, challenges: [challenge] }
+    const pendingOrder = { status: "pending", url: "https://ca.test/order/1", expires: new Date(now + day).toISOString() }
+    ca.createOrder.mockResolvedValue(pendingOrder)
+    ca.getOrder.mockResolvedValue(pendingOrder)
+    ca.getAuthorizations.mockResolvedValue([authz])
+    ca.getChallengeKeyAuthorization = jest.fn().mockResolvedValue("durable-authorization")
+    ca.verifyChallenge = jest.fn().mockResolvedValue(undefined)
+    ca.completeChallenge = jest.fn().mockImplementation(async () => {
+        const saved = JSON.parse(fs.readFileSync(path.join(directory, "certificates.json"), "utf8"))
+        expect(saved.domains["foo.example.test"].pendingOrder.httpChallenges).toEqual({
+            "acme-challenge/durable-test-token": "durable-authorization",
+        })
+        if (failure === "submission") throw new Error("submission response lost")
+        return { status: "processing" }
+    })
+    if (failure === "polling") ca.api.apiRequest.mockRejectedValueOnce(Object.assign(new Error("poll unavailable"), {
+        response: { status: 503, headers: { "retry-after": "60" } },
+    }))
+    const { instance, install } = manager()
+    await instance.checkAsync()
+    expect(challengeResponse(challenge.token).send).toHaveBeenCalledWith("durable-authorization")
+    expect(install).not.toHaveBeenCalled()
+    // Simulate a fresh process: its route starts empty, then the constructor restores the token.
+    jest.isolateModules(() => {
+        const fresh = require("./acme")
+        expect(challengeResponse(challenge.token, fresh.init).status).toHaveBeenCalledWith(404)
+        const restored = new fresh.CertificateManager({ jwtSecret: "unused", authDomain: "https://foo.example.test" }, jest.fn(), path.join(directory, "certificates.json"))
+        expect(restored.state.domains["foo.example.test"].nextAttemptAt).toBeGreaterThan(now)
+        expect(challengeResponse(challenge.token, fresh.init).send).toHaveBeenCalledWith("durable-authorization")
+    })
+    now += 2 * hour
+    challenge.status = "processing"
+    ca.api.apiRequest.mockResolvedValueOnce({ data: { status: "valid" } })
+        .mockResolvedValueOnce({ data: { status: "ready" } })
+    await instance.checkAsync()
+    expect(ca.completeChallenge).toHaveBeenCalledTimes(1)
+    expect(ca.verifyChallenge).toHaveBeenCalledTimes(1)
+    expect(install).toHaveBeenCalledTimes(1)
+    expect(challengeResponse(challenge.token).status).toHaveBeenCalledWith(404)
+    expect(manager().instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+})
+
+it.each(["invalid", "expired", "missing", "ready", "processing", "valid", "invalid-challenge", "valid-authorization"])(
+    "removes saved challenge responses when resuming an order with %s validation", async status => {
+        const token = "cleanup-" + status
+        const { instance } = manager()
+        const entry = instance.state.domains["foo.example.test"]
+        entry.pendingOrder = {
+            order: { status: "pending", url: "https://ca.test/order/1", expires: new Date(now + day).toISOString() },
+            keyPem: key, csrPem: "csr", httpChallenges: { ["acme-challenge/" + token]: "cleanup-authorization" },
+        }
+        instance.save()
+        const restored = manager().instance
+        expect(challengeResponse(token).send).toHaveBeenCalledWith("cleanup-authorization")
+        if (status === "missing") {
+            ca.getOrder.mockRejectedValueOnce(Object.assign(new Error("order gone"), { response: { status: 404 } }))
+        } else {
+            ca.getOrder.mockResolvedValueOnce({
+                status: status === "expired" || status.includes("-") ? "pending" : status,
+                url: "https://ca.test/order/1",
+                expires: new Date(now + (status === "expired" ? -1 : day)).toISOString(),
+            })
+        }
+        if (status === "invalid-challenge") {
+            ca.getAuthorizations.mockResolvedValue([{ status: "pending", identifier: { value: "foo.example.test" },
+                challenges: [{ type: "http-01", status: "processing", token, url: "https://ca.test/challenge/1" }] }])
+            ca.getChallengeKeyAuthorization = jest.fn().mockResolvedValue("cleanup-authorization")
+            ca.api.apiRequest.mockResolvedValueOnce({ data: { status: "invalid", error: { detail: "validation failed" } } })
+        } else if (status === "valid-authorization") {
+            ca.getAuthorizations.mockResolvedValue([{ status: "valid" }])
+            ca.api.apiRequest.mockRejectedValueOnce(new Error("order status unavailable"))
+        }
+        // Cleanup must not wait for a certificate download that may itself fail.
+        ca.getCertificate.mockRejectedValue(new Error("download unavailable"))
+        await restored.checkAsync()
+        expect(challengeResponse(token).status).toHaveBeenCalledWith(404)
+        expect(restored.state.domains["foo.example.test"].pendingOrder?.httpChallenges).toBeUndefined()
+        expect(manager().instance.state.domains["foo.example.test"].pendingOrder?.httpChallenges).toBeUndefined()
+    }
+)
+
+it.each(["expired", "removed"])("does not restore %s challenges while issuance is paused", async reason => {
+    const token = "unneeded-" + reason
+    const { instance } = manager(["www.foo.example.test"])
+    const entry = instance.state.domains["www.foo.example.test"]
+    entry.pendingOrder = {
+        order: { status: "pending", url: "https://ca.test/order/1", expires: new Date(now + hour).toISOString() },
+        keyPem: key, csrPem: "csr", httpChallenges: { ["acme-challenge/" + token]: "unused-authorization" },
+    }
+    instance.state.account.nextAttemptAt = now + 3 * day
+    instance.save()
+    const loaded = manager(["www.foo.example.test"]).instance
+    expect(challengeResponse(token).send).toHaveBeenCalledWith("unused-authorization")
+    if (reason === "expired") {
+        now += hour
+        await loaded.checkAsync()
+        expect(challengeResponse(token).status).toHaveBeenCalledWith(404)
+    }
+    manager(reason === "expired" ? ["www.foo.example.test"] : [])
+    expect(challengeResponse(token).status).toHaveBeenCalledWith(404)
+    expect(ca.createOrder).not.toHaveBeenCalled()
 })
 
 it("prevents overlapping scans and persists an in-flight attempt before calling the CA", async () => {
