@@ -409,6 +409,81 @@ it("keeps serving the previous certificate when renewal fails", async () => {
     expect(install).not.toHaveBeenCalled()
 })
 
+it.each([
+    ["save", false, false], ["save", false, true], ["save", true, true],
+    ["install", false, false], ["install", false, true], ["install", true, true],
+])("recovers a certificate completion %s failure (restart=%s, renewal=%s)", async (failure, restart, renewal) => {
+    const original = manager()
+    const entry = original.instance.state.domains["foo.example.test"]
+    const previous = renewal ? { ...savedCertificate(), renewTime: now - 1, ariCheckTime: now + day } : undefined
+    if (previous) entry.certificate = previous
+    original.instance.save()
+    if (failure === "save") {
+        const save = original.instance.save.bind(original.instance)
+        let failed = false
+        jest.spyOn(original.instance, "save").mockImplementation(() => {
+            if (entry.certificate && entry.certificate !== previous && !failed) {
+                failed = true
+                throw Object.assign(new Error("disk full"), { code: "ENOSPC" })
+            }
+            save()
+        })
+    } else {
+        original.install.mockImplementationOnce(() => { throw new Error("TLS installation failed") })
+    }
+    await original.instance.checkAsync()
+    expect(entry.certificate).toBe(previous)
+    expect(entry.pendingOrder).toBeDefined()
+    expect(entry.failures).toBe(1)
+    expect(entry.nextAttemptAt).toBe(now + 2 * hour)
+    const stored = JSON.parse(fs.readFileSync(path.join(directory, "certificates.json"), "utf8")).domains["foo.example.test"]
+    expect(stored.certificate).toEqual(previous)
+    expect(stored.pendingOrder).toEqual(entry.pendingOrder)
+    const resumed = restart ? manager() : original
+    const attempts = resumed.install.mock.calls.length
+    now += hour
+    await resumed.instance.checkAsync()
+    expect(resumed.install).toHaveBeenCalledTimes(attempts)
+    now += hour
+    await resumed.instance.checkAsync()
+    expect(resumed.install).toHaveBeenCalledTimes(attempts + 1)
+    expect(resumed.install).toHaveBeenLastCalledWith("foo.example.test", expect.objectContaining({ keyPem: key }))
+    expect(ca.createOrder).toHaveBeenCalledTimes(1)
+    expect(acme.crypto.createCsr).toHaveBeenCalledTimes(1)
+    expect(ca.finalizeOrder).toHaveBeenCalledTimes(1)
+    expect(resumed.instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+    expect(resumed.instance.state.domains["foo.example.test"].failures).toBe(0)
+    expect(resumed.instance.state.domains["foo.example.test"].nextAttemptAt).toBeUndefined()
+    expect(manager().instance.state.domains["foo.example.test"].certificate).toEqual(
+        resumed.instance.state.domains["foo.example.test"].certificate)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+})
+
+it.each(["finalization", "finalization poll"])("abandons a terminal order during %s and creates its replacement after two hours", async stage => {
+    const { instance } = manager()
+    const response = { data: { status: "invalid", error: { detail: "order invalidated" } } }
+    if (stage === "finalization")
+        ca.finalizeOrder.mockRejectedValueOnce(Object.assign(new Error("order invalidated"), { response }))
+    else
+        ca.api.apiRequest.mockResolvedValueOnce(response)
+    // A stale order must not be queried again and counted as another failure.
+    ca.getOrder.mockResolvedValue({ status: "invalid", url: "https://ca.test/order/1" })
+    await instance.checkAsync()
+    const entry = instance.state.domains["foo.example.test"]
+    expect(entry.pendingOrder).toBeUndefined()
+    expect(entry.failures).toBe(1)
+    expect(entry.nextAttemptAt).toBe(now + 2 * hour)
+    const restored = manager()
+    expect(restored.instance.state.domains["foo.example.test"].pendingOrder).toBeUndefined()
+    now += 2 * hour
+    await restored.instance.checkAsync()
+    expect(ca.getOrder).not.toHaveBeenCalled()
+    expect(ca.createOrder).toHaveBeenCalledTimes(2)
+    expect(restored.install).toHaveBeenCalledTimes(1)
+    expect(restored.instance.state.domains["foo.example.test"].failures).toBe(0)
+    expect(sendMail).toHaveBeenCalledTimes(1)
+})
+
 it.each(["download", "finalize-processing", "finalize-ready"])(
     "resumes an accepted order with its saved key after a %s failure and restart", async failure => {
         const { instance } = manager()

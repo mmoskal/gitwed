@@ -178,15 +178,23 @@ export class CertificateManager {
                     entry.nextAttemptAt = Date.now() + 2 * 60 * minute
                     this.save()
                     const renewed = await this.renewAsync(domain, cert)
-                    entry.certificate = renewed
-                    entry.failures = 0
-                    if (entry.pendingOrder) clearHttpChallenges(entry.pendingOrder)
-                    delete entry.pendingOrder
-                    delete entry.rejectedReplaces
-                    delete entry.nextAttemptAt
-                    delete entry.lastError
-                    this.save()
-                    this.install(domain, renewed)
+                    const previous = { ...entry }
+                    try {
+                        entry.certificate = renewed
+                        entry.failures = 0
+                        delete entry.pendingOrder
+                        delete entry.rejectedReplaces
+                        delete entry.nextAttemptAt
+                        delete entry.lastError
+                        this.save()
+                        this.install(domain, renewed)
+                    } catch (error) {
+                        // Retain the accepted order and old schedule until saving and installation succeed.
+                        for (const key of Object.keys(entry) as (keyof DomainState)[]) delete entry[key]
+                        Object.assign(entry, previous)
+                        throw error
+                    }
+                    if (previous.pendingOrder) clearHttpChallenges(previous.pendingOrder)
                     winston.info("Certificate installed for " + domain)
                 } catch (error) {
                     const now = Date.now()
@@ -420,6 +428,11 @@ export class CertificateManager {
             }
             if (order.status === "pending")
                 order = await pollAcmeStatusAsync(this.client, order, "order")
+            if (order.status === "ready")
+                order = await this.client.finalizeOrder(order, Buffer.from(pending.csrPem))
+            if (order.status !== "valid")
+                order = await pollAcmeStatusAsync(this.client, order, "order")
+            if (order.status !== "valid") throw new Error("ACME order was not finalized")
         } catch (error) {
             if (["invalid", "expired", "revoked", "deactivated"].includes(error.response?.data?.status)) {
                 clearHttpChallenges(pending)
@@ -428,12 +441,6 @@ export class CertificateManager {
             }
             throw error
         }
-        if (order.status === "ready") {
-            order = await this.client.finalizeOrder(order, Buffer.from(pending.csrPem))
-        }
-        if (order.status !== "valid")
-            order = await pollAcmeStatusAsync(this.client, order, "order")
-        if (order.status !== "valid") throw new Error("ACME order was not finalized")
         const cert: string = await this.client.getCertificate(order)
         const info = acme.crypto.readCertificateInfo(cert)
         const duration = info.notAfter.getTime() - info.notBefore.getTime()
